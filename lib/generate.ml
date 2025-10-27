@@ -23,7 +23,7 @@ let collect l =
   List.iter collect_decl l;
   List.of_seq @@ Queue.to_seq q
 
-let decls fmt l =
+let print_c fmt l =
   let tds = collect l in
   Fmt.pf fmt "#include <caml/mlvalues.h>@.";
   (* Forward declarations *)
@@ -84,3 +84,38 @@ let decls fmt l =
             f.params;
           Fmt.pf fmt "@]};@.")
     l
+
+let print_ml fmt l =
+  let tds = collect l in
+  (* type def *)
+  List.iter
+    (fun td ->
+      Fmt.pf fmt "(** %s: %s *)@." td.name td.descr;
+      Fmt.pf fmt "type %a = %a@." mlty td td.mlty ();
+      Fmt.pf fmt "@.")
+    tds;
+  (* Functions *)
+  List.iter
+    (function
+      | Fun f ->
+          let pp_result fmt = function
+            | None -> Fmt.string fmt "unit"
+            | Some td -> mlty fmt td
+          in
+          let pp_param fmt p = Fmt.pf fmt "%a -> " mlty p.pty in
+          Fmt.pf fmt "@[external %s: %a%a = \"camlid_fun_%s\"@]" f.fname
+            Fmt.(list ~sep:nop pp_param)
+            f.params pp_result f.result f.fname)
+    l
+
+let to_file basename l =
+  let cout = open_out (basename ^ "_stub.c") in
+  let fmt = Format.formatter_of_out_channel cout in
+  print_c fmt l;
+  Fmt.flush fmt ();
+  close_out cout;
+  let cout = open_out (basename ^ ".ml") in
+  let fmt = Format.formatter_of_out_channel cout in
+  print_ml fmt l;
+  Fmt.flush fmt ();
+  close_out cout

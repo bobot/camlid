@@ -4,10 +4,10 @@
   > let f = Type.{ fname = "f"; params = [{ pmode = In; pty = Helper.int; pname = "x" }];
   >           result = None; }
   > 
-  > let () = Fmt.pr "%a" Generate.decls [Fun f]
+  > let () = Generate.to_file "basic" [Fun f]
   > EOF
 
-  $ cat basic.c
+  $ cat basic_stub.c
   #include <caml/mlvalues.h>
   /* int: int */
   typedef int camlid_int;
@@ -27,4 +27,12 @@
     f(c_x);
     };
 
-  $ ocamlc -c basic.c
+  $ ocamlc -c basic_stub.c
+
+  $ cat basic.ml
+  (** int: int *)
+  type camlid_int = int
+  
+  external f: camlid_int -> unit = "camlid_fun_f"
+
+  $ ocamlc -c basic.ml
