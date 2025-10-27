@@ -1,0 +1,5 @@
+(cram (deps ./camlid_toplevel.exe))
+
+(toplevel
+ (name camlid_toplevel)
+ (libraries camlid))
