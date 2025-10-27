@@ -42,5 +42,8 @@ type ptr_mode = Ref | Unique | Ptr
 type mode = In | Out
 type param = { pmode : mode; pty : typedef; pname : string }
 type func = { fname : string; params : param list; result : typedef option }
+
+let stub_name fmt f = Fmt.pf fmt "camlid_fun_%s" f.fname
+
 type decl = Fun of func
 type conf = decl list

@@ -64,8 +64,8 @@ let print_c fmt l =
             | Some td -> cty fmt td
           in
           let pp_param fmt p = Fmt.pf fmt "value %a" v_name p.pname in
-          Fmt.pf fmt "@[<v 2>@[extern %a camlid_fun_%s@](%a)@[{@]@," pp_result
-            f.result f.fname
+          Fmt.pf fmt "@[<v 2>@[extern %a %a@](%a)@[{@]@," pp_result f.result
+            stub_name f
             Fmt.(list ~sep:comma pp_param)
             f.params;
           let pp_local fmt p =
@@ -103,9 +103,9 @@ let print_ml fmt l =
             | Some td -> mlty fmt td
           in
           let pp_param fmt p = Fmt.pf fmt "%a -> " mlty p.pty in
-          Fmt.pf fmt "@[external %s: %a%a = \"camlid_fun_%s\"@]" f.fname
+          Fmt.pf fmt "@[external %s: %a%a = \"%a\"@]" f.fname
             Fmt.(list ~sep:nop pp_param)
-            f.params pp_result f.result f.fname)
+            f.params pp_result f.result stub_name f)
     l
 
 let to_file basename l =
