@@ -8,9 +8,9 @@ type typedef = {
   cty : unit Fmt.t;  (** print the c type *)
   mlty : unit Fmt.t;  (** print the ocaml type *)
   mlname : string;  (** ml name *)
-  c2ml : unit Fmt.t;  (** code of c2ml *)
-  ml2c : unit Fmt.t;  (** code of ml2c *)
-  init : unit Fmt.t;  (** code of init *)
+  c2ml : unit Fmt.t;  (** code of c2ml with declaration of the formals *)
+  ml2c : unit Fmt.t;  (** code of ml2c with declaration of the formals *)
+  init : unit Fmt.t;  (** code of init with declaration of the formals *)
   init_expr : unit Fmt.t;  (** expression initialization *)
 }
 

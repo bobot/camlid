@@ -11,7 +11,7 @@ let int =
     c2ml = Fmt.any "(value * v, int * x){ *v = Val_int(*x); }";
     ml2c = Fmt.any "(int * x, value * v){ *x = Int_val(*v); }";
     init = Fmt.any "(int * x){ }";
-    init_expr = Fmt.nop;
+    init_expr = Fmt.any "0";
   }
 
 let ref ty =
@@ -30,5 +30,6 @@ let ref ty =
         Fmt.pf fmt "(%a ** x, value * v){ %a(*x,v); }" cty ty ml2c ty);
     init = Fmt.any "(int ** x){ }";
     init_expr =
-      (fun fmt () -> Fmt.pf fmt "= &(((struct { %a a; }) { }).a)" cty ty);
+      (fun fmt () ->
+        Fmt.pf fmt "&(((struct { %a a; }) { %a }).a)" cty ty ty.init_expr ());
   }

@@ -38,14 +38,16 @@
       23	
       24	void f(camlid_c_ref_int);
       25	extern value camlid_fun_f(){
-      26	  camlid_c_ref_int c_x= &(((struct { camlid_c_int a; }) { }).a);
+      26	  camlid_c_ref_int c_x = &(((struct { camlid_c_int a; }) { 0 }).a);
       27	  value v__ret;
-      28	  f(c_x);
-      29	  camlid_c2ml_ref_int(&v__ret,&c_x);
-      30	  return v__ret;
-      31	  };
+      28	  camlid_init_ref_int(&c_x);
+      29	  f(c_x);
+      30	  camlid_c2ml_ref_int(&v__ret,&c_x);
+      31	  return v__ret;
+      32	  };
 
   $ ocamlc -c basic_stub.c
+
 
   $ cat -n basic.ml
        1	(** int: int *)

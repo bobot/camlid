@@ -67,7 +67,7 @@ let print_c_fun fmt f =
     inputs;
   (* local C variable declaration *)
   let pp_local fmt p =
-    Fmt.pf fmt "@[%a %a%a;@]@," cty p.pty c_name p.pname p.pty.init_expr ()
+    Fmt.pf fmt "@[%a %a = %a;@]@," cty p.pty c_name p.pname p.pty.init_expr ()
   in
   Fmt.(list ~sep:nop pp_local) fmt f.params;
   (match f.result with
@@ -87,6 +87,12 @@ let print_c_fun fmt f =
       Fmt.pf fmt "@[%a(&%a,&%a);@]@," ml2c p.pty c_name p.pname v_name p.pname
   in
   Fmt.(list ~sep:nop pp_conv_in) fmt f.params;
+  (* initialize output variables thatn are not input *)
+  let pp_init_out fmt p =
+    if (not p.input) && p.output then
+      Fmt.pf fmt "@[%a(&%a);@]@," init p.pty c_name p.pname
+  in
+  Fmt.(list ~sep:nop pp_init_out) fmt f.params;
   (* function call *)
   let pp_arg fmt p = Fmt.pf fmt "%a" c_name p.pname in
   let pp_result fmt = function

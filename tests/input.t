@@ -27,7 +27,7 @@
       12	
       13	void f(camlid_c_int);
       14	extern value camlid_fun_f(value v_x){
-      15	  camlid_c_int c_x;
+      15	  camlid_c_int c_x = 0;
       16	  camlid_ml2c_int(&c_x,&v_x);
       17	  f(c_x);
       18	  return Val_unit;
