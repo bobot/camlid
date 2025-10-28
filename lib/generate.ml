@@ -134,6 +134,9 @@ let print_c_fun fmt f =
 let print_c fmt headers l =
   let tds = collect l in
   Fmt.pf fmt "#include <caml/mlvalues.h>@.";
+  Fmt.pf fmt "#include <caml/memory.h>@.";
+  Fmt.pf fmt "#include <caml/alloc.h>@.";
+  Fmt.pf fmt "#include <caml/custom.h>@.";
   let pp_header fmt header = Fmt.pf fmt "#include \"%s\"@." header in
   Fmt.(list ~sep:(any "@.") pp_header) fmt headers;
   (* Forward declarations *)
@@ -150,6 +153,7 @@ let print_c fmt headers l =
   List.iter
     (fun td ->
       Fmt.pf fmt "/* %s: %s */@." td.name td.descr;
+      td.extra_defs fmt ();
       Fmt.pf fmt "static void %a%a;@." c2ml td td.c2ml ();
       Fmt.pf fmt "static void %a%a;@." ml2c td td.ml2c ();
       Fmt.pf fmt "static void %a%a;@." init td td.init ();

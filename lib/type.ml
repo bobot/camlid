@@ -1,6 +1,3 @@
-type var = string
-type sign = Unsigned | Signed
-
 type typedef = {
   name : string;  (** unique base name *)
   descr : string;
@@ -12,6 +9,8 @@ type typedef = {
   ml2c : unit Fmt.t;  (** code of ml2c with declaration of the formals *)
   init : unit Fmt.t;  (** code of init with declaration of the formals *)
   init_expr : unit Fmt.t;  (** expression initialization *)
+  extra_defs : unit Fmt.t;
+      (** printed after declarations and before its definition *)
 }
 
 let c2ml_of_name fmt name = Fmt.pf fmt "camlid_c2ml_%s" name

@@ -12,34 +12,37 @@
   > void f(int);
   > EOF
 
-  $ cat -n basic_stub.c
-       1	#include <caml/mlvalues.h>
-       2	#include "./basic.h"
-       3	/* int: int */
-       4	typedef int camlid_c_int;
-       5	static void camlid_c2ml_int(value *, camlid_c_int *);
-       6	static void camlid_ml2c_int(camlid_c_int *, value *);
-       7	static void camlid_init_int(camlid_c_int *);
-       8	
-       9	/* int: int */
-      10	static void camlid_c2ml_int(value * v, int * x){ *v = Val_int(*x); };
-      11	static void camlid_ml2c_int(int * x, value * v){ *x = Int_val(*v); };
-      12	static void camlid_init_int(int * x){ };
-      13	
-      14	void f(camlid_c_int);
-      15	extern value camlid_fun_f(value v_x){
-      16	  camlid_c_int c_x = 0;
-      17	  camlid_ml2c_int(&c_x,&v_x);
-      18	  f(c_x);
-      19	  return Val_unit;
-      20	  };
+  $ cat basic_stub.c
+  #include <caml/mlvalues.h>
+  #include <caml/memory.h>
+  #include <caml/alloc.h>
+  #include <caml/custom.h>
+  #include "./basic.h"
+  /* int: int */
+  typedef int camlid_c_int;
+  static void camlid_c2ml_int(value *, camlid_c_int *);
+  static void camlid_ml2c_int(camlid_c_int *, value *);
+  static void camlid_init_int(camlid_c_int *);
+  
+  /* int: int */
+  static void camlid_c2ml_int(value * v, int * x){ *v = Val_int(*x); };
+  static void camlid_ml2c_int(int * x, value * v){ *x = Int_val(*v); };
+  static void camlid_init_int(int * x){ };
+  
+  void f(camlid_c_int);
+  extern value camlid_fun_f(value v_x){
+    camlid_c_int c_x = 0;
+    camlid_ml2c_int(&c_x,&v_x);
+    f(c_x);
+    return Val_unit;
+    };
 
   $ ocamlc -c basic_stub.c
 
-  $ cat -n basic.ml
-       1	(** int: int *)
-       2	type camlid_ml_int = int
-       3	
-       4	external f: camlid_ml_int -> unit = "camlid_fun_f"
+  $ cat basic.ml
+  (** int: int *)
+  type camlid_ml_int = int
+  
+  external f: camlid_ml_int -> unit = "camlid_fun_f"
 
   $ ocamlc -c basic.ml
