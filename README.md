@@ -6,7 +6,7 @@
 
  ### Example
 
-Suppose the following header:
+Suppose the following header (`alib.h`):
 
 ```c
 void f_input(int);
@@ -21,17 +21,21 @@ The following OCaml program produces a `basic_stub.c` and `basic.ml` file.
 open Camlid
 open Helper
 
- let () = Generate.to_file "basic" [
+ let () = Generate.to_file "basic"
+  ~headers:["alib.h"]
+  [
     func "f_input" [ input int "x"];
     func "f_output" [ output (ptr_ref int) "x"];
     func "f_with_res" [] ~result:int;
     func "f_no_arg_no_result" [];
-]
+  ]
  ```
 
  Then one just need to write `basic.mli` with the documentation:
 
  ```ocaml
+ (** {2 Alib API} *)
+
  (** set important global information *)
  val f_input: int -> unit
 

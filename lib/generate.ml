@@ -131,9 +131,11 @@ let print_c_fun fmt f =
       Fmt.pf fmt "@[return %a;@]@," v_name return_name);
   Fmt.pf fmt "@]};@."
 
-let print_c fmt l =
+let print_c fmt headers l =
   let tds = collect l in
   Fmt.pf fmt "#include <caml/mlvalues.h>@.";
+  let pp_header fmt header = Fmt.pf fmt "#include \"%s\"@." header in
+  Fmt.(list ~sep:(any "@.") pp_header) fmt headers;
   (* Forward declarations *)
   List.iter
     (fun td ->
@@ -179,10 +181,10 @@ let print_ml fmt l =
   (* Functions *)
   List.iter (function Fun f -> print_ml_fun fmt f) l
 
-let to_file basename l =
+let to_file ?(headers = []) basename l =
   let cout = open_out (basename ^ "_stub.c") in
   let fmt = Format.formatter_of_out_channel cout in
-  print_c fmt l;
+  print_c fmt headers l;
   Fmt.flush fmt ();
   close_out cout;
   let cout = open_out (basename ^ ".ml") in
