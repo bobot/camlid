@@ -1,4 +1,4 @@
-(cram (deps ./camlid_toplevel.exe))
+(cram (deps (package camlidl) ./camlid_toplevel.exe))
 
 (toplevel
  (name camlid_toplevel)

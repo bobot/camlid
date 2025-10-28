@@ -7,6 +7,7 @@ type typedef = {
   deps : typedef list;  (** typedef dependencies *)
   cty : unit Fmt.t;  (** print the c type *)
   mlty : unit Fmt.t;  (** print the ocaml type *)
+  mlname : string;  (** ml name *)
   c2ml : unit Fmt.t;  (** code of c2ml *)
   ml2c : unit Fmt.t;  (** code of ml2c *)
   init : unit Fmt.t;  (** code of init *)
@@ -28,20 +29,27 @@ let init_of_name fmt name = Fmt.pf fmt "camlid_init_%s" name
 (** print c2ml function name of a typedef *)
 let init fmt td = init_of_name fmt td.name
 
-let cty_of_name fmt name = Fmt.pf fmt "camlid_%s" name
+let cty_of_name fmt name = Fmt.pf fmt "camlid_c_%s" name
 
 (** print c type alias of a typedef *)
-let cty fmt td = Fmt.pf fmt "camlid_%s" td.name
-
-let mlty_of_name fmt name = Fmt.pf fmt "camlid_%s" name
+let cty fmt td = cty_of_name fmt td.name
 
 (** print ocaml type alias of a typedef *)
-let mlty fmt td = mlty_of_name fmt td.name
+let mlty fmt td = Fmt.string fmt td.mlname
 
-type ptr_mode = Ref | Unique | Ptr
-type mode = In | Out
-type param = { pmode : mode; pty : typedef; pname : string }
-type func = { fname : string; params : param list; result : typedef option }
+type param = {
+  input : bool; (* appears in ML parameters and converted before call *)
+  output : bool; (* appears in ML results and converted after call *)
+  pty : typedef;
+  pname : string;
+}
+
+type result = {
+  routput : bool; (* appears in ML results and converted after call *)
+  rty : typedef;
+}
+
+type func = { fname : string; params : param list; result : result option }
 
 let stub_name fmt f = Fmt.pf fmt "camlid_fun_%s" f.fname
 
