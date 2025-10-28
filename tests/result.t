@@ -1,12 +1,10 @@
   $ ./camlid_toplevel.exe -stdin > basic.c <<EOF
   > open Camlid
+  > open Helper
   > 
-  > let f = Type.{ fname = "f";
-  >  params = [];
-  >  result = Some { rty = Helper.int; routput = true }
-  > }
-  > 
-  > let () = Generate.to_file "basic" [Fun f]
+  > let () = Generate.to_file "basic" [
+  >  func "f" [] ~result:int
+  > ]
   > EOF
 
   $ cat -n basic_stub.c

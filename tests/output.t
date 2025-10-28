@@ -1,15 +1,10 @@
   $ ./camlid_toplevel.exe -stdin > basic.c <<EOF
   > open Camlid
+  > open Helper
   > 
-  > let f = Type.{ fname = "f";
-  > params =
-  >   [{ input = false;
-  >      output = true;
-  >      pty = Helper.(ref int);
-  >      pname = "x" }];
-  > result = None; }
-  > 
-  > let () = Generate.to_file "basic" [Fun f]
+  > let () = Generate.to_file "basic" [
+  >  func "f" [ output (ptr_ref int) "x"]
+  > ]
   > EOF
 
   $ cat -n basic_stub.c

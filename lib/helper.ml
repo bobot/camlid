@@ -14,7 +14,7 @@ let int =
     init_expr = Fmt.any "0";
   }
 
-let ref ty =
+let ptr_ref ty =
   {
     name = "ref_" ^ ty.name;
     descr = "ref on " ^ ty.descr;
@@ -33,3 +33,18 @@ let ref ty =
       (fun fmt () ->
         Fmt.pf fmt "&(((struct { %a a; }) { %a }).a)" cty ty ty.init_expr ());
   }
+
+let input ty name = { input = true; output = false; pty = ty; pname = name }
+let output ty name = { input = false; output = true; pty = ty; pname = name }
+let inout ty name = { input = true; output = true; pty = ty; pname = name }
+let ignored ty name = { input = false; output = false; pty = ty; pname = name }
+
+let func fname ?result ?ignored_result params =
+  match (result, ignored_result) with
+  | Some _, Some _ ->
+      failwith "Camlid.Helper.func: can't set both result and ignored_result"
+  | Some rty, None ->
+      Fun { fname; params; result = Some { rty; routput = true } }
+  | None, Some rty ->
+      Fun { fname; params; result = Some { rty; routput = false } }
+  | None, None -> Fun { fname; params; result = None }
