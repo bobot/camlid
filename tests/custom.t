@@ -49,11 +49,14 @@
   custom_serialize_default,
   custom_deserialize_default
   };
-  static void camlid_c2ml_custom_myptr(value * v,camlid_c_custom_myptr * x){
-  *v = caml_alloc_custom(&camlid_cops_myptr,sizeof(camlid_c_custom_myptr), 0, 1);
-  *((camlid_c_custom_myptr *) Data_custom_val(*v)) = *x; };
-  static void camlid_ml2c_custom_myptr(camlid_c_custom_myptr * x,value * v){ *x = *((camlid_c_custom_myptr *)  Data_custom_val(*v)); };
-  static void camlid_init_custom_myptr(camlid_c_custom_myptr * x){ };
+  static void camlid_c2ml_custom_myptr(value * v, camlid_c_custom_myptr * c){
+    *v = caml_alloc_custom(&camlid_cops_myptr,sizeof(camlid_c_custom_myptr), 0, 1);
+    *((camlid_c_custom_myptr *) Data_custom_val(*v)) = *c;
+  };
+  static void camlid_ml2c_custom_myptr(camlid_c_custom_myptr * c, value * v){
+    *c = *((camlid_c_custom_myptr *)  Data_custom_val(*v));
+  };
+  static void camlid_init_custom_myptr(camlid_c_custom_myptr * c){  };
   
   void f(camlid_c_custom_myptr);
   extern value camlid_fun_f(){

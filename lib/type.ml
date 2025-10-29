@@ -5,13 +5,29 @@ type typedef = {
   cty : unit Fmt.t;  (** print the c type *)
   mlty : unit Fmt.t;  (** print the ocaml type *)
   mlname : string;  (** ml name *)
-  c2ml : unit Fmt.t;  (** code of c2ml with declaration of the formals *)
-  ml2c : unit Fmt.t;  (** code of ml2c with declaration of the formals *)
-  init : unit Fmt.t;  (** code of init with declaration of the formals *)
-  init_expr : unit Fmt.t;  (** expression initialization *)
+  c2ml : funpar;  (** code of c2ml with declaration of the formals *)
+  ml2c : funpar;  (** code of ml2c with declaration of the formals *)
+  init : funpar;  (** code of init with declaration of the formals *)
+  init_expr : funpar;  (** expression initialization *)
   extra_defs : unit Fmt.t;
       (** printed after declarations and before its definition *)
 }
+
+and funpar = { pp : unit Fmt.t; params : (string * typedef) list }
+(** Allows for a code to depend on additional formal parameters *)
+
+let nop = { pp = Fmt.nop; params = [] }
+let any s = { pp = Fmt.any s; params = [] }
+
+type fp = { fmt : 'a. ('a, Format.formatter, unit) format -> 'a }
+
+let fp ?(params = []) pp =
+  { pp = (fun fmt () -> pp { fmt = (fun p -> Fmt.pf fmt p) }); params }
+
+let dpr = Format.dprintf
+
+let dfp ?(params = []) =
+  Format.kdprintf (fun k -> { pp = (fun fmt () -> k fmt); params })
 
 let c2ml_of_name fmt name = Fmt.pf fmt "camlid_c2ml_%s" name
 
@@ -36,10 +52,14 @@ let cty fmt td = cty_of_name fmt td.name
 (** print ocaml type alias of a typedef *)
 let mlty fmt td = Fmt.string fmt td.mlname
 
+let init_expr fmt ty = ty.init_expr.pp fmt ()
+
 type param = {
   input : bool; (* appears in ML parameters and converted before call *)
   output : bool; (* appears in ML results and converted after call *)
+  used_in_call : bool; (* appears in the stubbed C call parameters *)
   pty : typedef;
+  funpars : (string * param) List.t;
   pname : string;
 }
 
@@ -54,3 +74,30 @@ let stub_name fmt f = Fmt.pf fmt "camlid_fun_%s" f.fname
 
 type decl = Fun of func
 type conf = decl list
+
+module C2ML = struct
+  (** name of the destination ML value *)
+  let v = "v"
+
+  (** name of the source C value *)
+  let c = "c"
+
+  let call ~v ~c fmt ty = Fmt.pf fmt "%a(%t,%t)" c2ml ty v c
+end
+
+module ML2C = struct
+  (** name of the destination value*)
+  let v = "v"
+
+  (** name of the source C value *)
+  let c = "c"
+
+  let call ~v ~c fmt ty = Fmt.pf fmt "%a(%t,%t)" ml2c ty c v
+end
+
+module INIT = struct
+  (** name of the C value to initilizat *)
+  let c = "c"
+
+  let call ~c fmt ty = Fmt.pf fmt "%a(%t)" init ty c
+end

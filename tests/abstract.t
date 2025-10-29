@@ -24,11 +24,14 @@
   typedef int * camlid_c_custom_intern_myptr;
   void id1(camlid_c_abstract_myptr *, camlid_c_custom_intern_myptr *);
   void id2(camlid_c_custom_intern_myptr *, camlid_c_abstract_myptr *);
-  static void camlid_c2ml_abstract_myptr(value * v,camlid_c_abstract_myptr * x){
-  *v = caml_alloc((sizeof(camlid_c_custom_intern_myptr) + sizeof(value) - 1) / sizeof(value), Abstract_tag);
-  id2(((camlid_c_custom_intern_myptr *) Bp_val(*v)),x); };
-  static void camlid_ml2c_abstract_myptr(camlid_c_abstract_myptr * x,value * v){ id1(x,((camlid_c_custom_intern_myptr *) Bp_val(*v))); };
-  static void camlid_init_abstract_myptr(camlid_c_abstract_myptr * x){ };
+  static void camlid_c2ml_abstract_myptr(value * v, camlid_c_abstract_myptr * c){
+    *v = caml_alloc((sizeof(camlid_c_custom_intern_myptr) + sizeof(value) - 1) / sizeof(value), Abstract_tag);
+    id2(((camlid_c_custom_intern_myptr *) Bp_val(*v)),c);
+  };
+  static void camlid_ml2c_abstract_myptr(camlid_c_abstract_myptr * c, value * v){
+    id1(c,((camlid_c_custom_intern_myptr *) Bp_val(*v)));
+  };
+  static void camlid_init_abstract_myptr(camlid_c_abstract_myptr * c){  };
   
   void f(camlid_c_abstract_myptr);
   extern value camlid_fun_f(){

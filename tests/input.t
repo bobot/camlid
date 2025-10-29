@@ -25,9 +25,11 @@
   static void camlid_init_int(camlid_c_int *);
   
   /* int: int */
-  static void camlid_c2ml_int(value * v, int * x){ *v = Val_int(*x); };
-  static void camlid_ml2c_int(int * x, value * v){ *x = Int_val(*v); };
-  static void camlid_init_int(int * x){ };
+  static void camlid_c2ml_int(value * v, camlid_c_int * c){ *v = Val_int(*c);
+  };
+  static void camlid_ml2c_int(camlid_c_int * c, value * v){ *c = Int_val(*v);
+  };
+  static void camlid_init_int(camlid_c_int * c){  };
   
   void f(camlid_c_int);
   extern value camlid_fun_f(value v_x){

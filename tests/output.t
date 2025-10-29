@@ -25,14 +25,20 @@
   static void camlid_init_ref_int(camlid_c_ref_int *);
   
   /* int: int */
-  static void camlid_c2ml_int(value * v, int * x){ *v = Val_int(*x); };
-  static void camlid_ml2c_int(int * x, value * v){ *x = Int_val(*v); };
-  static void camlid_init_int(int * x){ };
+  static void camlid_c2ml_int(value * v, camlid_c_int * c){ *v = Val_int(*c);
+  };
+  static void camlid_ml2c_int(camlid_c_int * c, value * v){ *c = Int_val(*v);
+  };
+  static void camlid_init_int(camlid_c_int * c){  };
   
   /* ref_int: ref on int */
-  static void camlid_c2ml_ref_int(value * v, camlid_c_int ** x){ camlid_c2ml_int(v,*x); };
-  static void camlid_ml2c_ref_int(camlid_c_int ** x, value * v){ camlid_ml2c_int(*x,v); };
-  static void camlid_init_ref_int(camlid_c_int ** x){ };
+  static void camlid_c2ml_ref_int(value * v, camlid_c_ref_int * c){
+    camlid_c2ml_int(v,*c);
+  };
+  static void camlid_ml2c_ref_int(camlid_c_ref_int * c, value * v){
+    camlid_ml2c_int(*c,v);
+  };
+  static void camlid_init_ref_int(camlid_c_ref_int * c){ camlid_init_int(*c); };
   
   void f(camlid_c_ref_int);
   extern value camlid_fun_f(){

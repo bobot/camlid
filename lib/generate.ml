@@ -42,7 +42,14 @@ let results f =
   | None -> out_params
   | Some result ->
       if result.routput then
-        { input = false; output = false; pty = result.rty; pname = result_name }
+        {
+          input = false;
+          output = false;
+          used_in_call = false;
+          pty = result.rty;
+          pname = result_name;
+          funpars = [];
+        }
         :: out_params
       else out_params
 
@@ -67,7 +74,7 @@ let print_c_fun fmt f =
     inputs;
   (* local C variable declaration *)
   let pp_local fmt p =
-    Fmt.pf fmt "@[%a %a = %a;@]@," cty p.pty c_name p.pname p.pty.init_expr ()
+    Fmt.pf fmt "@[%a %a = %a;@]@," cty p.pty c_name p.pname init_expr p.pty
   in
   Fmt.(list ~sep:nop pp_local) fmt f.params;
   (match f.result with
@@ -154,9 +161,15 @@ let print_c fmt headers l =
     (fun td ->
       Fmt.pf fmt "/* %s: %s */@." td.name td.descr;
       td.extra_defs fmt ();
-      Fmt.pf fmt "static void %a%a;@." c2ml td td.c2ml ();
-      Fmt.pf fmt "static void %a%a;@." ml2c td td.ml2c ();
-      Fmt.pf fmt "static void %a%a;@." init td td.init ();
+      Fmt.pf fmt
+        "@[<hv>@[<hv 2>@[static void %a(value * %s, %a * %s){@]@ %a@]@ \
+         @[};@]@]@."
+        c2ml td C2ML.v cty td C2ML.c td.c2ml.pp ();
+      Fmt.pf fmt
+        "@[<hv>@[<hv 2>@[static void %a(%a * %s, value * %s){@]@ %a@]@ \
+         @[};@]@]@."
+        ml2c td cty td ML2C.c ML2C.v td.ml2c.pp ();
+      Fmt.pf fmt "static void %a(%a * c){ %a };@." init td cty td td.init.pp ();
       Fmt.pf fmt "@.")
     tds;
   (* Functions *)

@@ -9,10 +9,10 @@ let int =
     cty = Fmt.any "int";
     mlty = Fmt.any " = int";
     mlname = "camlid_ml_int";
-    c2ml = Fmt.any "(value * v, int * x){ *v = Val_int(*x); }";
-    ml2c = Fmt.any "(int * x, value * v){ *x = Int_val(*v); }";
-    init = Fmt.any "(int * x){ }";
-    init_expr = Fmt.any "0";
+    c2ml = dfp "*%s = Val_int(*%s);" ML2C.v ML2C.c;
+    ml2c = dfp "*%s = Int_val(*%s);" ML2C.c ML2C.v;
+    init = nop;
+    init_expr = any "0";
     extra_defs = Fmt.nop;
   }
 
@@ -24,16 +24,10 @@ let ptr_ref ty =
     cty = (fun fmt () -> Fmt.pf fmt "%a *" cty ty);
     mlty = (fun fmt () -> Fmt.pf fmt "= %a" mlty ty);
     mlname = "camlid_ml_ref_" ^ ty.mlname;
-    c2ml =
-      (fun fmt () ->
-        Fmt.pf fmt "(value * v, %a ** x){ %a(v,*x); }" cty ty c2ml ty);
-    ml2c =
-      (fun fmt () ->
-        Fmt.pf fmt "(%a ** x, value * v){ %a(*x,v); }" cty ty ml2c ty);
-    init = (fun fmt () -> Fmt.pf fmt "(%a ** x){ }" cty ty);
-    init_expr =
-      (fun fmt () ->
-        Fmt.pf fmt "&(((struct { %a a; }) { %a }).a)" cty ty ty.init_expr ());
+    c2ml = dfp "%a;" C2ML.(call ~v:(dpr "%s" v) ~c:(dpr "*%s" c)) ty;
+    ml2c = dfp "%a;" ML2C.(call ~v:(dpr "%s" v) ~c:(dpr "*%s" c)) ty;
+    init = dfp "%a;" INIT.(call ~c:(dpr "*%s" c)) ty;
+    init_expr = dfp "&(((struct { %a a; }) { %a }).a)" cty ty init_expr ty;
     extra_defs = Fmt.nop;
   }
 
@@ -50,27 +44,21 @@ let abstract ?get ?set ?internal ~ml ~c () =
     mlty = Fmt.nop;
     mlname = ml;
     ml2c =
-      (fun fmt () ->
-        match get with
-        | None ->
-            Fmt.pf fmt "(%a * x,value * v){ *x = *((%a *) Bp_val(*v)); }"
-              cty_of_name name cty_of_name iname
-        | Some f ->
-            Fmt.pf fmt "(%a * x,value * v){ %s(x,((%a *) Bp_val(*v))); }"
-              cty_of_name name f cty_of_name iname);
+      fp (fun { fmt } ->
+          match get with
+          | None -> fmt "*c = *((%a *) Bp_val(*v));" cty_of_name iname
+          | Some f -> fmt "%s(c,((%a *) Bp_val(*v)));" f cty_of_name iname);
     c2ml =
-      (fun fmt () ->
-        Fmt.pf fmt
-          "(value * v,%a * x){@\n\
-           *v = caml_alloc((sizeof(%a) + sizeof(value) - 1) / sizeof(value), \
-           Abstract_tag);@\n"
-          cty_of_name name cty_of_name iname;
-        match set with
-        | None -> Fmt.pf fmt "*((%a *) Bp_val(*v)) = *x; }" cty_of_name iname
-        | Some f ->
-            Fmt.pf fmt "%s(((%a *) Bp_val(*v)),x); }" f cty_of_name iname);
-    init = (fun fmt () -> Fmt.pf fmt "(%a * x){ }" cty_of_name name);
-    init_expr = (fun fmt () -> Fmt.pf fmt "((%a) { })" cty_of_name name);
+      fp (fun { fmt } ->
+          fmt
+            "@[*v = caml_alloc((sizeof(%a) + sizeof(value) - 1) / \
+             sizeof(value), Abstract_tag);@]@,"
+            cty_of_name iname;
+          match set with
+          | None -> fmt "*((%a *) Bp_val(*v)) = *c;" cty_of_name iname
+          | Some f -> fmt "%s(((%a *) Bp_val(*v)),c);" f cty_of_name iname);
+    init = nop;
+    init_expr = dfp "((%a) { })" cty_of_name name;
     extra_defs =
       (fun fmt () ->
         (match internal with
@@ -100,35 +88,24 @@ let custom ?finalize ?initialize ?hash ?compare ?get ?set ?internal ~ml ~c () =
     mlty = Fmt.nop;
     mlname = ml;
     ml2c =
-      (fun fmt () ->
-        match get with
-        | None ->
-            Fmt.pf fmt
-              "(%a * x,value * v){ *x = *((%a *)  Data_custom_val(*v)); }"
-              cty_of_name name cty_of_name iname
-        | Some f ->
-            Fmt.pf fmt
-              "(%a * x,value * v){ %s(x,((%a *)  Data_custom_val(*v))); }"
-              cty_of_name name f cty_of_name iname);
+      fp (fun { fmt } ->
+          match get with
+          | None -> fmt "*c = *((%a *)  Data_custom_val(*v));" cty_of_name iname
+          | Some f ->
+              fmt "%s(c,((%a *)  Data_custom_val(*v)));" f cty_of_name iname);
     c2ml =
-      (fun fmt () ->
-        Fmt.pf fmt
-          "(value * v,%a * x){@\n\
-           *v = caml_alloc_custom(&camlid_cops_%s,sizeof(%a), 0, 1);@\n"
-          cty_of_name name ml cty_of_name iname;
-        match set with
-        | None ->
-            Fmt.pf fmt "*((%a *) Data_custom_val(*v)) = *x; }" cty_of_name iname
-        | Some f ->
-            Fmt.pf fmt "%s(((%a *) Data_custom_val(*v)),x); }" f cty_of_name
-              iname);
+      fp (fun { fmt } ->
+          fmt "@[*v = caml_alloc_custom(&camlid_cops_%s,sizeof(%a), 0, 1);@]@,"
+            ml cty_of_name iname;
+          match set with
+          | None ->
+              fmt "@[*((%a *) Data_custom_val(*v)) = *c;@]" cty_of_name iname
+          | Some f ->
+              fmt "@[%s(((%a *) Data_custom_val(*v)),c);@]" f cty_of_name iname);
     init =
-      (fun fmt () ->
-        let pp_init fmt f = Fmt.pf fmt "%s(x)" f in
-        Fmt.pf fmt "(%a * x){ %a}" cty_of_name name
-          Fmt.(option pp_init)
-          initialize);
-    init_expr = (fun fmt () -> Fmt.pf fmt "((%a) { })" cty_of_name name);
+      (let pp_init fmt f = Fmt.pf fmt "%s(%s);" f INIT.c in
+       dfp "%a" Fmt.(option pp_init) initialize);
+    init_expr = dfp "((%a) { })" cty_of_name name;
     extra_defs =
       (fun fmt () ->
         (match internal with
@@ -196,10 +173,13 @@ let custom ?finalize ?initialize ?hash ?compare ?get ?set ?internal ~ml ~c () =
           (pp_op "hash") hash);
   }
 
-let input ty name = { input = true; output = false; pty = ty; pname = name }
-let output ty name = { input = false; output = true; pty = ty; pname = name }
-let inout ty name = { input = true; output = true; pty = ty; pname = name }
-let ignored ty name = { input = false; output = false; pty = ty; pname = name }
+let simple_param ?(input = false) ?(output = false) pty pname =
+  { input; output; used_in_call = true; pty; pname; funpars = [] }
+
+let input = simple_param ~input:true
+let output = simple_param ~output:true
+let inout = simple_param ~input:true ~output:true
+let ignored = simple_param ~input:false ~output:false
 
 let func fname ?result ?ignored_result params =
   match (result, ignored_result) with
