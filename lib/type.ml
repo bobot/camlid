@@ -1,71 +1,31 @@
+open Expr
+
 type typedef = {
-  name : string;  (** unique base name *)
   descr : string;
-  deps : typedef list;  (** typedef dependencies *)
-  cty : unit Fmt.t;  (** print the c type *)
-  mlty : unit Fmt.t;  (** print the ocaml type *)
-  mlname : string;  (** ml name *)
-  c2ml : funpar;  (** code of c2ml with declaration of the formals *)
-  ml2c : funpar;  (** code of ml2c with declaration of the formals *)
-  init : funpar;  (** code of init with declaration of the formals *)
-  init_expr : funpar;  (** expression initialization *)
-  extra_defs : unit Fmt.t;
-      (** printed after declarations and before its definition *)
+  mlname : string option;  (** ml name *)
+  cty : code;  (** print the c type *)
+  mlty : code;  (** print the ocaml type *)
+  c2ml : code;  (** convert C values of this type to ML value *)
+  ml2c : code;  (** ml2c *)
+  init : code;
+      (** Initialize values of this type before giving them to stub function *)
+  init_expr : expr;  (** expression initialization *)
+  v : var; (* variable for the ml version *)
+  c : var; (* variable for the c version *)
 }
-
-and funpar = { pp : unit Fmt.t; params : (string * typedef) list }
-(** Allows for a code to depend on additional formal parameters *)
-
-let nop = { pp = Fmt.nop; params = [] }
-let any s = { pp = Fmt.any s; params = [] }
-
-type fp = { fmt : 'a. ('a, Format.formatter, unit) format -> 'a }
-
-let fp ?(params = []) pp =
-  { pp = (fun fmt () -> pp { fmt = (fun p -> Fmt.pf fmt p) }); params }
-
-let dpr = Format.dprintf
-
-let dfp ?(params = []) =
-  Format.kdprintf (fun k -> { pp = (fun fmt () -> k fmt); params })
-
-let c2ml_of_name fmt name = Fmt.pf fmt "camlid_c2ml_%s" name
-
-(** print c2ml function name of a typedef *)
-let c2ml fmt td = c2ml_of_name fmt td.name
-
-let ml2c_of_name fmt name = Fmt.pf fmt "camlid_ml2c_%s" name
-
-(** print ml2c function name of a typedef *)
-let ml2c fmt td = ml2c_of_name fmt td.name
-
-let init_of_name fmt name = Fmt.pf fmt "camlid_init_%s" name
-
-(** print c2ml function name of a typedef *)
-let init fmt td = init_of_name fmt td.name
-
-let cty_of_name fmt name = Fmt.pf fmt "camlid_c_%s" name
-
-(** print c type alias of a typedef *)
-let cty fmt td = cty_of_name fmt td.name
-
-(** print ocaml type alias of a typedef *)
-let mlty fmt td = Fmt.string fmt td.mlname
-
-let init_expr fmt ty = ty.init_expr.pp fmt ()
 
 type param = {
   input : bool; (* appears in ML parameters and converted before call *)
   output : bool; (* appears in ML results and converted after call *)
   used_in_call : bool; (* appears in the stubbed C call parameters *)
   pty : typedef;
-  funpars : (string * param) List.t;
-  pname : string;
+  pc : var;
 }
 
 type result = {
   routput : bool; (* appears in ML results and converted after call *)
   rty : typedef;
+  rc : var;
 }
 
 type func = { fname : string; params : param list; result : result option }
@@ -75,29 +35,35 @@ let stub_name fmt f = Fmt.pf fmt "camlid_fun_%s" f.fname
 type decl = Fun of func
 type conf = decl list
 
-module C2ML = struct
-  (** name of the destination ML value *)
-  let v = "v"
+let code ?keep_name ?(locals = []) ?(ovars = []) ?(ret = "void") name p =
+  Format.kdprintf
+    (fun k ->
+      let id = ID.mk ?keep_name name in
+      let params = params_of_expr k in
+      let params = List.sort_uniq Var.compare (ovars @ params) in
+      let local = Var.S.of_list locals in
+      let params = List.filter (fun v -> not (Var.S.mem v local)) params in
+      let pp_args fmt (var : var) =
+        Fmt.pf fmt "%a %a" var.ty.expr () pp_var var
+      in
+      mk ~kind:C ~params id (fun fmt () ->
+          Fmt.pf fmt "@[<hv 2>@[static %s %a(%a){@]@ %t@ @[}@]@]@." ret pp_id id
+            Fmt.(list ~sep:comma pp_args)
+            params k))
+    p
 
-  (** name of the source C value *)
-  let c = "c"
+let codef ?keep_name ?(ovars = []) ?(ret = "void") name pp =
+  let p = fun fmt -> pp { fmt = (fun p -> Fmt.pf fmt p) } in
+  let id = ID.mk ?keep_name name in
+  let params = params_of_expr p in
+  let params = List.sort_uniq Var.compare (ovars @ params) in
+  let pp_args fmt (var : var) = Fmt.pf fmt "%a %a" var.ty.expr () pp_var var in
+  mk ~kind:C ~params id (fun fmt () ->
+      Fmt.pf fmt "@[<hv 2>@[static %s %a(%a){@]@ %t@ @[}@]@]@." ret pp_id id
+        Fmt.(list ~sep:comma pp_args)
+        params p)
 
-  let call ~v ~c fmt ty = Fmt.pf fmt "%a(%t,%t)" c2ml ty v c
-end
-
-module ML2C = struct
-  (** name of the destination value*)
-  let v = "v"
-
-  (** name of the source C value *)
-  let c = "c"
-
-  let call ~v ~c fmt ty = Fmt.pf fmt "%a(%t,%t)" ml2c ty c v
-end
-
-module INIT = struct
-  (** name of the C value to initilizat *)
-  let c = "c"
-
-  let call ~c fmt ty = Fmt.pf fmt "%a(%t)" init ty c
-end
+let c2ml ~v ~c fmt ty = pp_call fmt (ty.c2ml, [ (ty.v, v); (ty.c, c) ])
+let ml2c ~v ~c fmt ty = pp_call fmt (ty.ml2c, [ (ty.v, v); (ty.c, c) ])
+let init ~c fmt ty = pp_call fmt (ty.init, [ (ty.c, c) ])
+let init_expr fmt ty = Fmt.pf fmt "%a" ty.init_expr.expr ()

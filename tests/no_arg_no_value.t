@@ -13,14 +13,11 @@
   #include <caml/alloc.h>
   #include <caml/custom.h>
   void f();
-  extern value camlid_fun_f(){
-    f();
-    return Val_unit;
-    };
+  extern value camlid_stub_f0(){f();return Val_unit;};
 
-  $ ocamlc -c basic_stub.c
+  $ ocamlc -ccopt --warn-all -c basic_stub.c
 
   $ cat basic.ml
-  external f: unit -> unit = "camlid_fun_f"
+  external f: unit -> unit = "camlid_stub_f0"
 
   $ ocamlc -c basic.ml

@@ -12,54 +12,30 @@
   #include <caml/memory.h>
   #include <caml/alloc.h>
   #include <caml/custom.h>
-  /* int: int */
-  typedef int camlid_c_int;
-  static void camlid_c2ml_int(value *, camlid_c_int *);
-  static void camlid_ml2c_int(camlid_c_int *, value *);
-  static void camlid_init_int(camlid_c_int *);
-  
-  /* ref_int: ref on int */
-  typedef camlid_c_int * camlid_c_ref_int;
-  static void camlid_c2ml_ref_int(value *, camlid_c_ref_int *);
-  static void camlid_ml2c_ref_int(camlid_c_ref_int *, value *);
-  static void camlid_init_ref_int(camlid_c_ref_int *);
-  
-  /* int: int */
-  static void camlid_c2ml_int(value * v, camlid_c_int * c){ *v = Val_int(*c);
+  typedef int camlid_int4;
+  typedef camlid_int4 * camlid_ref3;
+  static void camlid_init8(camlid_int4 * c3){  }
+  static void camlid_init5(camlid_ref3 * c2){ camlid_init8(*c2); }
+  void f(camlid_ref3);
+  static void camlid_c2ml9(value * v5, camlid_int4 * c3){ *v5 = Val_int(*c3); }
+  static void camlid_c2ml7(value * v4, camlid_ref3 * c2){
+    camlid_c2ml9(v4, *c2);
+    }
+  extern value camlid_stub_f1(){
+    camlid_ref3 x0 = &(((struct { camlid_int4 a; }) { 0 }).a);
+    value ret1;
+    camlid_init5(&x0);
+    f(x0);
+    camlid_c2ml7(&ret1, &x0);
+    return ret1;
   };
-  static void camlid_ml2c_int(camlid_c_int * c, value * v){ *c = Int_val(*v);
-  };
-  static void camlid_init_int(camlid_c_int * c){  };
-  
-  /* ref_int: ref on int */
-  static void camlid_c2ml_ref_int(value * v, camlid_c_ref_int * c){
-    camlid_c2ml_int(v,*c);
-  };
-  static void camlid_ml2c_ref_int(camlid_c_ref_int * c, value * v){
-    camlid_ml2c_int(*c,v);
-  };
-  static void camlid_init_ref_int(camlid_c_ref_int * c){ camlid_init_int(*c); };
-  
-  void f(camlid_c_ref_int);
-  extern value camlid_fun_f(){
-    camlid_c_ref_int c_x = &(((struct { camlid_c_int a; }) { 0 }).a);
-    value v__ret;
-    camlid_init_ref_int(&c_x);
-    f(c_x);
-    camlid_c2ml_ref_int(&v__ret,&c_x);
-    return v__ret;
-    };
 
-  $ ocamlc -c basic_stub.c
+  $ ocamlc -ccopt --warn-all -c basic_stub.c
 
 
   $ cat basic.ml
-  (** int: int *)
-  type camlid_ml_int = int
-  
-  (** ref_int: ref on int *)
-  type camlid_ml_ref_camlid_ml_int= camlid_ml_int
-  
-  external f: unit -> camlid_ml_ref_camlid_ml_int = "camlid_fun_f"
+  type camlid_int2 = int
+  type camlid_ptr_ref0 = camlid_int2
+  external f: unit -> camlid_ptr_ref0 = "camlid_stub_f1"
 
   $ ocamlc -c basic.ml

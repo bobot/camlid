@@ -14,42 +14,29 @@
   #include <caml/memory.h>
   #include <caml/alloc.h>
   #include <caml/custom.h>
-  /* abstract_myptr: abstract tag for type "int *" */
-  typedef int * camlid_c_abstract_myptr;
-  static void camlid_c2ml_abstract_myptr(value *, camlid_c_abstract_myptr *);
-  static void camlid_ml2c_abstract_myptr(camlid_c_abstract_myptr *, value *);
-  static void camlid_init_abstract_myptr(camlid_c_abstract_myptr *);
-  
-  /* abstract_myptr: abstract tag for type "int *" */
-  typedef int * camlid_c_custom_intern_myptr;
-  void id1(camlid_c_abstract_myptr *, camlid_c_custom_intern_myptr *);
-  void id2(camlid_c_custom_intern_myptr *, camlid_c_abstract_myptr *);
-  static void camlid_c2ml_abstract_myptr(value * v, camlid_c_abstract_myptr * c){
-    *v = caml_alloc((sizeof(camlid_c_custom_intern_myptr) + sizeof(value) - 1) / sizeof(value), Abstract_tag);
-    id2(((camlid_c_custom_intern_myptr *) Bp_val(*v)),c);
+  typedef int * camlid_abstract2;
+  static void camlid_init3(camlid_abstract2 * c2){  }
+  void f(camlid_abstract2);
+  typedef int * camlid_abstract_intern6;
+  void id2(camlid_abstract_intern6 *, camlid_abstract2 *);
+  static void camlid_c2ml5(value * v3, camlid_abstract2 * c2){
+    *v3 = caml_alloc((sizeof(camlid_abstract_intern6) + sizeof(value) - 1) / sizeof(value), Abstract_tag);
+    id2(((camlid_abstract_intern6 *) Bp_val(*v3)), c2);
+    }
+  extern value camlid_stub_f1(){
+    camlid_abstract2 x0 = ((camlid_abstract2) { });
+    value ret1;
+    camlid_init3(&x0);
+    f(x0);
+    camlid_c2ml5(&ret1, &x0);
+    return ret1;
   };
-  static void camlid_ml2c_abstract_myptr(camlid_c_abstract_myptr * c, value * v){
-    id1(c,((camlid_c_custom_intern_myptr *) Bp_val(*v)));
-  };
-  static void camlid_init_abstract_myptr(camlid_c_abstract_myptr * c){  };
-  
-  void f(camlid_c_abstract_myptr);
-  extern value camlid_fun_f(){
-    camlid_c_abstract_myptr c_x = ((camlid_c_abstract_myptr) { });
-    value v__ret;
-    camlid_init_abstract_myptr(&c_x);
-    f(c_x);
-    camlid_c2ml_abstract_myptr(&v__ret,&c_x);
-    return v__ret;
-    };
 
-  $ ocamlc -c basic_stub.c
+  $ ocamlc -ccopt --warn-all -c basic_stub.c
 
  
   $ cat basic.ml
-  (** abstract_myptr: abstract tag for type "int *" *)
-  type myptr
-  
-  external f: unit -> myptr = "camlid_fun_f"
+  type camlid_myptr0
+  external f: unit -> camlid_myptr0 = "camlid_stub_f1"
 
   $ ocamlc -c basic.ml

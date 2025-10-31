@@ -1,40 +1,9 @@
+open Expr
 open Type
 
 let list_or_empty ~empty ~sep pp fmt = function
   | [] -> empty fmt ()
   | l -> Fmt.list ~sep pp fmt l
-
-let collect l =
-  let h = Hashtbl.create 10 in
-  let q = Queue.create () in
-  let collect_decl = function
-    | Fun { params; result; fname = _ } ->
-        let rec collect_typedef (td : typedef) =
-          match Hashtbl.find_opt h td.name with
-          | None ->
-              Hashtbl.add h td.name td;
-              List.iter collect_typedef td.deps;
-              Queue.add td q
-          | Some td' ->
-              if not (td == td') then
-                Fmt.failwith
-                  "Two different typedefs have the same name %s: %s and %s"
-                  td.name td.descr td'.descr
-        in
-        Option.iter (fun { rty; routput = _ } -> collect_typedef rty) result;
-        List.iter (fun param -> collect_typedef param.pty) params
-  in
-  List.iter collect_decl l;
-  List.of_seq @@ Queue.to_seq q
-
-(* Name of the variable for the result of the C function *)
-let result_name = "_res"
-
-(* Name of the variable for the return Stub function *)
-let return_name = "_ret"
-
-(* Name of the variable for the intermediary tuple construction *)
-let tuple_name = "_tup"
 
 let results f =
   let out_params = List.filter (fun p -> p.output) f.params in
@@ -47,165 +16,143 @@ let results f =
           output = false;
           used_in_call = false;
           pty = result.rty;
-          pname = result_name;
-          funpars = [];
+          pc = result.rc;
         }
         :: out_params
       else out_params
 
-let print_c_fun fmt f =
-  let inputs = List.filter (fun p -> p.input) f.params in
-  let results = results f in
-  (* C function declaration *)
-  let pp_result fmt = function
-    | None -> Fmt.string fmt "void"
-    | Some { rty; _ } -> cty fmt rty
-  in
-  let pp_param fmt p = cty fmt p.pty in
-  Fmt.pf fmt "@[<v 2>@[%a %s@](%a)@];@." pp_result f.result f.fname
-    Fmt.(list ~sep:comma pp_param)
-    f.params;
-  (* Stub function formals *)
-  let c_name fmt s = Fmt.pf fmt "c_%s" s in
-  let v_name fmt s = Fmt.pf fmt "v_%s" s in
-  let pp_param fmt p = Fmt.pf fmt "value %a" v_name p.pname in
-  Fmt.pf fmt "@[<v 2>@[extern value %a@](%a)@[{@]@," stub_name f
-    Fmt.(list ~sep:comma pp_param)
-    inputs;
-  (* local C variable declaration *)
-  let pp_local fmt p =
-    Fmt.pf fmt "@[%a %a = %a;@]@," cty p.pty c_name p.pname init_expr p.pty
-  in
-  Fmt.(list ~sep:nop pp_local) fmt f.params;
-  (match f.result with
-  | None -> ()
-  | Some result -> Fmt.pf fmt "@[%a %a;@]@," cty result.rty c_name result_name);
-  (match results with
-  | [] -> ()
-  | [ _ ] -> Fmt.pf fmt "@[value %a;@]@," v_name return_name
-  | l ->
-      Fmt.pf fmt "@[value %a;@]@," v_name return_name;
-      Fmt.pf fmt "@[value %a[%i] = {%a};@]@," v_name tuple_name (List.length l)
-        Fmt.(list ~sep:comma (Fmt.any "Val_unit"))
-        l);
-  (* convert input variables *)
-  let pp_conv_in fmt p =
-    if p.input then
-      Fmt.pf fmt "@[%a(&%a,&%a);@]@," ml2c p.pty c_name p.pname v_name p.pname
-  in
-  Fmt.(list ~sep:nop pp_conv_in) fmt f.params;
-  (* initialize output variables thatn are not input *)
-  let pp_init_out fmt p =
-    if (not p.input) && p.output then
-      Fmt.pf fmt "@[%a(&%a);@]@," init p.pty c_name p.pname
-  in
-  Fmt.(list ~sep:nop pp_init_out) fmt f.params;
-  (* function call *)
-  let pp_arg fmt p = Fmt.pf fmt "%a" c_name p.pname in
-  let pp_result fmt = function
-    | None -> ()
-    | Some _ -> Fmt.pf fmt "%a = " c_name result_name
-  in
-  Fmt.pf fmt "@[%a%s(%a);@]@," pp_result f.result f.fname
-    Fmt.(list ~sep:comma pp_arg)
-    f.params;
-  (* create return value *)
-  (match results with
-  | [] -> Fmt.pf fmt "@[return Val_unit;@]@,"
-  | [ p ] ->
-      (* convert uniq output *)
-      Fmt.pf fmt "@[%a(&%a,&%a);@]@," c2ml p.pty v_name return_name c_name
-        p.pname;
-      Fmt.pf fmt "@[return %a;@]@," v_name return_name
-  | l ->
-      let len = List.length l in
-      let li = List.mapi (fun i p -> (i, p)) l in
-      Fmt.pf fmt "@[Begin_roots_block(%a, %i)]@," v_name tuple_name len;
-      (* convert outputs *)
-      let pp_conv_out fmt (i, p) =
-        Fmt.pf fmt "@[%a(&%a[%i],&%a);]@," c2ml p.pty v_name tuple_name i c_name
-          p.pname
-      in
-      Fmt.(list ~sep:Fmt.cut pp_conv_out) fmt li;
-      (* create output tuple *)
-      Fmt.pf fmt "@[%a = caml_alloc(%i,0);]@," v_name return_name len;
-      let pp_store fmt (i, _) =
-        Fmt.pf fmt "@[Store_field(%a, %i, %a);]@," v_name return_name i v_name
-          tuple_name
-      in
-      Fmt.(list ~sep:Fmt.cut pp_store) fmt li;
-      Fmt.pf fmt "@[End_roots()]@,";
-      Fmt.pf fmt "@[return %a;@]@," v_name return_name);
-  Fmt.pf fmt "@]};@."
+let return_var = Var.mk "ret" (expr "value")
 
-let print_c fmt headers l =
-  let tds = collect l in
-  Fmt.pf fmt "#include <caml/mlvalues.h>@.";
-  Fmt.pf fmt "#include <caml/memory.h>@.";
-  Fmt.pf fmt "#include <caml/alloc.h>@.";
-  Fmt.pf fmt "#include <caml/custom.h>@.";
-  let pp_header fmt header = Fmt.pf fmt "#include \"%s\"@." header in
-  Fmt.(list ~sep:(any "@.") pp_header) fmt headers;
-  (* Forward declarations *)
+let code_c_fun (f : func) =
+  let inputs =
+    List.filter_map
+      (fun p ->
+        if p.input then Some (p, Var.mk p.pc.name (expr "value")) else None)
+      f.params
+  in
+  let results = results f in
+  let used_in_calls = List.filter (fun p -> p.used_in_call) f.params in
+  let vars_used_in_calls = List.map (fun p -> p.pc) used_in_calls in
+  (* C function declaration *)
+  let fid =
+    Helper.declare_existing
+      ?result:(Option.map (fun r -> expr "%a" pp_code r.rty.cty) f.result)
+      f.fname vars_used_in_calls
+  in
+  (* local C variable declaration *)
+  let tuple_var = Var.mk "tup" (expr "value[%i]" (List.length results)) in
+  let id = ID.mk ("stub_" ^ f.fname) in
+  fp ~kind:C ~params:(List.map snd inputs) id (fun { fmt } ->
+      (* Formals *)
+      let pp_formal fmt (_, pv) = Fmt.pf fmt "value %a" pp_var pv in
+      fmt "@[<hv>@[<hv 2>@[extern value %a@](%a)@[{@]@," pp_id id
+        Fmt.(list ~sep:comma pp_formal)
+        inputs;
+      (* Locals *)
+      let pp_local fmt p =
+        Fmt.pf fmt "@[%a %a = %a;@]@," pp_code p.pty.cty pp_var p.pc init_expr
+          p.pty
+      in
+      fmt "%a" Fmt.(list ~sep:nop pp_local) f.params;
+      (match f.result with
+      | None -> ()
+      | Some result ->
+          fmt "@[%a %a;@]@," pp_code result.rty.cty pp_var result.rc);
+      (match results with
+      | [] -> ()
+      | [ _ ] -> fmt "@[value %a;@]@," pp_var return_var
+      | l ->
+          fmt "@[value %a;@]@," pp_var return_var;
+          fmt "@[value %a[%i] = {%a};@]@," pp_var tuple_var (List.length l)
+            Fmt.(list ~sep:comma (Fmt.any "Val_unit"))
+            l);
+      (* convert input variables *)
+      let pp_conv_in fmt (p, vc) =
+        Fmt.pf fmt "@[%a;@]@,"
+          (ml2c ~v:(expr "&%a" pp_var vc) ~c:(expr "&%a" pp_var p.pc))
+          p.pty
+      in
+      fmt "%a" Fmt.(list ~sep:nop pp_conv_in) inputs;
+      (* initialize output variables that are not input *)
+      let pp_init_out fmt p =
+        if (not p.input) && p.output then
+          Fmt.pf fmt "@[%a;@]@," (init ~c:(expr "&%a" pp_var p.pc)) p.pty
+      in
+      fmt "%a" Fmt.(list ~sep:nop pp_init_out) f.params;
+      (* function call *)
+      let pp_result fmt = function
+        | None -> ()
+        | Some r -> Fmt.pf fmt "%a = " pp_var r.rc
+      in
+      fmt "@[%a%a;@]@," pp_result f.result pp_call
+        (fid, List.map (fun v -> (v, expr "%a" pp_var v)) vars_used_in_calls);
+      (* create return value *)
+      let pp_conv_out fmt p =
+        Fmt.pf fmt "@[%a;@]@,"
+          (c2ml ~v:(expr "&%a" pp_var return_var) ~c:(expr "&%a" pp_var p.pc))
+          p.pty
+      in
+      (match results with
+      | [] -> fmt "@[return Val_unit;@]"
+      | [ p ] ->
+          fmt "%a" pp_conv_out p;
+          (* convert uniq output *)
+          fmt "@[return %a;@]" pp_var return_var
+      | l ->
+          let len = List.length l in
+          let li = List.mapi (fun i p -> (i, p)) l in
+          fmt "@[Begin_roots_block(%a, %i)]@," pp_var tuple_var len;
+          (* convert outputs *)
+          let pp_conv_out fmt (i, p) =
+            Fmt.pf fmt "@[%a;@]@,"
+              (c2ml
+                 ~v:(expr "&%a[%i]" pp_var tuple_var i)
+                 ~c:(expr "&%a" pp_var p.pc))
+              p.pty
+          in
+          fmt "%a" Fmt.(list ~sep:Fmt.cut pp_conv_out) li;
+          (* create output tuple *)
+          fmt "@[%a = caml_alloc(%i,0);]@," pp_var return_var len;
+          let pp_store fmt (i, _) =
+            Fmt.pf fmt "@[Store_field(%a, %i, %a);]@," pp_var return_var i
+              pp_var tuple_var
+          in
+          fmt "%a" Fmt.(list ~sep:Fmt.cut pp_store) li;
+          fmt "@[End_roots()]@,";
+          fmt "@[return %a;@]" pp_var return_var);
+      fmt "@]@,@[};@]@]@.")
+
+let print_c cout headers =
+  output_string cout "#include <caml/mlvalues.h>\n";
+  output_string cout "#include <caml/memory.h>\n";
+  output_string cout "#include <caml/alloc.h>\n";
+  output_string cout "#include <caml/custom.h>\n";
   List.iter
-    (fun td ->
-      Fmt.pf fmt "/* %s: %s */@." td.name td.descr;
-      Fmt.pf fmt "typedef %a %a;@." td.cty () cty td;
-      Fmt.pf fmt "static void %a(value *, %a *);@." c2ml td cty td;
-      Fmt.pf fmt "static void %a(%a *, value *);@." ml2c td cty td;
-      Fmt.pf fmt "static void %a(%a *);@." init td cty td;
-      Fmt.pf fmt "@.")
-    tds;
-  (* Definitions *)
-  List.iter
-    (fun td ->
-      Fmt.pf fmt "/* %s: %s */@." td.name td.descr;
-      td.extra_defs fmt ();
-      Fmt.pf fmt
-        "@[<hv>@[<hv 2>@[static void %a(value * %s, %a * %s){@]@ %a@]@ \
-         @[};@]@]@."
-        c2ml td C2ML.v cty td C2ML.c td.c2ml.pp ();
-      Fmt.pf fmt
-        "@[<hv>@[<hv 2>@[static void %a(%a * %s, value * %s){@]@ %a@]@ \
-         @[};@]@]@."
-        ml2c td cty td ML2C.c ML2C.v td.ml2c.pp ();
-      Fmt.pf fmt "static void %a(%a * c){ %a };@." init td cty td td.init.pp ();
-      Fmt.pf fmt "@.")
-    tds;
-  (* Functions *)
-  List.iter (function Fun f -> print_c_fun fmt f) l
+    (fun header -> Printf.fprintf cout "#include \"%s\"\n" header)
+    headers
 
 let print_ml_fun fmt f =
+  let code_c = code_c_fun f in
   let results = results f in
   let inputs = List.filter (fun p -> p.input) f.params in
-  let pp_result fmt p = mlty fmt p.pty in
-  let pp_param fmt p = Fmt.pf fmt "%a -> " mlty p.pty in
+  let pp_result fmt p = pp_code fmt p.pty.mlty in
+  let pp_param fmt p = Fmt.pf fmt "%a -> " pp_code p.pty.mlty in
   Fmt.pf fmt "@[external %s: %a%a = \"%a\"@]" f.fname
     Fmt.(list_or_empty ~empty:(any "unit -> ") ~sep:nop pp_param)
     inputs
     Fmt.(list_or_empty ~empty:(any "unit") ~sep:(any "*") pp_result)
-    results stub_name f
+    results pp_code code_c
 
 let print_ml fmt l =
-  let tds = collect l in
-  (* type def *)
-  List.iter
-    (fun td ->
-      Fmt.pf fmt "(** %s: %s *)@." td.name td.descr;
-      Fmt.pf fmt "type %a%a@." mlty td td.mlty ();
-      Fmt.pf fmt "@.")
-    tds;
   (* Functions *)
   List.iter (function Fun f -> print_ml_fun fmt f) l
 
-let to_file ?(headers = []) basename l =
-  let cout = open_out (basename ^ "_stub.c") in
-  let fmt = Format.formatter_of_out_channel cout in
-  print_c fmt headers l;
-  Fmt.flush fmt ();
-  close_out cout;
-  let cout = open_out (basename ^ ".ml") in
-  let fmt = Format.formatter_of_out_channel cout in
-  print_ml fmt l;
-  Fmt.flush fmt ();
-  close_out cout
+let to_file ?(prefix = "camlid") ?(headers = []) basename l =
+  let cout_c = open_out (basename ^ "_stub.c") in
+  print_c cout_c headers;
+  let cout_ml = open_out (basename ^ ".ml") in
+  let decl fmt = function Fun f -> print_ml_fun fmt f in
+  final_print ~prefix ~ml:cout_ml ~c:cout_c ML
+    (expr "%a" Fmt.(list ~sep:Fmt.cut decl) l);
+  close_out cout_c;
+  close_out cout_ml

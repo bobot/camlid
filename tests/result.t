@@ -12,34 +12,21 @@
   #include <caml/memory.h>
   #include <caml/alloc.h>
   #include <caml/custom.h>
-  /* int: int */
-  typedef int camlid_c_int;
-  static void camlid_c2ml_int(value *, camlid_c_int *);
-  static void camlid_ml2c_int(camlid_c_int *, value *);
-  static void camlid_init_int(camlid_c_int *);
-  
-  /* int: int */
-  static void camlid_c2ml_int(value * v, camlid_c_int * c){ *v = Val_int(*c);
+  typedef int camlid_int2;
+  camlid_int2 f();
+  static void camlid_c2ml4(value * v2, camlid_int2 * c3){ *v2 = Val_int(*c3); }
+  extern value camlid_stub_f1(){
+    camlid_int2 res0;
+    value ret1;
+    res0 = f();
+    camlid_c2ml4(&ret1, &res0);
+    return ret1;
   };
-  static void camlid_ml2c_int(camlid_c_int * c, value * v){ *c = Int_val(*v);
-  };
-  static void camlid_init_int(camlid_c_int * c){  };
-  
-  camlid_c_int f();
-  extern value camlid_fun_f(){
-    camlid_c_int c__res;
-    value v__ret;
-    c__res = f();
-    camlid_c2ml_int(&v__ret,&c__res);
-    return v__ret;
-    };
 
-  $ ocamlc -c basic_stub.c
+  $ ocamlc -ccopt --warn-all -c basic_stub.c
 
   $ cat basic.ml
-  (** int: int *)
-  type camlid_ml_int = int
-  
-  external f: unit -> camlid_ml_int = "camlid_fun_f"
+  type camlid_int0 = int
+  external f: unit -> camlid_int0 = "camlid_stub_f1"
 
   $ ocamlc -c basic.ml
