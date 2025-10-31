@@ -316,37 +316,10 @@ type compare = { compare : code; i1 : var; i2 : var }
 type compare_op = { compare_op : code; v1 : var; v2 : var }
 
 (** Encapsulate a c type into an custom ml type *)
-let custom ?finalize ?initialize ?hash ?compare ?get ?set ?internal ~ml ~c () =
-  let descr = Printf.sprintf "abstract tag for type \"%s\"" c in
-  let cty = typedef "custom" "%s" c in
-  let icty =
-    match internal with None -> cty | Some c -> typedef "custom_intern" "%s" c
-  in
+let custom ?initialize ?finalize ?hash ?compare ?get ?set ~ml ~icty ~cty () =
+  let descr = Printf.sprintf "abstract tag for type \"%s\"" ml in
   let v = Var.mk "v" (expr "value *") in
   let c = Var.mk "c" (expr "%a *" pp_code cty) in
-  let get =
-    Option.map
-      (fun get ->
-        let c = Var.mk "c" (expr "%a *" pp_code cty) in
-        let i = Var.mk "i" (expr "%a *" pp_code icty) in
-        { get = declare_existing get [ c; i ]; c; i })
-      get
-  in
-  let set =
-    Option.map
-      (fun set ->
-        let c = Var.mk "c" (expr "%a *" pp_code cty) in
-        let i = Var.mk "i" (expr "%a *" pp_code icty) in
-        { set = declare_existing set [ i; c ]; c; i })
-      set
-  in
-  let finalize =
-    Option.map
-      (fun finalize ->
-        let i = Var.mk "i" (expr "%a *" pp_code icty) in
-        { finalize = declare_existing finalize [ i ]; i })
-      finalize
-  in
   let data_custom_val icty v =
     expr "(%a *) Data_custom_val(%a)" pp_code icty pp_var v
   in
@@ -365,13 +338,6 @@ let custom ?finalize ?initialize ?hash ?compare ?get ?set ?internal ~ml ~c () =
         })
       finalize
   in
-  let hash =
-    Option.map
-      (fun hash ->
-        let i = Var.mk "i" (expr "%a *" pp_code icty) in
-        { hash = declare_existing ~result:(expr "intnat") hash [ i ]; i })
-      hash
-  in
   let hash_op =
     Option.map
       (fun hash ->
@@ -383,18 +349,6 @@ let custom ?finalize ?initialize ?hash ?compare ?get ?set ?internal ~ml ~c () =
           v;
         })
       hash
-  in
-  let compare =
-    Option.map
-      (fun compare ->
-        let i1 = Var.mk "c" (expr "%a *" pp_code icty) in
-        let i2 = Var.mk "i" (expr "%a *" pp_code icty) in
-        {
-          compare = declare_existing ~result:(expr "int") compare [ i1; i2 ];
-          i1;
-          i2;
-        })
-      compare
   in
   let compare_op =
     Option.map
@@ -413,13 +367,6 @@ let custom ?finalize ?initialize ?hash ?compare ?get ?set ?internal ~ml ~c () =
           v2;
         })
       compare
-  in
-  let initialize =
-    Option.map
-      (fun finalize ->
-        let c = Var.mk "c" (expr "%a *" pp_code cty) in
-        { initialize = declare_existing finalize [ c ]; c })
-      initialize
   in
   let custom_op =
     let id = ID.mk "cops" in
@@ -479,6 +426,33 @@ let custom ?finalize ?initialize ?hash ?compare ?get ?set ?internal ~ml ~c () =
     v;
     c;
   }
+
+let mk_get ~icty ~cty get =
+  let c = Var.mk "c" (expr "%a *" pp_code cty) in
+  let i = Var.mk "i" (expr "%a *" pp_code icty) in
+  { get = declare_existing get [ c; i ]; c; i }
+
+let mk_set ~icty ~cty set =
+  let c = Var.mk "c" (expr "%a *" pp_code cty) in
+  let i = Var.mk "i" (expr "%a *" pp_code icty) in
+  { set = declare_existing set [ i; c ]; c; i }
+
+let mk_finalize ~icty finalize =
+  let i = Var.mk "i" (expr "%a *" pp_code icty) in
+  { finalize = declare_existing finalize [ i ]; i }
+
+let mk_hash ~icty hash =
+  let i = Var.mk "i" (expr "%a *" pp_code icty) in
+  { hash = declare_existing ~result:(expr "intnat") hash [ i ]; i }
+
+let mk_compare ~icty compare =
+  let i1 = Var.mk "c" (expr "%a *" pp_code icty) in
+  let i2 = Var.mk "i" (expr "%a *" pp_code icty) in
+  { compare = declare_existing ~result:(expr "int") compare [ i1; i2 ]; i1; i2 }
+
+let mk_initialize ~cty initialize =
+  let c = Var.mk "c" (expr "%a *" pp_code cty) in
+  { initialize = declare_existing initialize [ c ]; c }
 
 let simple_param ?(binds = []) ?(input = false) ?(output = false)
     ?(used_in_call = true) pty pname =

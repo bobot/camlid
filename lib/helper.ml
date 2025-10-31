@@ -75,7 +75,20 @@ let abstract ?get ?set ?internal ~ml ~c () : typedef =
   in
   Expert.abstract ?set ?get ~icty ~descr ~cty ~ml ()
 
-let custom = Expert.custom
+(** Encapsulate a c type into an custom ml type *)
+let custom ?initialize ?finalize ?hash ?compare ?get ?set ?internal ~ml ~c () =
+  let cty = typedef "custom" "%s" c in
+  let icty =
+    match internal with None -> cty | Some c -> typedef "custom_intern" "%s" c
+  in
+  let get = Option.map (mk_get ~icty ~cty) get in
+  let set = Option.map (mk_set ~icty ~cty) set in
+  let finalize = Option.map (mk_finalize ~icty) finalize in
+  let hash = Option.map (mk_hash ~icty) hash in
+  let compare = Option.map (mk_compare ~icty) compare in
+  let initialize = Option.map (mk_initialize ~cty) initialize in
+  custom ?initialize ?finalize ?hash ?compare ?get ?set ~ml ~icty ~cty ()
+
 let inout = Expert.inout
 let input = Expert.input
 let output = Expert.output
