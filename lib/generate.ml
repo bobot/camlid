@@ -9,7 +9,7 @@ let print_c cout headers =
     (fun header -> Printf.fprintf cout "#include \"%s\"\n" header)
     headers
 
-let to_file ?(prefix = "camlid") ?(headers = []) basename l =
+let to_file ?(prefix = "camlid_") ?(headers = []) basename l =
   let cout_c = open_out (basename ^ "_stub.c") in
   print_c cout_c headers;
   let cout_ml = open_out (basename ^ ".ml") in

@@ -113,36 +113,81 @@ let dpr = Format.dprintf
 let dfp ?kind ?params id =
   Format.kdprintf (fun k -> mk ?kind ?params id (fun fmt () -> k fmt))
 
-type env = { ids : string ID.H.t; vars : string Var.H.t }
+module StringH = Hashtbl.Make (String)
 
-let run ~prefix env expr =
+type env = {
+  ids_c : string ID.H.t;
+  string_ids_c : int StringH.t;
+  ids_ml : string ID.H.t;
+  string_ids_ml : int StringH.t;
+  vars : string Var.H.t;
+  string_vars : int StringH.t;
+}
+
+let create_env () =
+  {
+    ids_c = ID.H.create 16;
+    string_ids_c = StringH.create 10;
+    ids_ml = ID.H.create 16;
+    string_ids_ml = StringH.create 10;
+    vars = Var.H.create 16;
+    string_vars = StringH.create 10;
+  }
+
+module PPGenID (H : Hashtbl.S) = struct
+  let pp ids string_ids prefix id id_name id_keep_name =
+    match H.find_opt ids id with
+    | Some s -> s
+    | None ->
+        let rec aux basename i =
+          let s = Printf.sprintf "%s%i" basename i in
+          match StringH.find_opt string_ids s with
+          | None ->
+              StringH.add string_ids s 0;
+              StringH.replace string_ids basename i;
+              s
+          | Some _ -> aux basename (i + 1)
+        in
+        let find basename =
+          match StringH.find_opt string_ids basename with
+          | Some i -> aux basename (i + 1)
+          | None ->
+              StringH.add string_ids basename 0;
+              basename
+        in
+        let s =
+          if id_keep_name then (
+            if StringH.mem string_ids id_name then
+              Format.eprintf
+                "%s is already used but it is asked to keep its name" id_name
+            else StringH.add string_ids id_name 0;
+            id_name)
+          else find (Printf.sprintf "%s%s" prefix id_name)
+        in
+        H.add ids id s;
+        s
+end
+
+module PPID = PPGenID (ID.H)
+module PPVar = PPGenID (Var.H)
+
+let run ~kind ~prefix env expr =
   let b = Buffer.create 16 in
   let q = Queue.create () in
   let fmt = Format.formatter_of_buffer b in
-  let pp_id fmt id =
-    let s =
-      match ID.H.find_opt env.ids id with
-      | Some s -> s
-      | None ->
-          let s =
-            if id.keep_name then id.name
-            else Printf.sprintf "%s_%s%i" prefix id.name (ID.H.length env.ids)
-          in
-          ID.H.add env.ids id s;
-          s
-    in
-    Fmt.string fmt s
+  let pp_id =
+    match kind with
+    | C ->
+        fun fmt id ->
+          Fmt.string fmt
+            (PPID.pp env.ids_c env.string_ids_c prefix id id.name id.keep_name)
+    | ML ->
+        fun fmt id ->
+          Fmt.string fmt
+            (PPID.pp env.ids_ml env.string_ids_ml prefix id id.name id.keep_name)
   in
   let pp_var fmt id =
-    let s =
-      match Var.H.find_opt env.vars id with
-      | Some s -> s
-      | None ->
-          let s = Printf.sprintf "%s%i" id.name (Var.H.length env.vars) in
-          Var.H.add env.vars id s;
-          s
-    in
-    Fmt.string fmt s
+    Fmt.string fmt (PPVar.pp env.vars env.string_vars "" id id.name false)
   in
   Format.pp_set_tags fmt true;
   Format.pp_set_print_tags fmt true;
@@ -194,10 +239,12 @@ let final_print ~prefix ~ml ~c kind expr =
   let open struct
     type t = Seen | Printed
   end in
-  let env = { ids = ID.H.create 16; vars = Var.H.create 16 } in
+  let env = create_env () in
   let printed = ID.H.create 16 in
   let rec aux kind expr =
-    let buf, codes = run ~prefix env expr in
+    Var.H.clear env.vars;
+    StringH.clear env.string_vars;
+    let buf, codes = run ~kind ~prefix env expr in
     Queue.iter aux_code codes;
     match kind with
     | ML -> Buffer.output_buffer ml buf

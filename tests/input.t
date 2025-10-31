@@ -18,24 +18,24 @@
   #include <caml/alloc.h>
   #include <caml/custom.h>
   #include "./basic.h"
-  typedef int camlid_int2;
-  static void camlid_ml2c3(value * v3, camlid_int2 * c4){ *c4 = Int_val(*v3); }
-  void f(camlid_int2);
-  static void camlid_free5(camlid_int2 * c4){  }
-  extern value camlid_stub_f1(value x0){
-    camlid_int2 x1 = 0;
-    value ret2;
-    camlid_ml2c3(&x0, &x1);
+  typedef int camlid_int;
+  static void camlid_ml2c(value * v, camlid_int * c){ *c = Int_val(*v); }
+  void f(camlid_int);
+  static void camlid_free(camlid_int * c){  }
+  extern value camlid_stub_f(value x){
+    camlid_int x1 = 0;
+    value ret;
+    camlid_ml2c(&x, &x1);
     f(x1);
-    ret2 = Val_unit;
-    camlid_free5(&x1);
-    return ret2;
+    ret = Val_unit;
+    camlid_free(&x1);
+    return ret;
   };
 
   $ ocamlc -ccopt --warn-all -c basic_stub.c
 
   $ cat basic.ml
-  type camlid_int0 = int
-  external f: camlid_int0 -> unit = "camlid_stub_f1"
+  type camlid_int = int
+  external f: camlid_int -> unit = "camlid_stub_f"
 
   $ ocamlc -c basic.ml

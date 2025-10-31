@@ -18,52 +18,52 @@
   #include <caml/memory.h>
   #include <caml/alloc.h>
   #include <caml/custom.h>
-  typedef int * camlid_custom2;
-  static void camlid_init3(camlid_custom2 * c2){  }
-  void f(camlid_custom2);
-  void finalize_ptr(camlid_custom2 *);
-  static void camlid_finalize_op8(value v4){
-    finalize_ptr((camlid_custom2 *) Data_custom_val(v4));
+  typedef int * camlid_custom;
+  static void camlid_init(camlid_custom * c){  }
+  void f(camlid_custom);
+  void finalize_ptr(camlid_custom *);
+  static void camlid_finalize_op(value v){
+    finalize_ptr((camlid_custom *) Data_custom_val(v));
     }
-  int compare_ptr(camlid_custom2 *, camlid_custom2 *);
-  static int camlid_compare_op9(value v15, value v26){
+  int compare_ptr(camlid_custom *, camlid_custom *);
+  static int camlid_compare_op(value v1, value v2){
     return compare_ptr(
-             (camlid_custom2 *) Data_custom_val(v15),
-             (camlid_custom2 *) Data_custom_val(v26)
+             (camlid_custom *) Data_custom_val(v1),
+             (camlid_custom *) Data_custom_val(v2)
            );
     }
-  intnat hash_ptr(camlid_custom2 *);
-  static intnat camlid_hash_op10(value v7){
-    return hash_ptr((camlid_custom2 *) Data_custom_val(v7));
+  intnat hash_ptr(camlid_custom *);
+  static intnat camlid_hash_op(value v){
+    return hash_ptr((camlid_custom *) Data_custom_val(v));
     }
-  struct custom_operations camlid_cops7 = {
+  struct custom_operations camlid_cops = {
   NULL,
-  camlid_finalize_op8,
-  camlid_compare_op9,
-  camlid_hash_op10,
+  camlid_finalize_op,
+  camlid_compare_op,
+  camlid_hash_op,
   custom_serialize_default,
   custom_deserialize_default
   };
-  static void camlid_c2ml5(value * v3, camlid_custom2 * c2){
-    *v3 = caml_alloc_custom(&camlid_cops7,sizeof(camlid_custom2), 0, 1);
-    *((camlid_custom2 *) Data_custom_val(*v3)) = *c2;
+  static void camlid_c2ml(value * v, camlid_custom * c){
+    *v = caml_alloc_custom(&camlid_cops,sizeof(camlid_custom), 0, 1);
+    *((camlid_custom *) Data_custom_val(*v)) = *c;
     }
-  static void camlid_free6(camlid_custom2 * c2){  }
-  extern value camlid_stub_f1(){
-    camlid_custom2 x0 = ((camlid_custom2) { });
-    value ret1;
-    camlid_init3(&x0);
-    f(x0);
-    camlid_c2ml5(&ret1, &x0);
-    camlid_free6(&x0);
-    return ret1;
+  static void camlid_free(camlid_custom * c){  }
+  extern value camlid_stub_f(){
+    camlid_custom x = ((camlid_custom) { });
+    value ret;
+    camlid_init(&x);
+    f(x);
+    camlid_c2ml(&ret, &x);
+    camlid_free(&x);
+    return ret;
   };
 
   $ ocamlc -ccopt --warn-all -c basic_stub.c
 
 
   $ cat basic.ml
-  type camlid_myptr0
-  external f: unit -> camlid_myptr0 = "camlid_stub_f1"
+  type camlid_myptr
+  external f: unit -> camlid_myptr = "camlid_stub_f"
 
   $ ocamlc -c basic.ml
