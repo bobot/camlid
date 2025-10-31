@@ -3,7 +3,7 @@
   > open Helper
   > 
   > let () = Generate.to_file "basic" [
-  >  func "f" [ input int "x"]
+  >  func "f" [ input int_trunc "x"]
   > ]
   > ~headers:["./basic.h"]
   > EOF
@@ -23,7 +23,7 @@
   void f(camlid_int);
   static void camlid_free(camlid_int * c){  }
   extern value camlid_stub_f(value x){
-    camlid_int x1 = 0;
+    camlid_int x1 = ((camlid_int) { });
     value ret;
     camlid_ml2c(&x, &x1);
     f(x1);

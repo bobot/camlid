@@ -22,12 +22,12 @@
   #include <caml/memory.h>
   #include <caml/alloc.h>
   #include <caml/custom.h>
-  typedef int camlid_int;
+  typedef intnat camlid_int;
   struct camlid_array_s { camlid_int* t; size_t len; };
   typedef struct camlid_array_s camlid_array;
   typedef camlid_int* camlid_array1;
   typedef size_t* camlid_length_array;
-  static void camlid_ml2c1(value * v, camlid_int * c){ *c = Int_val(*v); }
+  static void camlid_ml2c1(value * v, camlid_int * c){ *c = Long_val(*v); }
   static void camlid_ml2c(value * v, camlid_array * c){
     CAMLparam0 ();
     CAMLlocal1(cid_temp);
@@ -44,7 +44,7 @@
     *c1 = &c->len;
     }
   void f(camlid_array1, camlid_length_array);
-  static void camlid_c2ml1(value * v, camlid_int * c){ *v = Val_int(*c); }
+  static void camlid_c2ml1(value * v, camlid_int * c){ *v = Val_long(*c); }
   static void camlid_c2ml(value * v, camlid_array * c){
     CAMLparam0 ();
     CAMLlocal1(cid_temp);
@@ -219,7 +219,7 @@
   static void camlid_free12(camlid_int * c){  }
   static void camlid_free13(camlid_array8 * c){ free(*c); }
   extern value camlid_stub_f4(value a_len){
-    camlid_int a_len1 = 0;
+    camlid_int a_len1 = ((camlid_int) { });
     camlid_array8 a = ((camlid_array8) { });
     value ret;
     camlid_ml2c1(&a_len, &a_len1);

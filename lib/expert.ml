@@ -30,23 +30,46 @@ let wrap_typedef ?c2ml ?ml2c ?init ?free ty =
   }
 
 (** Native integer, the last bit is lost during translation *)
-let int : typedef =
-  let cty = typedef "int" "int" in
+let builtin_mltypes ~ml_type ~c_type ~c2ml ~ml2c =
+  let cty = typedef ml_type "%s" c_type in
   let v = Var.mk "v" (expr "value *") in
   let c = Var.mk "c" (expr "%a *" pp_code cty) in
   {
     descr = "int";
     cty;
-    mlty = mlalias "int" "int";
+    mlty = mlalias ml_type "%s" ml_type;
     mlname = None;
-    c2ml = code "c2ml" "*%a = Val_int(*%a);" pp_var v pp_var c;
-    ml2c = code "ml2c" "*%a = Int_val(*%a);" pp_var c pp_var v;
+    c2ml = code "c2ml" "*%a = %s(*%a);" pp_var v c2ml pp_var c;
+    ml2c = code "ml2c" "*%a = %s(*%a);" pp_var c ml2c pp_var v;
     init = code ~ovars:[ c ] "init" "";
-    init_expr = expr "0";
+    init_expr = expr "((%a) { })" pp_code cty;
     free = code ~ovars:[ c ] "free" "";
     v;
     c;
   }
+
+let int : typedef =
+  builtin_mltypes ~ml_type:"int" ~c_type:"intnat" ~c2ml:"Val_long"
+    ~ml2c:"Long_val"
+
+let int_trunc : typedef =
+  builtin_mltypes ~ml_type:"int" ~c_type:"int" ~c2ml:"Val_int" ~ml2c:"Int_val"
+
+let double : typedef =
+  builtin_mltypes ~ml_type:"float" ~c_type:"double" ~c2ml:"caml_copy_double"
+    ~ml2c:"Double_val"
+
+let int32 : typedef =
+  builtin_mltypes ~ml_type:"int32" ~c_type:"int32_t" ~c2ml:"caml_copy_int32"
+    ~ml2c:"Int32_val"
+
+let int64 : typedef =
+  builtin_mltypes ~ml_type:"int64" ~c_type:"int64_t" ~c2ml:"caml_copy_int64"
+    ~ml2c:"Int64_val"
+
+let nativeint : typedef =
+  builtin_mltypes ~ml_type:"nativeint" ~c_type:"intnat"
+    ~c2ml:"caml_copy_nativeint" ~ml2c:"Nativeint_val"
 
 let ptr_ref (ty : typedef) =
   let cty = typedef "ref" "%a *" pp_code ty.cty in

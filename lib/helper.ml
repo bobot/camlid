@@ -3,6 +3,11 @@ open Type
 open Expert
 
 let int = int
+let int_trunc = int_trunc
+let double = double
+let int32 = int32
+let int64 = int64
+let nativeint = nativeint
 let func = func
 let ptr_ref = ptr_ref
 
