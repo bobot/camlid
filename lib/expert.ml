@@ -20,6 +20,15 @@ let declare_existing ?(result = expr "void") f params =
     Fmt.(list ~sep:(any ",@ ") pp_ty)
     params
 
+let wrap_typedef ?c2ml ?ml2c ?init ?free ty =
+  {
+    ty with
+    c2ml = Option.value ~default:ty.c2ml c2ml;
+    ml2c = Option.value ~default:ty.ml2c ml2c;
+    init = Option.value ~default:ty.init init;
+    free = Option.value ~default:ty.free free;
+  }
+
 (** Native integer, the last bit is lost during translation *)
 let int : typedef =
   let cty = typedef "int" "int" in

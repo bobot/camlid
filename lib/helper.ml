@@ -6,12 +6,12 @@ let int = int
 let func = func
 let ptr_ref = ptr_ref
 
-let output_array ?input name ty =
+let output_array ?(input = false) name ty =
   let a_len = array_length ty in
   let a = array_ptr_of_array_length ty a_len in
   let len_ptr = length_ptr_of_array_length ty a_len in
   let io_a_len =
-    simple_param ?input ~output:true ~used_in_call:false a_len name
+    simple_param ~input ~output:true ~used_in_call:false a_len name
   in
   let a =
     ignored a (name ^ "_a") ~binds:[ (a_len.c, expr "&%a" pp_var io_a_len.pc) ]
@@ -22,12 +22,12 @@ let output_array ?input name ty =
   in
   (io_a_len, a, len_ptr)
 
-let input_array ?output name ty =
+let input_array ?(output = false) name ty =
   let a_len = array_length ty in
   let a = array_ptr_of_array_length ty a_len in
   let len = length_of_array_length ty a_len in
   let io_a_len =
-    simple_param ~input:true ?output ~used_in_call:false a_len name
+    simple_param ~input:true ~output ~used_in_call:false a_len name
   in
   let a =
     ignored a (name ^ "_a") ~binds:[ (a_len.c, expr "&%a" pp_var io_a_len.pc) ]
@@ -35,6 +35,21 @@ let input_array ?output name ty =
   let len =
     ignored len (name ^ "_len")
       ~binds:[ (a_len.c, expr "&%a" pp_var io_a_len.pc) ]
+  in
+  (io_a_len, a, len)
+
+let output_set_length_array name ty =
+  let len = input ~used_in_call:false int "len" in
+  let a_len = array_length ty in
+  let a_len =
+    wrap_typedef
+      ~init:(code "init" "%a->len = %a;" pp_var a_len.c pp_var len.pc)
+      a_len
+  in
+  let a = array_ptr_of_array_length ty a_len in
+  let io_a_len = output a_len name in
+  let a =
+    ignored a (name ^ "_a") ~binds:[ (a_len.c, expr "&%a" pp_var io_a_len.pc) ]
   in
   (io_a_len, a, len)
 
