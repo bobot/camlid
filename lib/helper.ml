@@ -38,20 +38,11 @@ let input_array ?(output = false) name ty =
   in
   (io_a_len, a, len)
 
-let output_set_length_array name ty =
-  let len = input ~used_in_call:false int "len" in
-  let a_len = array_length ty in
-  let a_len =
-    wrap_typedef
-      ~init:(code "init" "%a->len = %a;" pp_var a_len.c pp_var len.pc)
-      a_len
-  in
-  let a = array_ptr_of_array_length ty a_len in
-  let io_a_len = output a_len name in
-  let a =
-    ignored a (name ^ "_a") ~binds:[ (a_len.c, expr "&%a" pp_var io_a_len.pc) ]
-  in
-  (io_a_len, a, len)
+let output_set_length_array ?(input = false) ?(output = true)
+    ?(len_used_in_call = false) name ty =
+  let len = Expert.input ~used_in_call:len_used_in_call int (name ^ "_len") in
+  let a_len = simple_param ~input ~output (array ~len:len.pc ty) name in
+  (a_len, len)
 
 let abstract ?get ?set ?internal ~ml ~c () : typedef =
   let descr = Printf.sprintf "abstract tag for type \"%s\"" c in

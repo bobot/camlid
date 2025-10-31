@@ -73,6 +73,54 @@ let ptr_ref (ty : typedef) =
     c;
   }
 
+let array ~len (ty : typedef) =
+  let cty = typedef "array" "%a*" pp_code ty.cty in
+  let v = Var.mk "v" (expr "value *") in
+  let c = Var.mk "c" (expr "%a *" pp_code cty) in
+  {
+    descr = "array_length on " ^ ty.descr;
+    cty;
+    mlty = mlalias "array" "%a array" pp_code ty.mlty;
+    mlname = None;
+    c2ml =
+      codef "c2ml" (fun { fmt } ->
+          fmt "CAMLparam0 ();@,";
+          fmt "CAMLlocal1(cid_temp);@,";
+          fmt "*%a=caml_alloc(%a,0);@," pp_var v pp_var len;
+          fmt
+            "@[<hv 2>@[for(size_t cid_i=0;@ cid_i < %a;@ cid_i++@,\
+             ){@]@,\
+             %a;@,\
+             Store_field(*%a,cid_i,cid_temp);@,\
+             }@]@,"
+            pp_var len
+            (c2ml ~v:(expr "&cid_temp") ~c:(expr "&((*%a)[cid_i])" pp_var c) ())
+            ty pp_var v;
+          fmt "CAMLreturn0;");
+    ml2c =
+      codef "ml2c" (fun { fmt } ->
+          fmt "CAMLparam0 ();@,";
+          fmt "CAMLlocal1(cid_temp);@,";
+          fmt "@[*%a = malloc(sizeof(%a)*%a);@]@," pp_var c pp_code ty.cty
+            pp_var len;
+          fmt
+            "@[<hv 2>@[<hv 2>for(@,\
+             size_t cid_i=0;@ cid_i < %a;@ cid_i++@,\
+             ){@]@,\
+             cid_temp=Field(*%a,cid_i);@,\
+             %a;@,\
+             }@]@,"
+            pp_var len pp_var v
+            (ml2c ~v:(expr "&cid_temp") ~c:(expr "&((*%a)[cid_i])" pp_var c) ())
+            ty;
+          fmt "CAMLreturn0;");
+    init = code ~ovars:[ c ] "init" "";
+    init_expr = expr "((%a) { })" pp_code cty;
+    free = code "free" "free(*%a);" pp_var c;
+    v;
+    c;
+  }
+
 let array_length (ty : typedef) =
   let sstruct =
     let id = ID.mk "array_s" in
