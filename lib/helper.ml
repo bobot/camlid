@@ -34,6 +34,7 @@ let int : typedef =
     ml2c = code "ml2c" "*%a = Int_val(*%a);" pp_var c pp_var v;
     init = code ~ovars:[ c ] "init" "";
     init_expr = expr "0";
+    free = code ~ovars:[ c ] "free" "";
     v;
     c;
   }
@@ -49,18 +50,111 @@ let ptr_ref (ty : typedef) =
     mlname = None;
     c2ml =
       code "c2ml" "%a;"
-        (c2ml ~v:(expr "%a" pp_var v) ~c:(expr "*%a" pp_var c))
+        (c2ml ~v:(expr "%a" pp_var v) ~c:(expr "*%a" pp_var c) ())
         ty;
     ml2c =
       code "ml2c" "%a;"
-        (ml2c ~v:(expr "%a" pp_var v) ~c:(expr "*%a" pp_var c))
+        (ml2c ~v:(expr "%a" pp_var v) ~c:(expr "*%a" pp_var c) ())
         ty;
-    init = code "init" "%a;" (init ~c:(expr "*%a" pp_var c)) ty;
+    init = code "init" "%a;" (init ~c:(expr "*%a" pp_var c) ()) ty;
     init_expr =
       expr "&(((struct { %a a; }) { %a }).a)" pp_code ty.cty init_expr ty;
+    free = code ~ovars:[ c ] "free" "";
     v;
     c;
   }
+
+let array (ty : typedef) =
+  let sstruct =
+    let id = ID.mk "array_s" in
+    toplevel id "struct %a { %a* t; size_t len; };@." pp_id id pp_code ty.cty
+  in
+  let array_length =
+    let cty = typedef "array" "struct %a" pp_code sstruct in
+    let v = Var.mk "v" (expr "value *") in
+    let c = Var.mk "c" (expr "%a *" pp_code cty) in
+    {
+      descr = "array_length on " ^ ty.descr;
+      cty;
+      mlty = mlalias "array" "%a array" pp_code ty.mlty;
+      mlname = None;
+      c2ml =
+        codef "c2ml" (fun { fmt } ->
+            fmt "CAMLparam0 ();@,";
+            fmt "CAMLlocal1(cid_temp);@,";
+            fmt "*%a=caml_alloc(%a->len,0);@," pp_var v pp_var c;
+            fmt
+              "@[<hv 2>@[for(size_t cid_i=0;@ cid_i < %a->len;@ cid_i++@,\
+               ){@]@,\
+               %a;@,\
+               Store_field(*%a,cid_i,cid_temp);@,\
+               }@]@,"
+              pp_var c
+              (c2ml ~v:(expr "&cid_temp") ~c:(expr "&%a->t[cid_i]" pp_var c) ())
+              ty pp_var v;
+            fmt "CAMLreturn0;");
+      ml2c =
+        codef "ml2c" (fun { fmt } ->
+            fmt "CAMLparam0 ();@,";
+            fmt "CAMLlocal1(cid_temp);@,";
+            fmt "@[%a->len = Wosize_val(*%a);@]@," pp_var c pp_var v;
+            fmt "@[%a->t = malloc(sizeof(%a)*%a->len);@]@," pp_var c pp_code
+              ty.cty pp_var c;
+            fmt
+              "@[<hv 2>@[<hv 2>for(@,\
+               size_t cid_i=0;@ cid_i < %a->len;@ cid_i++@,\
+               ){@]@,\
+               cid_temp=Field(*%a,cid_i);@,\
+               %a;@,\
+               }@]@,"
+              pp_var c pp_var v
+              (ml2c ~v:(expr "&cid_temp") ~c:(expr "&%a->t[cid_i]" pp_var c) ())
+              ty;
+            fmt "CAMLreturn0;");
+      init = code ~ovars:[ c ] "init" "";
+      init_expr = expr "((%a) { })" pp_code cty;
+      free = code "free" "free(%a->t);" pp_var c;
+      v;
+      c;
+    }
+  in
+  let array =
+    let cty = typedef "array" "%a*" pp_code ty.cty in
+    let v = Var.mk "v" (expr "value *") in
+    let c = Var.mk "c" (expr "%a *" pp_code cty) in
+    {
+      descr = "array on " ^ ty.descr;
+      cty;
+      mlty = mlabstract "should_not_appear";
+      mlname = None;
+      c2ml = code "should_not_appear" "";
+      ml2c = code "should not appear" "";
+      init = code "init" "*%a = %a->t;" pp_var c pp_var array_length.c;
+      init_expr = expr "0";
+      free = code ~ovars:[ c ] "free" "";
+      v;
+      c;
+    }
+  in
+  let length =
+    let cty = typedef "length_array" "size_t*" in
+    let v = Var.mk "v" (expr "value *") in
+    let c = Var.mk "c" (expr "%a *" pp_code cty) in
+    {
+      descr = "array on " ^ ty.descr;
+      cty;
+      mlty = mlabstract "should_not_appear";
+      mlname = None;
+      c2ml = code "should_not_appear" "";
+      ml2c = code "should not appear" "";
+      init = code "init" "*%a = &%a->len;" pp_var c pp_var array_length.c;
+      init_expr = expr "0";
+      free = code ~ovars:[ c ] "free" "";
+      v;
+      c;
+    }
+  in
+  (array_length, array, length)
 
 type get = {
   get : code;
@@ -115,6 +209,7 @@ let abstract' ?get ?set ~icty ~descr ~ml ~cty () =
                   ] ));
     init = code ~ovars:[ c ] "init" "";
     init_expr = expr "((%a) { })" pp_code cty;
+    free = code ~ovars:[ c ] "free" "";
   }
 
 let abstract ?get ?set ?internal ~ml ~c () : typedef =
@@ -311,23 +406,30 @@ let custom ?finalize ?initialize ?hash ?compare ?get ?set ?internal ~ml ~c () =
        in
        code ~ovars:[ c ] "init" "%a" Fmt.(option pp_init) initialize);
     init_expr = expr "((%a) { })" pp_code cty;
+    free = code ~ovars:[ c ] "free" "";
     v;
     c;
   }
 
-let simple_param ?(input = false) ?(output = false) pty pname =
+let simple_param ?(binds = []) ?(input = false) ?(output = false)
+    ?(used_in_call = true) pty pname =
   {
     input;
     output;
-    used_in_call = true;
+    used_in_call;
     pty;
     pc = Var.mk pname (expr "%a" pp_code pty.cty);
+    binds;
   }
 
-let input = simple_param ~input:true
-let output = simple_param ~output:true
-let inout = simple_param ~input:true ~output:true
-let ignored = simple_param ~input:false ~output:false
+let input ?used_in_call ?binds = simple_param ?used_in_call ?binds ~input:true
+let output ?used_in_call ?binds = simple_param ?used_in_call ?binds ~output:true
+
+let inout ?used_in_call ?binds =
+  simple_param ?used_in_call ?binds ~input:true ~output:true
+
+let ignored ?used_in_call ?binds =
+  simple_param ?used_in_call ?binds ~input:false ~output:false
 
 let func fname ?result ?ignored_result params =
   match (result, ignored_result) with
@@ -344,6 +446,7 @@ let func fname ?result ?ignored_result params =
                 rty;
                 routput = true;
                 rc = Var.mk "res" (expr "%a" pp_code rty.cty);
+                binds = [];
               };
         }
   | None, Some rty ->
@@ -357,6 +460,7 @@ let func fname ?result ?ignored_result params =
                 rty;
                 routput = false;
                 rc = Var.mk "res" (expr "%a" pp_code rty.cty);
+                binds = [];
               };
         }
   | None, None -> Fun { fname; params; result = None }

@@ -14,19 +14,23 @@
   #include <caml/custom.h>
   typedef int camlid_int4;
   typedef camlid_int4 * camlid_ref3;
-  static void camlid_init8(camlid_int4 * c3){  }
-  static void camlid_init5(camlid_ref3 * c2){ camlid_init8(*c2); }
+  static void camlid_init9(camlid_int4 * c3){  }
+  static void camlid_init5(camlid_ref3 * c2){ camlid_init9(*c2); }
   void f(camlid_ref3);
-  static void camlid_c2ml9(value * v5, camlid_int4 * c3){ *v5 = Val_int(*c3); }
-  static void camlid_c2ml7(value * v4, camlid_ref3 * c2){
-    camlid_c2ml9(v4, *c2);
+  static void camlid_c2ml10(value * v5, camlid_int4 * c3){
+    *v5 = Val_int(*c3);
     }
+  static void camlid_c2ml7(value * v4, camlid_ref3 * c2){
+    camlid_c2ml10(v4, *c2);
+    }
+  static void camlid_free8(camlid_ref3 * c2){  }
   extern value camlid_stub_f1(){
     camlid_ref3 x0 = &(((struct { camlid_int4 a; }) { 0 }).a);
     value ret1;
     camlid_init5(&x0);
     f(x0);
     camlid_c2ml7(&ret1, &x0);
+    camlid_free8(&x0);
     return ret1;
   };
 

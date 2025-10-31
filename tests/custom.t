@@ -22,38 +22,40 @@
   static void camlid_init3(camlid_custom2 * c2){  }
   void f(camlid_custom2);
   void finalize_ptr(camlid_custom2 *);
-  static void camlid_finalize_op7(value v4){
+  static void camlid_finalize_op8(value v4){
     finalize_ptr((camlid_custom2 *) Data_custom_val(v4));
     }
   int compare_ptr(camlid_custom2 *, camlid_custom2 *);
-  static int camlid_compare_op8(value v15, value v26){
+  static int camlid_compare_op9(value v15, value v26){
     return compare_ptr(
              (camlid_custom2 *) Data_custom_val(v15),
              (camlid_custom2 *) Data_custom_val(v26)
            );
     }
   intnat hash_ptr(camlid_custom2 *);
-  static intnat camlid_hash_op9(value v7){
+  static intnat camlid_hash_op10(value v7){
     return hash_ptr((camlid_custom2 *) Data_custom_val(v7));
     }
-  struct custom_operations camlid_cops6 = {
+  struct custom_operations camlid_cops7 = {
   NULL,
-  camlid_finalize_op7,
-  camlid_compare_op8,
-  camlid_hash_op9,
+  camlid_finalize_op8,
+  camlid_compare_op9,
+  camlid_hash_op10,
   custom_serialize_default,
   custom_deserialize_default
   };
   static void camlid_c2ml5(value * v3, camlid_custom2 * c2){
-    *v3 = caml_alloc_custom(&camlid_cops6,sizeof(camlid_custom2), 0, 1);
+    *v3 = caml_alloc_custom(&camlid_cops7,sizeof(camlid_custom2), 0, 1);
     *((camlid_custom2 *) Data_custom_val(*v3)) = *c2;
     }
+  static void camlid_free6(camlid_custom2 * c2){  }
   extern value camlid_stub_f1(){
     camlid_custom2 x0 = ((camlid_custom2) { });
     value ret1;
     camlid_init3(&x0);
     f(x0);
     camlid_c2ml5(&ret1, &x0);
+    camlid_free6(&x0);
     return ret1;
   };
 

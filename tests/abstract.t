@@ -17,18 +17,20 @@
   typedef int * camlid_abstract2;
   static void camlid_init3(camlid_abstract2 * c2){  }
   void f(camlid_abstract2);
-  typedef int * camlid_abstract_intern6;
-  void id2(camlid_abstract_intern6 *, camlid_abstract2 *);
+  typedef int * camlid_abstract_intern7;
+  void id2(camlid_abstract_intern7 *, camlid_abstract2 *);
   static void camlid_c2ml5(value * v3, camlid_abstract2 * c2){
-    *v3 = caml_alloc((sizeof(camlid_abstract_intern6) + sizeof(value) - 1) / sizeof(value), Abstract_tag);
-    id2(((camlid_abstract_intern6 *) Bp_val(*v3)), c2);
+    *v3 = caml_alloc((sizeof(camlid_abstract_intern7) + sizeof(value) - 1) / sizeof(value), Abstract_tag);
+    id2(((camlid_abstract_intern7 *) Bp_val(*v3)), c2);
     }
+  static void camlid_free6(camlid_abstract2 * c2){  }
   extern value camlid_stub_f1(){
     camlid_abstract2 x0 = ((camlid_abstract2) { });
     value ret1;
     camlid_init3(&x0);
     f(x0);
     camlid_c2ml5(&ret1, &x0);
+    camlid_free6(&x0);
     return ret1;
   };
 

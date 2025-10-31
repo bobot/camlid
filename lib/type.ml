@@ -10,6 +10,9 @@ type typedef = {
   init : code;
       (** Initialize values of this type before giving them to stub function *)
   init_expr : expr;  (** expression initialization *)
+  free : code;
+      (** Free the C memory allocated during the call (not accessible in output
+          OCaml value) *)
   v : var; (* variable for the ml version *)
   c : var; (* variable for the c version *)
 }
@@ -20,12 +23,14 @@ type param = {
   used_in_call : bool; (* appears in the stubbed C call parameters *)
   pty : typedef;
   pc : var;
+  binds : (Var.t * expr) list;
 }
 
 type result = {
   routput : bool; (* appears in ML results and converted after call *)
   rty : typedef;
   rc : var;
+  binds : (Var.t * expr) list;
 }
 
 type func = { fname : string; params : param list; result : result option }
@@ -63,7 +68,16 @@ let codef ?keep_name ?(ovars = []) ?(ret = "void") name pp =
         Fmt.(list ~sep:comma pp_args)
         params p)
 
-let c2ml ~v ~c fmt ty = pp_call fmt (ty.c2ml, [ (ty.v, v); (ty.c, c) ])
-let ml2c ~v ~c fmt ty = pp_call fmt (ty.ml2c, [ (ty.v, v); (ty.c, c) ])
-let init ~c fmt ty = pp_call fmt (ty.init, [ (ty.c, c) ])
+let c2ml ?(binds = []) ~v ~c () fmt ty =
+  pp_call fmt (ty.c2ml, [ (ty.v, v); (ty.c, c) ] @ binds)
+
+let ml2c ?(binds = []) ~v ~c () fmt ty =
+  pp_call fmt (ty.ml2c, [ (ty.v, v); (ty.c, c) ] @ binds)
+
+let init ?(binds = []) ~c () fmt ty =
+  pp_call fmt (ty.init, [ (ty.c, c) ] @ binds)
+
+let free ?(binds = []) ~c () fmt ty =
+  pp_call fmt (ty.free, [ (ty.c, c) ] @ binds)
+
 let init_expr fmt ty = Fmt.pf fmt "%a" ty.init_expr.expr ()

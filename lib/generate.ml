@@ -17,6 +17,7 @@ let results f =
           used_in_call = false;
           pty = result.rty;
           pc = result.rc;
+          binds = result.binds;
         }
         :: out_params
       else out_params
@@ -58,25 +59,28 @@ let code_c_fun (f : func) =
       | None -> ()
       | Some result ->
           fmt "@[%a %a;@]@," pp_code result.rty.cty pp_var result.rc);
+      fmt "@[value %a;@]@," pp_var return_var;
       (match results with
-      | [] -> ()
-      | [ _ ] -> fmt "@[value %a;@]@," pp_var return_var
+      | [] | [ _ ] -> ()
       | l ->
           fmt "@[value %a;@]@," pp_var return_var;
           fmt "@[value %a[%i] = {%a};@]@," pp_var tuple_var (List.length l)
             Fmt.(list ~sep:comma (Fmt.any "Val_unit"))
             l);
       (* convert input variables *)
-      let pp_conv_in fmt (p, vc) =
+      let pp_conv_in fmt ((p : param), vc) =
         Fmt.pf fmt "@[%a;@]@,"
-          (ml2c ~v:(expr "&%a" pp_var vc) ~c:(expr "&%a" pp_var p.pc))
+          (ml2c ~binds:p.binds ~v:(expr "&%a" pp_var vc)
+             ~c:(expr "&%a" pp_var p.pc) ())
           p.pty
       in
       fmt "%a" Fmt.(list ~sep:nop pp_conv_in) inputs;
-      (* initialize output variables that are not input *)
+      (* initialize variables that are not input *)
       let pp_init_out fmt p =
-        if (not p.input) && p.output then
-          Fmt.pf fmt "@[%a;@]@," (init ~c:(expr "&%a" pp_var p.pc)) p.pty
+        if not p.input then
+          Fmt.pf fmt "@[%a;@]@,"
+            (init ~binds:p.binds ~c:(expr "&%a" pp_var p.pc) ())
+            p.pty
       in
       fmt "%a" Fmt.(list ~sep:nop pp_init_out) f.params;
       (* function call *)
@@ -87,27 +91,28 @@ let code_c_fun (f : func) =
       fmt "@[%a%a;@]@," pp_result f.result pp_call
         (fid, List.map (fun v -> (v, expr "%a" pp_var v)) vars_used_in_calls);
       (* create return value *)
-      let pp_conv_out fmt p =
+      let pp_conv_out fmt (p : param) =
         Fmt.pf fmt "@[%a;@]@,"
-          (c2ml ~v:(expr "&%a" pp_var return_var) ~c:(expr "&%a" pp_var p.pc))
+          (c2ml ~binds:p.binds
+             ~v:(expr "&%a" pp_var return_var)
+             ~c:(expr "&%a" pp_var p.pc) ())
           p.pty
       in
       (match results with
-      | [] -> fmt "@[return Val_unit;@]"
+      | [] -> fmt "@[%a = Val_unit;@]@," pp_var return_var
       | [ p ] ->
-          fmt "%a" pp_conv_out p;
           (* convert uniq output *)
-          fmt "@[return %a;@]" pp_var return_var
+          fmt "%a" pp_conv_out p
       | l ->
           let len = List.length l in
           let li = List.mapi (fun i p -> (i, p)) l in
           fmt "@[Begin_roots_block(%a, %i)]@," pp_var tuple_var len;
           (* convert outputs *)
-          let pp_conv_out fmt (i, p) =
+          let pp_conv_out fmt (i, (p : param)) =
             Fmt.pf fmt "@[%a;@]@,"
               (c2ml
                  ~v:(expr "&%a[%i]" pp_var tuple_var i)
-                 ~c:(expr "&%a" pp_var p.pc))
+                 ~c:(expr "&%a" pp_var p.pc) ~binds:p.binds ())
               p.pty
           in
           fmt "%a" Fmt.(list ~sep:Fmt.cut pp_conv_out) li;
@@ -118,8 +123,16 @@ let code_c_fun (f : func) =
               pp_var tuple_var
           in
           fmt "%a" Fmt.(list ~sep:Fmt.cut pp_store) li;
-          fmt "@[End_roots()]@,";
-          fmt "@[return %a;@]" pp_var return_var);
+          fmt "@[End_roots()]@,");
+      (* free allocated memory *)
+      let pp_init_out fmt (p : param) =
+        Fmt.pf fmt "@[%a;@]@,"
+          (free ~binds:p.binds ~c:(expr "&%a" pp_var p.pc) ())
+          p.pty
+      in
+      fmt "%a" Fmt.(list ~sep:nop pp_init_out) f.params;
+      (* return *)
+      fmt "@[return %a;@]" pp_var return_var;
       fmt "@]@,@[};@]@]@.")
 
 let print_c cout headers =

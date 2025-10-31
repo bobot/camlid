@@ -86,11 +86,6 @@ let pp_var fmt c = open_close_stag fmt (PrintVar c)
 
 let pp_call fmt (code, bind) =
   open_close_stag fmt (Dep code);
-  List.iter
-    (fun (v, _) ->
-      if not (List.memq v code.params) then
-        Fmt.failwith "Spurious binder %s in %s call" v.name code.id.name)
-    bind;
   let pp_arg fmt v =
     match List.assq_opt v bind with
     | None -> pp_var fmt v

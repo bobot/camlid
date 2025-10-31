@@ -19,13 +19,17 @@
   #include <caml/custom.h>
   #include "./basic.h"
   typedef int camlid_int2;
-  static void camlid_ml2c3(value * v2, camlid_int2 * c3){ *c3 = Int_val(*v2); }
+  static void camlid_ml2c3(value * v3, camlid_int2 * c4){ *c4 = Int_val(*v3); }
   void f(camlid_int2);
+  static void camlid_free5(camlid_int2 * c4){  }
   extern value camlid_stub_f1(value x0){
     camlid_int2 x1 = 0;
+    value ret2;
     camlid_ml2c3(&x0, &x1);
     f(x1);
-    return Val_unit;
+    ret2 = Val_unit;
+    camlid_free5(&x1);
+    return ret2;
   };
 
   $ ocamlc -ccopt --warn-all -c basic_stub.c
