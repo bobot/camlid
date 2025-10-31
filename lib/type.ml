@@ -33,12 +33,7 @@ type result = {
   binds : (Var.t * expr) list;
 }
 
-type func = { fname : string; params : param list; result : result option }
-
-let stub_name fmt f = Fmt.pf fmt "camlid_fun_%s" f.fname
-
-type decl = Fun of func
-type conf = decl list
+type conf = Expr.expr list
 
 let code ?keep_name ?(locals = []) ?(ovars = []) ?(ret = "void") name p =
   Format.kdprintf
