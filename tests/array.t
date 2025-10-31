@@ -3,14 +3,9 @@
   > open Expr
   > open Helper
   > 
-  > let (a_len,a,len) = array int
-  > let io_a_len = inout ~used_in_call:false a_len "x"
+  > let (a_len,a,len) = output_array ~input:true "a" int
   > let () = Generate.to_file "basic" [
-  >  func "f" [ 
-  >  io_a_len;
-  >  ignored a "a" ~binds:[a_len.c,expr "&%a" pp_var io_a_len.pc];
-  >  ignored len "l" ~binds:[a_len.c,expr "&%a" pp_var io_a_len.pc];
-  > ]
+  >  func "f" [ a_len; a; len ]
   > ]
   > EOF
 
@@ -61,19 +56,19 @@
   static void camlid_free11(camlid_array3 * c6){ free(c6->t); }
   static void camlid_free12(camlid_array4 * c9){  }
   static void camlid_free13(camlid_length_array5 * c10){  }
-  extern value camlid_stub_f1(value x0){
-    camlid_array3 x1 = ((camlid_array3) { });
-    camlid_array4 a2 = 0;
-    camlid_length_array5 l3 = 0;
+  extern value camlid_stub_f1(value a0){
+    camlid_array3 a1 = ((camlid_array3) { });
+    camlid_array4 a_a2 = 0;
+    camlid_length_array5 a_len3 = 0;
     value ret4;
-    camlid_ml2c6(&x0, &x1);
-    camlid_init7(&x1, &a2);
-    camlid_init8(&x1, &l3);
-    f(a2, l3);
-    camlid_c2ml10(&ret4, &x1);
-    camlid_free11(&x1);
-    camlid_free12(&a2);
-    camlid_free13(&l3);
+    camlid_ml2c6(&a0, &a1);
+    camlid_init7(&a1, &a_a2);
+    camlid_init8(&a1, &a_len3);
+    f(a_a2, a_len3);
+    camlid_c2ml10(&ret4, &a1);
+    camlid_free11(&a1);
+    camlid_free12(&a_a2);
+    camlid_free13(&a_len3);
     return ret4;
   };
 
