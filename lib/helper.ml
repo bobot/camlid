@@ -2,14 +2,92 @@ open Expr
 open Type
 open Expert
 
-let int = int
-let int_trunc = int_trunc
-let double = double
-let int32 = int32
-let int64 = int64
-let nativeint = nativeint
-let func = func
+type code = Expr.code
+type expr = Expr.expr
+
+let expr = expr
+let pp_code = pp_code
+let typedef = typedef
+
+let int : typedef =
+  builtin_mltypes ~ml_type:"int" ~c_type:"intnat" ~c2ml:"Val_long"
+    ~ml2c:"Long_val"
+
+let int_trunc : typedef =
+  builtin_mltypes ~ml_type:"int" ~c_type:"int" ~c2ml:"Val_int" ~ml2c:"Int_val"
+
+let double : typedef =
+  builtin_mltypes ~ml_type:"float" ~c_type:"double" ~c2ml:"caml_copy_double"
+    ~ml2c:"Double_val"
+
+let int32 : typedef =
+  builtin_mltypes ~ml_type:"int32" ~c_type:"int32_t" ~c2ml:"caml_copy_int32"
+    ~ml2c:"Int32_val"
+
+let int64 : typedef =
+  builtin_mltypes ~ml_type:"int64" ~c_type:"int64_t" ~c2ml:"caml_copy_int64"
+    ~ml2c:"Int64_val"
+
+let nativeint : typedef =
+  builtin_mltypes ~ml_type:"nativeint" ~c_type:"intnat"
+    ~c2ml:"caml_copy_nativeint" ~ml2c:"Nativeint_val"
+
+let bool : typedef =
+  builtin_mltypes ~ml_type:"bool" ~c_type:"int" ~c2ml:"Val_bool"
+    ~ml2c:"Bool_val"
+
 let ptr_ref = ptr_ref
+
+let func_id ~ml ?result ?ignored_result fid params =
+  (* C function declaration *)
+  match (result, ignored_result) with
+  | Some _, Some _ ->
+      failwith "Camlid.Helper.func: can't set both result and ignored_result"
+  | Some rty, None ->
+      print_ml_fun
+        {
+          fid;
+          mlname = ml;
+          params;
+          result =
+            Some
+              {
+                rty;
+                routput = true;
+                rc = Var.mk "res" (expr "%a" pp_code rty.cty);
+                binds = [];
+              };
+        }
+  | None, Some rty ->
+      print_ml_fun
+        {
+          fid;
+          mlname = ml;
+          params;
+          result =
+            Some
+              {
+                rty;
+                routput = false;
+                rc = Var.mk "res" (expr "%a" pp_code rty.cty);
+                binds = [];
+              };
+        }
+  | None, None -> print_ml_fun { fid; mlname = ml; params; result = None }
+
+let func ?ml ?result ?ignored_result fname params =
+  let ml = Option.value ~default:fname ml in
+  let fid =
+    let used_in_calls = List.filter (fun p -> p.used_in_call) params in
+    let vars_used_in_calls = List.map (fun p -> p.pc) used_in_calls in
+    declare_existing
+      ?result:(Option.map (fun rty -> expr "%a" pp_code rty.cty) result)
+      fname vars_used_in_calls
+  in
+  func_id ~ml ?result ?ignored_result fid params
+
+let func_in ?ml ?result fname inputs =
+  func ?ml ?result fname (List.map (fun ty -> input ty "v") inputs)
 
 let output_array ?(input = false) name ty =
   let a_len = array_length ty in
@@ -76,7 +154,8 @@ let abstract ?get ?set ?internal ~ml ~c () : typedef =
   Expert.abstract ?set ?get ~icty ~descr ~cty ~ml ()
 
 (** Encapsulate a c type into an custom ml type *)
-let custom ?initialize ?finalize ?hash ?compare ?get ?set ?internal ~ml ~c () =
+let custom ?initialize ?finalize ?finalize_ptr ?hash ?compare ?get ?set
+    ?internal ~ml ~c () =
   let cty = typedef "custom" "%s" c in
   let icty =
     match internal with None -> cty | Some c -> typedef "custom_intern" "%s" c
@@ -84,10 +163,12 @@ let custom ?initialize ?finalize ?hash ?compare ?get ?set ?internal ~ml ~c () =
   let get = Option.map (mk_get ~icty ~cty) get in
   let set = Option.map (mk_set ~icty ~cty) set in
   let finalize = Option.map (mk_finalize ~icty) finalize in
+  let finalize_ptr = Option.map (mk_finalize_ptr ~icty) finalize_ptr in
   let hash = Option.map (mk_hash ~icty) hash in
   let compare = Option.map (mk_compare ~icty) compare in
   let initialize = Option.map (mk_initialize ~cty) initialize in
-  custom ?initialize ?finalize ?hash ?compare ?get ?set ~ml ~icty ~cty ()
+  custom ?initialize ?finalize ?finalize_ptr ?hash ?compare ?get ?set ~ml ~icty
+    ~cty ()
 
 let inout = Expert.inout
 let input = Expert.input

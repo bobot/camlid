@@ -137,6 +137,9 @@
   external f_double: camlid_float -> camlid_float = "camlid_stub_f_double"
   external f_int32: camlid_int32 -> camlid_int32 = "camlid_stub_f_int32"
   external f_int64: camlid_int64 -> camlid_int64 = "camlid_stub_f_int64"
-  external f_nativeint: camlid_nativeint -> camlid_nativeint = "camlid_stub_f_nativeint"
+  external f_nativeint:
+    camlid_nativeint ->
+    camlid_nativeint
+    = "camlid_stub_f_nativeint"
 
   $ ocamlc -c basic.ml

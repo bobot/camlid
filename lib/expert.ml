@@ -48,29 +48,6 @@ let builtin_mltypes ~ml_type ~c_type ~c2ml ~ml2c =
     c;
   }
 
-let int : typedef =
-  builtin_mltypes ~ml_type:"int" ~c_type:"intnat" ~c2ml:"Val_long"
-    ~ml2c:"Long_val"
-
-let int_trunc : typedef =
-  builtin_mltypes ~ml_type:"int" ~c_type:"int" ~c2ml:"Val_int" ~ml2c:"Int_val"
-
-let double : typedef =
-  builtin_mltypes ~ml_type:"float" ~c_type:"double" ~c2ml:"caml_copy_double"
-    ~ml2c:"Double_val"
-
-let int32 : typedef =
-  builtin_mltypes ~ml_type:"int32" ~c_type:"int32_t" ~c2ml:"caml_copy_int32"
-    ~ml2c:"Int32_val"
-
-let int64 : typedef =
-  builtin_mltypes ~ml_type:"int64" ~c_type:"int64_t" ~c2ml:"caml_copy_int64"
-    ~ml2c:"Int64_val"
-
-let nativeint : typedef =
-  builtin_mltypes ~ml_type:"nativeint" ~c_type:"intnat"
-    ~c2ml:"caml_copy_nativeint" ~ml2c:"Nativeint_val"
-
 let ptr_ref (ty : typedef) =
   let cty = typedef "ref" "%a *" pp_code ty.cty in
   let v = Var.mk "v" (expr "value *") in
@@ -316,7 +293,8 @@ type compare = { compare : code; i1 : var; i2 : var }
 type compare_op = { compare_op : code; v1 : var; v2 : var }
 
 (** Encapsulate a c type into an custom ml type *)
-let custom ?initialize ?finalize ?hash ?compare ?get ?set ~ml ~icty ~cty () =
+let custom ?initialize ?finalize ?finalize_ptr ?hash ?compare ?get ?set ~ml
+    ~icty ~cty () =
   let descr = Printf.sprintf "abstract tag for type \"%s\"" ml in
   let v = Var.mk "v" (expr "value *") in
   let c = Var.mk "c" (expr "%a *" pp_code cty) in
@@ -327,16 +305,29 @@ let custom ?initialize ?finalize ?hash ?compare ?get ?set ~ml ~icty ~cty () =
     expr "(%a *) Data_custom_val(*%a)" pp_code icty pp_var v
   in
   let finalize_op =
-    Option.map
-      (fun finalize ->
+    match (finalize, finalize_ptr) with
+    | None, None -> None
+    | Some finalize, None ->
         let v = Var.mk "v" (expr "value") in
-        {
-          finalize_op =
-            code "finalize_op" "%a;" pp_call
-              (finalize.finalize, [ (finalize.i, data_custom_val icty v) ]);
-          v;
-        })
-      finalize
+        Some
+          {
+            finalize_op =
+              code "finalize_op" "%a;" pp_call
+                (finalize.finalize, [ (finalize.i, data_custom_val icty v) ]);
+            v;
+          }
+    | None, Some finalize ->
+        let v = Var.mk "v" (expr "value") in
+        Some
+          {
+            finalize_op =
+              code "finalize_op" "%a;" pp_call
+                ( finalize.finalize,
+                  [ (finalize.i, expr "*%a" (data_custom_val icty v).expr ()) ]
+                );
+            v;
+          }
+    | Some _, Some _ -> Fmt.failwith "finalize and finalize_ptr given for %s" ml
   in
   let hash_op =
     Option.map
@@ -441,6 +432,10 @@ let mk_finalize ~icty finalize =
   let i = Var.mk "i" (expr "%a *" pp_code icty) in
   { finalize = declare_existing finalize [ i ]; i }
 
+let mk_finalize_ptr ~icty finalize =
+  let i = Var.mk "i" (expr "%a" pp_code icty) in
+  { finalize = declare_existing finalize [ i ]; i }
+
 let mk_hash ~icty hash =
   let i = Var.mk "i" (expr "%a *" pp_code icty) in
   { hash = declare_existing ~result:(expr "intnat") hash [ i ]; i }
@@ -478,7 +473,12 @@ let list_or_empty ~empty ~sep pp fmt = function
   | [] -> empty fmt ()
   | l -> Fmt.list ~sep pp fmt l
 
-type func = { fname : string; params : param list; result : result option }
+type func = {
+  fid : code;
+  mlname : string;
+  params : param list;
+  result : result option;
+}
 
 let results f =
   let out_params = List.filter (fun p -> p.output) f.params in
@@ -509,15 +509,9 @@ let code_c_fun (f : func) =
   let results = results f in
   let used_in_calls = List.filter (fun p -> p.used_in_call) f.params in
   let vars_used_in_calls = List.map (fun p -> p.pc) used_in_calls in
-  (* C function declaration *)
-  let fid =
-    declare_existing
-      ?result:(Option.map (fun r -> expr "%a" pp_code r.rty.cty) f.result)
-      f.fname vars_used_in_calls
-  in
   (* local C variable declaration *)
   let tuple_var = Var.mk "tup" (expr "value[%i]" (List.length results)) in
-  let id = ID.mk ("stub_" ^ f.fname) in
+  let id = ID.mk ("stub_" ^ f.fid.id.name) in
   fp ~kind:C ~params:(List.map snd inputs) id (fun { fmt } ->
       (* Formals *)
       let pp_formal fmt (_, pv) = Fmt.pf fmt "value %a" pp_var pv in
@@ -538,7 +532,6 @@ let code_c_fun (f : func) =
       (match results with
       | [] | [ _ ] -> ()
       | l ->
-          fmt "@[value %a;@]@," pp_var return_var;
           fmt "@[value %a[%i] = {%a};@]@," pp_var tuple_var (List.length l)
             Fmt.(list ~sep:comma (Fmt.any "Val_unit"))
             l);
@@ -564,7 +557,7 @@ let code_c_fun (f : func) =
         | Some r -> Fmt.pf fmt "%a = " pp_var r.rc
       in
       fmt "@[%a%a;@]@," pp_result f.result pp_call
-        (fid, List.map (fun v -> (v, expr "%a" pp_var v)) vars_used_in_calls);
+        (f.fid, List.map (fun v -> (v, expr "%a" pp_var v)) vars_used_in_calls);
       (* create return value *)
       let pp_conv_out fmt (p : param) =
         Fmt.pf fmt "@[%a;@]@,"
@@ -581,24 +574,24 @@ let code_c_fun (f : func) =
       | l ->
           let len = List.length l in
           let li = List.mapi (fun i p -> (i, p)) l in
-          fmt "@[Begin_roots_block(%a, %i)]@," pp_var tuple_var len;
+          fmt "@[<hv 2>@[Begin_roots_block(%a, %i)@]@," pp_var tuple_var len;
           (* convert outputs *)
           let pp_conv_out fmt (i, (p : param)) =
-            Fmt.pf fmt "@[%a;@]@,"
+            Fmt.pf fmt "@[%a;@]"
               (c2ml
                  ~v:(expr "&%a[%i]" pp_var tuple_var i)
                  ~c:(expr "&%a" pp_var p.pc) ~binds:p.binds ())
               p.pty
           in
-          fmt "%a" Fmt.(list ~sep:Fmt.cut pp_conv_out) li;
+          fmt "%a@," Fmt.(list ~sep:Fmt.cut pp_conv_out) li;
           (* create output tuple *)
-          fmt "@[%a = caml_alloc(%i,0);]@," pp_var return_var len;
+          fmt "@[%a = caml_alloc(%i,0);@]@," pp_var return_var len;
           let pp_store fmt (i, _) =
-            Fmt.pf fmt "@[Store_field(%a, %i, %a);]@," pp_var return_var i
-              pp_var tuple_var
+            Fmt.pf fmt "@[Store_field(%a, %i, %a[%i]);@]" pp_var return_var i
+              pp_var tuple_var i
           in
-          fmt "%a" Fmt.(list ~sep:Fmt.cut pp_store) li;
-          fmt "@[End_roots()]@,");
+          fmt "%a@]@," Fmt.(list ~sep:Fmt.cut pp_store) li;
+          fmt "@[End_roots()@]@,");
       (* free allocated memory *)
       let pp_init_out fmt (p : param) =
         Fmt.pf fmt "@[%a;@]@,"
@@ -615,43 +608,16 @@ let print_ml_fun (f : func) =
   let results = results f in
   let inputs = List.filter (fun p -> p.input) f.params in
   let pp_result fmt p = pp_code fmt p.pty.mlty in
-  let pp_param fmt p = Fmt.pf fmt "%a -> " pp_code p.pty.mlty in
-  expr "@[external %s: %a%a = \"%a\"@]" f.fname
+  let pp_param fmt p = Fmt.pf fmt "@[%a ->@]@ " pp_code p.pty.mlty in
+  expr "@[<hv 2>external %s:@ %a@[<hv>%a@]@ = \"%a\"@]" f.mlname
     Fmt.(list_or_empty ~empty:(any "unit -> ") ~sep:nop pp_param)
     inputs
-    Fmt.(list_or_empty ~empty:(any "unit") ~sep:(any "*") pp_result)
+    Fmt.(list_or_empty ~empty:(any "unit") ~sep:(any "@ *@ ") pp_result)
     results pp_code code_c
 
-let func fname ?result ?ignored_result params =
-  match (result, ignored_result) with
-  | Some _, Some _ ->
-      failwith "Camlid.Helper.func: can't set both result and ignored_result"
-  | Some rty, None ->
-      print_ml_fun
-        {
-          fname;
-          params;
-          result =
-            Some
-              {
-                rty;
-                routput = true;
-                rc = Var.mk "res" (expr "%a" pp_code rty.cty);
-                binds = [];
-              };
-        }
-  | None, Some rty ->
-      print_ml_fun
-        {
-          fname;
-          params;
-          result =
-            Some
-              {
-                rty;
-                routput = false;
-                rc = Var.mk "res" (expr "%a" pp_code rty.cty);
-                binds = [];
-              };
-        }
-  | None, None -> print_ml_fun { fname; params; result = None }
+let declare_struct name fields =
+  let id = ID.mk name in
+  let pp_field fmt (name, ty) = Fmt.pf fmt "%a %s;" ty.expr () name in
+  toplevel id "@[<hv 2>struct %a {@,%a@,};@]@." pp_id id
+    Fmt.(list ~sep:cut pp_field)
+    fields
