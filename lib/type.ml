@@ -35,7 +35,7 @@ type result = {
 
 type conf = Expr.expr list
 
-let code ?keep_name ?(locals = []) ?(ovars = []) ?(ret = "void") name p =
+let code ?keep_name ?(locals = []) ?(ovars = []) ?(ret = expr "void") name p =
   Format.kdprintf
     (fun k ->
       let id = ID.mk ?keep_name name in
@@ -47,19 +47,21 @@ let code ?keep_name ?(locals = []) ?(ovars = []) ?(ret = "void") name p =
         Fmt.pf fmt "%a %a" var.ty.expr () pp_var var
       in
       mk ~kind:C ~params id (fun fmt () ->
-          Fmt.pf fmt "@[<hv 2>@[static %s %a(%a){@]@ %t@ @[}@]@]@." ret pp_id id
+          Fmt.pf fmt "@[<hv 2>@[static %a %a(%a){@]@ %t@ @[}@]@]@." ret.expr ()
+            pp_id id
             Fmt.(list ~sep:comma pp_args)
             params k))
     p
 
-let codef ?keep_name ?(ovars = []) ?(ret = "void") name pp =
+let codef ?keep_name ?(ovars = []) ?(ret = expr "void") name pp =
   let p = fun fmt -> pp { fmt = (fun p -> Fmt.pf fmt p) } in
   let id = ID.mk ?keep_name name in
   let params = params_of_expr p in
   let params = List.sort_uniq Var.compare (ovars @ params) in
   let pp_args fmt (var : var) = Fmt.pf fmt "%a %a" var.ty.expr () pp_var var in
   mk ~kind:C ~params id (fun fmt () ->
-      Fmt.pf fmt "@[<hv 2>@[static %s %a(%a){@]@ %t@ @[}@]@]@." ret pp_id id
+      Fmt.pf fmt "@[<hv 2>@[static %a %a(%a){@]@ %t@ @[}@]@]@." ret.expr ()
+        pp_id id
         Fmt.(list ~sep:comma pp_args)
         params p)
 

@@ -335,7 +335,7 @@ let custom ?initialize ?finalize ?finalize_ptr ?hash ?compare ?get ?set ~ml
         let v = Var.mk "v" (expr "value") in
         {
           hash_op =
-            code ~ret:"intnat" "hash_op" "return %a;" pp_call
+            code ~ret:(expr "intnat") "hash_op" "return %a;" pp_call
               (hash.hash, [ (hash.i, data_custom_val icty v) ]);
           v;
         })
@@ -348,7 +348,7 @@ let custom ?initialize ?finalize ?finalize_ptr ?hash ?compare ?get ?set ~ml
         let v2 = Var.mk "v2" (expr "value") in
         {
           compare_op =
-            code ~ret:"int" "compare_op" "return %a;" pp_call
+            code ~ret:(expr "int") "compare_op" "return %a;" pp_call
               ( compare.compare,
                 [
                   (compare.i1, data_custom_val icty v1);
@@ -621,3 +621,176 @@ let declare_struct name fields =
   toplevel id "@[<hv 2>struct %a {@,%a@,};@]@." pp_id id
     Fmt.(list ~sep:cut pp_field)
     fields
+
+module AlgData : sig
+  type 'a uc
+  type 'a t
+  type 'a constr
+  type 'a fields
+
+  val start : typedef uc
+  val ( + ) : typedef -> 'a fields -> (expr -> 'a) fields
+  val const : expr fields
+  val close_constr : string -> 'a fields -> 'b uc -> 'a constr * ('a -> 'b) uc
+  val close : string -> 'a uc -> 'a t * typedef
+  val make : 'a constr -> dst:expr -> 'a
+  val destruct : 'a t -> 'a -> expr
+end = struct
+  type _ fields =
+    | Constant : expr fields
+    | Field : typedef * Var.t * 'a fields -> (expr -> 'a) fields
+
+  type kind = KConst of int | KNonConst of int
+
+  and _ constr =
+    | Closed : {
+        name : string;
+        mutable code : (dst:expr -> 'a) option;
+        kind : kind;
+        enum : int;  (** tag *)
+        fields : 'a fields;
+      }
+        -> 'a constr
+
+  and _ uc = Empty : typedef uc | Constr : 'b constr * 'c uc -> ('b -> 'c) uc
+
+  type 'a t = { uc : 'a uc }
+
+  let make = function
+    | Closed { code; _ } -> (
+        match code with
+        | None -> Fmt.failwith "Field used but the datatype is not closed."
+        | Some code -> code)
+
+  let rec count_fields : type a. a fields -> int = function
+    | Constant -> 0
+    | Field (_, _, f) -> count_fields f + 1
+
+  let rec count_constr : type c. c uc -> int * int = function
+    | Empty -> (0, 0)
+    | Constr (Closed { fields; _ }, alg) ->
+        let constant, non_constant = count_constr alg in
+        let nb_fields = count_fields fields in
+        if nb_fields = 0 then (constant + 1, non_constant)
+        else (constant, non_constant + 1)
+
+  let close_constr name fields uc =
+    let nb_fields = count_fields fields in
+    let constant, non_constant = count_constr uc in
+    let kind =
+      if nb_fields = 0 then KConst constant else KNonConst non_constant
+    in
+    let constr =
+      Closed { name; code = None; kind; fields; enum = constant + non_constant }
+    in
+    (constr, Constr (constr, uc))
+
+  (** Adding an intermediary is removed by compilers
+      https://godbolt.org/z/6bdhfYorE *)
+
+  let rec add_code_to_constr : type a. _ -> a uc -> unit =
+   fun dst -> function
+    | Empty -> ()
+    | Constr (Closed ({ fields; kind; enum; name; _ } as c), alg) ->
+        let code =
+          match kind with
+          | KConst _ -> Type.code name "%a->tag=%i;" pp_var dst enum
+          | KNonConst j ->
+              codef name (fun { fmt } ->
+                  fmt "%a->tag=%i;@," pp_var dst enum;
+                  let rec aux : type a. int -> a fields -> unit =
+                   fun i -> function
+                     | Constant -> ()
+                     | Field (_, c, f) ->
+                         fmt "%a->u.nv%i.f%i = %a;@," pp_var dst j i pp_var c;
+                         aux (i + 1) f
+                  in
+                  aux 0 fields)
+        in
+        let rec aux : type a. (Var.t * expr) list -> a fields -> a =
+         fun l -> function
+           | Field (_, v, f) -> fun e -> aux ((v, e) :: l) f
+           | Constant -> expr "%a" pp_call (code, l)
+        in
+        c.code <- Some (fun ~dst:edst -> aux [ (dst, edst) ] fields);
+        add_code_to_constr dst alg
+
+  let c2ml : type a. v:_ -> c:_ -> a uc -> code =
+   fun ~v ~c uc ->
+    let rec aux : type a. a uc Fmt.t =
+     fun fmt -> function
+       | Empty -> ()
+       | Constr (Closed { fields; kind; enum; name; _ }, alg) -> (
+           Fmt.pf fmt "case %i: /* %s */@ " enum name;
+           match kind with
+           | KConst i -> Fmt.pf fmt "*%a = Val_int(%i);" pp_var v i
+           | KNonConst nc ->
+               let nb_fields = count_fields fields in
+               Fmt.pf fmt "*%a=caml_alloc(%i,%i);@ " pp_var v nb_fields nc;
+               let rec pp_fields : type a. int -> a fields -> unit =
+                fun i -> function
+                  | Constant -> ()
+                  | Field (ty, _, f) ->
+                      Fmt.pf fmt "%a;"
+                        (c2ml ~v:(expr "tmp")
+                           ~c:(expr "%a->u.nc%i.f%i" pp_var c nc i)
+                           ())
+                        ty;
+                      Fmt.pf fmt "Store_field(*%a,%i,tmp);@ " pp_var v i;
+                      pp_fields (i + 1) f
+               in
+               pp_fields 0 fields;
+               Fmt.pf fmt "break;@ %a" aux alg)
+    in
+    code ~ovars:[ v; c ] "c2ml"
+      "CAMLparam0;@ CAMLlocal1(tmp);@ switch(%a->tag){@,%a};@ CAMLreturn0;"
+      pp_var c aux uc
+
+  let close : type a. string -> a uc -> a t * typedef =
+   fun ml_type uc ->
+    let cty =
+      let rec pp_constrs : type a. a uc Fmt.t =
+       fun fmt -> function
+         | Empty -> ()
+         | Constr (Closed { kind = KConst _; _ }, alg) -> pp_constrs fmt alg
+         | Constr (Closed { fields; kind = KNonConst i; _ }, alg) ->
+             Fmt.pf fmt "@[<hv 2>struct {@ %a@ } nc%i;@ %a@]" (pp_fields 0)
+               fields i pp_constrs alg
+      and pp_fields : type a. int -> a fields Fmt.t =
+       fun i ->
+        fun fmt -> function
+          | Constant -> ()
+          | Field (ty, _, fields) ->
+              Fmt.pf fmt "%a f%i;@ %a" pp_code ty.cty i
+                (pp_fields (i + 1))
+                fields
+      in
+      let id = ID.mk "ml_type" in
+      toplevel id
+        "@[<hv 2>@[typedef struct {@]int tag;@ union {%a} u; @[} %a;@]@]"
+        pp_constrs uc pp_id id
+    in
+    (let dst = Var.mk "dst" (expr "%a" pp_code cty) in
+     add_code_to_constr dst uc);
+    let v = Var.mk "v" (expr "value *") in
+    let c = Var.mk "c" (expr "%a *" pp_code cty) in
+    ( { uc },
+      {
+        descr = "int";
+        cty;
+        mlty = mlalias ml_type "%s" ml_type;
+        mlname = None;
+        c2ml = c2ml ~v ~c uc;
+        ml2c = code ~ovars:[ v; c ] "not_yet_implemented" "";
+        init = code ~ovars:[ c ] "init" "";
+        init_expr = expr "((%a) { })" pp_code cty;
+        free = code ~ovars:[ c ] "free" "";
+        v;
+        c;
+      } )
+
+  let const = Constant
+  let ( + ) ty f = Field (ty, Var.mk "f" (expr "%a" pp_code ty.cty), f)
+  let start = Empty
+  let destruct { uc = _ } = assert false
+end
