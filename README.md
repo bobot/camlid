@@ -6,6 +6,8 @@
 
  C11 is required.
 
+ It is currently a POC without documentation, examples can be found in the (tests)[./tests] directory.
+
  ### Example
 
 Suppose the following header (`alib.h`):
