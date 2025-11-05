@@ -35,32 +35,50 @@ type result = {
 
 type conf = Expr.expr list
 
-let code ?keep_name ?(locals = []) ?(ovars = []) ?(ret = expr "void") name p =
+let code ?(kind = C) ?params ?keep_name ?(locals = []) ?(ovars = [])
+    ?(ret = expr "void") name p =
   Format.kdprintf
     (fun k ->
       let id = ID.mk ?keep_name name in
-      let params = params_of_expr k in
-      let params = List.sort_uniq Var.compare (ovars @ params) in
-      let local = Var.S.of_list locals in
-      let params = List.filter (fun v -> not (Var.S.mem v local)) params in
+      let params =
+        match params with
+        | None ->
+            let params = params_of_expr k in
+            let params = List.sort_uniq Var.compare (ovars @ params) in
+            let local = Var.S.of_list locals in
+            let params =
+              List.filter (fun v -> not (Var.S.mem v local)) params
+            in
+            params
+        | Some params -> params
+      in
       let pp_args fmt (var : var) =
         Fmt.pf fmt "%a %a" var.ty.expr () pp_var var
       in
-      mk ~kind:C ~params id (fun fmt () ->
-          Fmt.pf fmt "@[<hv 2>@[static %a %a(%a){@]@ %t@ @[}@]@]@." ret.expr ()
+      mk ~kind ~params id (fun fmt () ->
+          Fmt.pf fmt "@[<hv 2>@[static %a %a(%a){@]@ %t@ @[};@]@]@." ret.expr ()
             pp_id id
             Fmt.(list ~sep:comma pp_args)
             params k))
     p
 
-let codef ?keep_name ?(ovars = []) ?(ret = expr "void") name pp =
+let codef ?(kind = C) ?params ?keep_name ?(locals = []) ?(ovars = [])
+    ?(ret = expr "void") name pp =
   let p = fun fmt -> pp { fmt = (fun p -> Fmt.pf fmt p) } in
   let id = ID.mk ?keep_name name in
-  let params = params_of_expr p in
-  let params = List.sort_uniq Var.compare (ovars @ params) in
+  let params =
+    match params with
+    | None ->
+        let params = params_of_expr p in
+        let params = List.sort_uniq Var.compare (ovars @ params) in
+        let local = Var.S.of_list locals in
+        let params = List.filter (fun v -> not (Var.S.mem v local)) params in
+        params
+    | Some params -> params
+  in
   let pp_args fmt (var : var) = Fmt.pf fmt "%a %a" var.ty.expr () pp_var var in
-  mk ~kind:C ~params id (fun fmt () ->
-      Fmt.pf fmt "@[<hv 2>@[static %a %a(%a){@]@ %t@ @[}@]@]@." ret.expr ()
+  mk ~kind ~params id (fun fmt () ->
+      Fmt.pf fmt "@[<hv 2>@[static %a %a(%a){@]@ %t@ @[};@]@]@." ret.expr ()
         pp_id id
         Fmt.(list ~sep:comma pp_args)
         params p)

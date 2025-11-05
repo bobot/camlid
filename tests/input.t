@@ -19,9 +19,8 @@
   #include <caml/custom.h>
   #include "./basic.h"
   typedef int camlid_int;
-  static void camlid_ml2c(value * v, camlid_int * c){ *c = Int_val(*v); }
-  void f(camlid_int);
-  static void camlid_free(camlid_int * c){  }
+  static void camlid_ml2c(value * v, camlid_int * c){ *c = Int_val(*v); };
+  static void camlid_free(camlid_int * c){  };
   extern value camlid_stub_f(value x){
     camlid_int x1 = ((camlid_int) { });
     value ret;

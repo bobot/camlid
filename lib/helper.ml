@@ -75,14 +75,16 @@ let func_id ~ml ?result ?ignored_result fid params =
         }
   | None, None -> print_ml_fun { fid; mlname = ml; params; result = None }
 
-let func ?ml ?result ?ignored_result fname params =
+let func ?(declare = false) ?ml ?result ?ignored_result fname params =
   let ml = Option.value ~default:fname ml in
   let fid =
     let used_in_calls = List.filter (fun p -> p.used_in_call) params in
     let vars_used_in_calls = List.map (fun p -> p.pc) used_in_calls in
-    declare_existing
-      ?result:(Option.map (fun rty -> expr "%a" pp_code rty.cty) result)
-      fname vars_used_in_calls
+    if declare then
+      declare_existing
+        ?result:(Option.map (fun rty -> expr "%a" pp_code rty.cty) result)
+        fname vars_used_in_calls
+    else existing fname vars_used_in_calls
   in
   func_id ~ml ?result ?ignored_result fid params
 

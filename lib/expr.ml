@@ -3,7 +3,7 @@ type code = { id : id; kind : kind; toplevel : expr; params : var list }
     and depend on the avalaibility of other code *)
 
 and expr = { expr : unit Fmt.t }
-and kind = C | ML
+and kind = C | ML | H
 
 and id = {
   id : int;
@@ -177,7 +177,7 @@ let run ~kind ~prefix env expr =
   let fmt = Format.formatter_of_buffer b in
   let pp_id =
     match kind with
-    | C ->
+    | C | H ->
         fun fmt id ->
           Fmt.string fmt
             (PPID.pp env.ids_c env.string_ids_c prefix id id.name id.keep_name)
@@ -228,14 +228,14 @@ let params_of_expr expr =
   let l = List.sort Var.compare @@ List.of_seq @@ Var.H.to_seq_keys h in
   l
 
-let toplevel id p =
+let toplevel ?(kind = C) id p =
   Format.kdprintf
     (fun k ->
       let params = params_of_expr k in
-      mk ~kind:C ~params id (fun fmt () -> k fmt))
+      mk ~kind ~params id (fun fmt () -> k fmt))
     p
 
-let final_print ~prefix ~ml ~c kind expr =
+let final_print ~prefix ~ml ~c ~h kind expr =
   let open struct
     type t = Seen | Printed
   end in
@@ -249,6 +249,7 @@ let final_print ~prefix ~ml ~c kind expr =
     match kind with
     | ML -> Buffer.output_buffer ml buf
     | C -> Buffer.output_buffer c buf
+    | H -> Buffer.output_buffer h buf
   and aux_code c =
     match ID.H.find_opt printed c.id with
     | None ->

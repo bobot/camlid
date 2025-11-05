@@ -9,7 +9,7 @@
   > ~ml:"myptr" ~c:"int *" ()
   > 
   > let () = Generate.to_file "basic" [
-  >  func "f" [ output pointer "x"]
+  >  func ~declare:true "f" [ output pointer "x"]
   > ]
   > EOF
 
@@ -19,23 +19,23 @@
   #include <caml/alloc.h>
   #include <caml/custom.h>
   typedef int * camlid_custom;
-  static void camlid_init(camlid_custom * c){  }
+  static void camlid_init(camlid_custom * c){  };
   void f(camlid_custom);
   void finalize_ptr(camlid_custom *);
   static void camlid_finalize_op(value v){
     finalize_ptr((camlid_custom *) Data_custom_val(v));
-    }
+    };
   int compare_ptr(camlid_custom *, camlid_custom *);
   static int camlid_compare_op(value v1, value v2){
     return compare_ptr(
              (camlid_custom *) Data_custom_val(v1),
              (camlid_custom *) Data_custom_val(v2)
            );
-    }
+    };
   intnat hash_ptr(camlid_custom *);
   static intnat camlid_hash_op(value v){
     return hash_ptr((camlid_custom *) Data_custom_val(v));
-    }
+    };
   struct custom_operations camlid_cops = {
   NULL,
   camlid_finalize_op,
@@ -47,8 +47,8 @@
   static void camlid_c2ml(value * v, camlid_custom * c){
     *v = caml_alloc_custom(&camlid_cops,sizeof(camlid_custom), 0, 1);
     *((camlid_custom *) Data_custom_val(*v)) = *c;
-    }
-  static void camlid_free(camlid_custom * c){  }
+    };
+  static void camlid_free(camlid_custom * c){  };
   extern value camlid_stub_f(){
     camlid_custom x = ((camlid_custom) { });
     value ret;

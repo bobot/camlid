@@ -3,12 +3,12 @@
   > open Helper
   > 
   > let () = Generate.to_file "basic" [
-  >  func "f_nat" [ inout int "x"];
-  >  func "f_int" [ inout int_trunc "x"];
-  >  func "f_double" [ inout double "x"];
-  >  func "f_int32" [ inout int32 "x"];
-  >  func "f_int64" [ inout int64 "x"];
-  >  func "f_nativeint" [ inout nativeint "x"];
+  >  func ~declare:true "f_nat" [ inout int "x"];
+  >  func ~declare:true "f_int" [ inout int_trunc "x"];
+  >  func ~declare:true "f_double" [ inout double "x"];
+  >  func ~declare:true "f_int32" [ inout int32 "x"];
+  >  func ~declare:true "f_int64" [ inout int64 "x"];
+  >  func ~declare:true "f_nativeint" [ inout nativeint "x"];
   > ]
   > ~headers:["./basic.h"]
   > EOF
@@ -29,10 +29,10 @@
   #include <caml/custom.h>
   #include "./basic.h"
   typedef intnat camlid_int;
-  static void camlid_ml2c(value * v, camlid_int * c){ *c = Long_val(*v); }
+  static void camlid_ml2c(value * v, camlid_int * c){ *c = Long_val(*v); };
   void f_nat(camlid_int);
-  static void camlid_c2ml(value * v, camlid_int * c){ *v = Val_long(*c); }
-  static void camlid_free(camlid_int * c){  }
+  static void camlid_c2ml(value * v, camlid_int * c){ *v = Val_long(*c); };
+  static void camlid_free(camlid_int * c){  };
   extern value camlid_stub_f_nat(value x){
     camlid_int x1 = ((camlid_int) { });
     value ret;
@@ -43,10 +43,10 @@
     return ret;
   };
   typedef int camlid_int1;
-  static void camlid_ml2c1(value * v, camlid_int1 * c){ *c = Int_val(*v); }
+  static void camlid_ml2c1(value * v, camlid_int1 * c){ *c = Int_val(*v); };
   void f_int(camlid_int1);
-  static void camlid_c2ml1(value * v, camlid_int1 * c){ *v = Val_int(*c); }
-  static void camlid_free1(camlid_int1 * c){  }
+  static void camlid_c2ml1(value * v, camlid_int1 * c){ *v = Val_int(*c); };
+  static void camlid_free1(camlid_int1 * c){  };
   extern value camlid_stub_f_int(value x){
     camlid_int1 x1 = ((camlid_int1) { });
     value ret;
@@ -57,12 +57,14 @@
     return ret;
   };
   typedef double camlid_float;
-  static void camlid_ml2c2(value * v, camlid_float * c){ *c = Double_val(*v); }
+  static void camlid_ml2c2(value * v, camlid_float * c){
+    *c = Double_val(*v);
+    };
   void f_double(camlid_float);
   static void camlid_c2ml2(value * v, camlid_float * c){
     *v = caml_copy_double(*c);
-    }
-  static void camlid_free2(camlid_float * c){  }
+    };
+  static void camlid_free2(camlid_float * c){  };
   extern value camlid_stub_f_double(value x){
     camlid_float x1 = ((camlid_float) { });
     value ret;
@@ -73,12 +75,12 @@
     return ret;
   };
   typedef int32_t camlid_int32;
-  static void camlid_ml2c3(value * v, camlid_int32 * c){ *c = Int32_val(*v); }
+  static void camlid_ml2c3(value * v, camlid_int32 * c){ *c = Int32_val(*v); };
   void f_int32(camlid_int32);
   static void camlid_c2ml3(value * v, camlid_int32 * c){
     *v = caml_copy_int32(*c);
-    }
-  static void camlid_free3(camlid_int32 * c){  }
+    };
+  static void camlid_free3(camlid_int32 * c){  };
   extern value camlid_stub_f_int32(value x){
     camlid_int32 x1 = ((camlid_int32) { });
     value ret;
@@ -89,12 +91,12 @@
     return ret;
   };
   typedef int64_t camlid_int64;
-  static void camlid_ml2c4(value * v, camlid_int64 * c){ *c = Int64_val(*v); }
+  static void camlid_ml2c4(value * v, camlid_int64 * c){ *c = Int64_val(*v); };
   void f_int64(camlid_int64);
   static void camlid_c2ml4(value * v, camlid_int64 * c){
     *v = caml_copy_int64(*c);
-    }
-  static void camlid_free4(camlid_int64 * c){  }
+    };
+  static void camlid_free4(camlid_int64 * c){  };
   extern value camlid_stub_f_int64(value x){
     camlid_int64 x1 = ((camlid_int64) { });
     value ret;
@@ -107,12 +109,12 @@
   typedef intnat camlid_nativeint;
   static void camlid_ml2c5(value * v, camlid_nativeint * c){
     *c = Nativeint_val(*v);
-    }
+    };
   void f_nativeint(camlid_nativeint);
   static void camlid_c2ml5(value * v, camlid_nativeint * c){
     *v = caml_copy_nativeint(*c);
-    }
-  static void camlid_free5(camlid_nativeint * c){  }
+    };
+  static void camlid_free5(camlid_nativeint * c){  };
   extern value camlid_stub_f_nativeint(value x){
     camlid_nativeint x1 = ((camlid_nativeint) { });
     value ret;

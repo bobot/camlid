@@ -3,8 +3,8 @@
   > open Helper
   > 
   > let () = Generate.to_file "basic" [
-  >  func "f" [ output (ptr_ref int) "x"];
-  >  func "f2" [ output (ptr_ref int) "x"; output (ptr_ref int) "y"]
+  >  func ~declare:true "f" [ output (ptr_ref int) "x"];
+  >  func ~declare:true "f2" [ output (ptr_ref int) "x"; output (ptr_ref int) "y"]
   > ]
   > EOF
 
@@ -15,12 +15,12 @@
   #include <caml/custom.h>
   typedef intnat camlid_int;
   typedef camlid_int * camlid_ref;
-  static void camlid_init1(camlid_int * c){  }
-  static void camlid_init(camlid_ref * c){ camlid_init1(*c); }
+  static void camlid_init1(camlid_int * c){  };
+  static void camlid_init(camlid_ref * c){ camlid_init1(*c); };
   void f(camlid_ref);
-  static void camlid_c2ml1(value * v, camlid_int * c){ *v = Val_long(*c); }
-  static void camlid_c2ml(value * v, camlid_ref * c){ camlid_c2ml1(v, *c); }
-  static void camlid_free(camlid_ref * c){  }
+  static void camlid_c2ml1(value * v, camlid_int * c){ *v = Val_long(*c); };
+  static void camlid_c2ml(value * v, camlid_ref * c){ camlid_c2ml1(v, *c); };
+  static void camlid_free(camlid_ref * c){  };
   extern value camlid_stub_f(){
     camlid_ref x = &(((struct { camlid_int a; }) { ((camlid_int) { }) }).a);
     value ret;
@@ -32,13 +32,13 @@
   };
   typedef camlid_int * camlid_ref1;
   typedef camlid_int * camlid_ref2;
-  static void camlid_init2(camlid_ref1 * c){ camlid_init1(*c); }
-  static void camlid_init3(camlid_ref2 * c){ camlid_init1(*c); }
+  static void camlid_init2(camlid_ref1 * c){ camlid_init1(*c); };
+  static void camlid_init3(camlid_ref2 * c){ camlid_init1(*c); };
   void f2(camlid_ref1, camlid_ref2);
-  static void camlid_c2ml2(value * v, camlid_ref1 * c){ camlid_c2ml1(v, *c); }
-  static void camlid_c2ml3(value * v, camlid_ref2 * c){ camlid_c2ml1(v, *c); }
-  static void camlid_free1(camlid_ref1 * c){  }
-  static void camlid_free2(camlid_ref2 * c){  }
+  static void camlid_c2ml2(value * v, camlid_ref1 * c){ camlid_c2ml1(v, *c); };
+  static void camlid_c2ml3(value * v, camlid_ref2 * c){ camlid_c2ml1(v, *c); };
+  static void camlid_free1(camlid_ref1 * c){  };
+  static void camlid_free2(camlid_ref2 * c){  };
   extern value camlid_stub_f2(){
     camlid_ref1 x = &(((struct { camlid_int a; }) { ((camlid_int) { }) }).a);
     camlid_ref2 y = &(((struct { camlid_int a; }) { ((camlid_int) { }) }).a);

@@ -3,7 +3,7 @@
   > open Helper
   > 
   > let () = Generate.to_file "basic" [
-  >  func "f" []
+  >  func ~declare:true "f" []
   > ]
   > EOF
 
