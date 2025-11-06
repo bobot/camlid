@@ -253,12 +253,12 @@
   static void caml_cudd_False(caml_cudd_result* dst){
     dst->tag=caml_cudd_result_False/*66*/;
     };
-  static void caml_cudd_Ifte(caml_cudd_result* dst, caml_cudd_int1 cond,
-  caml_cudd_bdd_t then_, caml_cudd_bdd_t else_){
+  static void caml_cudd_Ifte(caml_cudd_result* dst, caml_cudd_int1* cond,
+  caml_cudd_bdd_t* then_, caml_cudd_bdd_t* else_){
     dst->tag=caml_cudd_result_Ifte;
-    dst->u.Ifte.cond = cond;
-    dst->u.Ifte.then_ = then_;
-    dst->u.Ifte.else_ = else_;
+    dst->u.Ifte.cond = *cond;
+    dst->u.Ifte.then_ = *then_;
+    dst->u.Ifte.else_ = *else_;
     
     };
   static void caml_cudd_bdd_inspect(caml_cudd_custom man, caml_cudd_bdd_t vbdd,
@@ -321,6 +321,32 @@
   };
 
   $ ocamlc -ccopt --warn-all -c cudd_core_stub.c
+  cudd_core_stub.c: In function 'caml_cudd_bdd_inspect':
+  cudd_core_stub.c:273:25: error: passing argument 2 of 'caml_cudd_Ifte' makes pointer from integer without a cast [-Wint-conversion]
+    273 |     caml_cudd_Ifte(dst, Cudd_NodeReadIndex(vbdd), th, el);
+        |                         ^~~~~~~~~~~~~~~~~~~~~~~~
+        |                         |
+        |                         unsigned int
+  cudd_core_stub.c:253:67: note: expected 'caml_cudd_int1 *' {aka 'long int *'} but argument is of type 'unsigned int'
+    253 | static void caml_cudd_Ifte(caml_cudd_result* dst, caml_cudd_int1* cond,
+        |                                                   ~~~~~~~~~~~~~~~~^~~~
+  cudd_core_stub.c:273:51: error: passing argument 3 of 'caml_cudd_Ifte' from incompatible pointer type [-Wincompatible-pointer-types]
+    273 |     caml_cudd_Ifte(dst, Cudd_NodeReadIndex(vbdd), th, el);
+        |                                                   ^~
+        |                                                   |
+        |                                                   caml_cudd_bdd_t {aka DdNode *}
+  cudd_core_stub.c:254:18: note: expected 'DdNode **' but argument is of type 'caml_cudd_bdd_t' {aka 'DdNode *'}
+    254 | caml_cudd_bdd_t* then_, caml_cudd_bdd_t* else_){
+        | ~~~~~~~~~~~~~~~~~^~~~~
+  cudd_core_stub.c:273:55: error: passing argument 4 of 'caml_cudd_Ifte' from incompatible pointer type [-Wincompatible-pointer-types]
+    273 |     caml_cudd_Ifte(dst, Cudd_NodeReadIndex(vbdd), th, el);
+        |                                                       ^~
+        |                                                       |
+        |                                                       caml_cudd_bdd_t {aka DdNode *}
+  cudd_core_stub.c:254:42: note: expected 'DdNode **' but argument is of type 'caml_cudd_bdd_t' {aka 'DdNode *'}
+    254 | caml_cudd_bdd_t* then_, caml_cudd_bdd_t* else_){
+        |                         ~~~~~~~~~~~~~~~~~^~~~~
+  [2]
 
   $ cat cudd_core.ml
   type caml_cudd_man

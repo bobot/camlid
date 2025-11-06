@@ -636,6 +636,40 @@ let if_ ?else_ cond ~then_ =
 
 let seq l = expr "%a" Fmt.(list ~sep:cut (fun fmt e -> e.expr fmt ())) l
 
+type to_ml = { to_ml : code; src : Var.t; dst : Var.t }
+type to_c = { to_c : code; src : Var.t; dst : Var.t }
+
+let convert ?to_c ?to_ml ~(c : typedef) ~(ml : typedef) () =
+  {
+    descr = "int";
+    cty = c.cty;
+    mlty = ml.mlty;
+    mlname = ml.mlname;
+    c2ml =
+      (match to_ml with
+      | None -> code "no_toml_given" ""
+      | Some (to_ml : to_ml) ->
+          code "c2ml" "%a tmp; %a;@ %a;" pp_code ml.cty pp_call
+            ( to_ml.to_ml,
+              [ (to_ml.src, expr "%a" pp_var c.c); (to_ml.dst, expr "&tmp") ] )
+            (c2ml ~v:(expr "%a" pp_var ml.v) ~c:(expr "&tmp") ())
+            ml);
+    ml2c =
+      (match to_c with
+      | None -> code "no_toml_given" ""
+      | Some (to_c : to_c) ->
+          code "c2ml" "%a tmp; %a;@ %a;" pp_code ml.cty
+            (ml2c ~v:(expr "%a" pp_var ml.v) ~c:(expr "&tmp") ())
+            ml pp_call
+            ( to_c.to_c,
+              [ (to_c.src, expr "%a" pp_var c.c); (to_c.dst, expr "&tmp") ] ));
+    init = c.init;
+    init_expr = c.init_expr;
+    free = c.free;
+    v = ml.v;
+    c = c.c;
+  }
+
 module AlgData : sig
   type 'a uc
   type 'a t
@@ -721,8 +755,8 @@ end = struct
                    fun i -> function
                      | Constant -> ()
                      | Field (_, c, f) ->
-                         fmt "%a->u.%s.%s = %a;@," pp_var dst name c.name pp_var
-                           c;
+                         fmt "%a->u.%s.%s = *%a;@," pp_var dst name c.name
+                           pp_var c;
                          aux (i + 1) f
                   in
                   aux 0 fields)
@@ -845,7 +879,7 @@ end = struct
       } )
 
   let const = Constant
-  let ( + ) (name, ty) f = Field (ty, Var.mk name (expr "%a" pp_code ty.cty), f)
+  let ( + ) (name, ty) f = Field (ty, Var.mk name (expr "%a*" pp_code ty.cty), f)
   let start = Empty
   let destruct { uc = _ } = assert false
 end
