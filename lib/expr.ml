@@ -82,7 +82,10 @@ let pp_code fmt code =
   pp_dep fmt code;
   open_close_stag fmt (PrintID code.id)
 
+let e_code code = { expr = (fun fmt () -> pp_code fmt code) }
+let g code = Fmt.const pp_code code
 let pp_var fmt c = open_close_stag fmt (PrintVar c)
+let e_var var = { expr = Fmt.const pp_var var }
 
 let pp_call fmt (code, bind) =
   open_close_stag fmt (Dep code);

@@ -35,33 +35,6 @@ type result = {
 
 type conf = Expr.expr list
 
-let code ?(kind = C) ?params ?keep_name ?(locals = []) ?(ovars = [])
-    ?(ret = expr "void") name p =
-  Format.kdprintf
-    (fun k ->
-      let id = ID.mk ?keep_name name in
-      let params =
-        match params with
-        | None ->
-            let params = params_of_expr k in
-            let params = List.sort_uniq Var.compare (ovars @ params) in
-            let local = Var.S.of_list locals in
-            let params =
-              List.filter (fun v -> not (Var.S.mem v local)) params
-            in
-            params
-        | Some params -> params
-      in
-      let pp_args fmt (var : var) =
-        Fmt.pf fmt "%a %a" var.ty.expr () pp_var var
-      in
-      mk ~kind ~params id (fun fmt () ->
-          Fmt.pf fmt "@[<hv 2>@[static %a %a(%a){@]@ %t@ @[};@]@]@." ret.expr ()
-            pp_id id
-            Fmt.(list ~sep:comma pp_args)
-            params k))
-    p
-
 let codef ?(kind = C) ?params ?keep_name ?(locals = []) ?(ovars = [])
     ?(ret = expr "void") name pp =
   let p = fun fmt -> pp { fmt = (fun p -> Fmt.pf fmt p) } in
@@ -82,6 +55,13 @@ let codef ?(kind = C) ?params ?keep_name ?(locals = []) ?(ovars = [])
         pp_id id
         Fmt.(list ~sep:comma pp_args)
         params p)
+
+let code ?kind ?params ?keep_name ?locals ?ovars ?ret name p =
+  Format.kdprintf
+    (fun k ->
+      codef ?kind ?params ?keep_name ?locals ?ovars ?ret name (fun { fmt } ->
+          fmt "%t" k))
+    p
 
 let c2ml ?(binds = []) ~v ~c () fmt ty =
   pp_call fmt (ty.c2ml, [ (ty.v, v); (ty.c, c) ] @ binds)

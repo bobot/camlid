@@ -62,14 +62,8 @@ let ptr_ref (ty : typedef) =
     cty;
     mlty = mlalias "ptr_ref" "%a" pp_code ty.mlty;
     mlname = None;
-    c2ml =
-      code "c2ml" "%a;"
-        (c2ml ~v:(expr "%a" pp_var v) ~c:(expr "*%a" pp_var c) ())
-        ty;
-    ml2c =
-      code "ml2c" "%a;"
-        (ml2c ~v:(expr "%a" pp_var v) ~c:(expr "*%a" pp_var c) ())
-        ty;
+    c2ml = code "c2ml" "%a;" (c2ml ~v:(e_var v) ~c:(expr "*%a" pp_var c) ()) ty;
+    ml2c = code "ml2c" "%a;" (ml2c ~v:(e_var v) ~c:(expr "*%a" pp_var c) ()) ty;
     init = code "init" "%a;" (init ~c:(expr "*%a" pp_var c) ()) ty;
     init_expr =
       expr "&(((struct { %a a; }) { %a }).a)" pp_code ty.cty init_expr ty;
@@ -265,7 +259,7 @@ let abstract ?get ?set ~icty ~descr ~ml ~cty () =
           code "ml2c" "%a;" pp_call
             ( f.get,
               [
-                (f.c, expr "%a" pp_var c);
+                (f.c, e_var c);
                 (f.i, expr "((%a *) Bp_val(*%a))" pp_code icty pp_var v);
               ] ));
     c2ml =
@@ -281,7 +275,7 @@ let abstract ?get ?set ~icty ~descr ~ml ~cty () =
               fmt "%a;" pp_call
                 ( f.set,
                   [
-                    (f.c, expr "%a" pp_var c);
+                    (f.c, e_var c);
                     (f.i, expr "((%a *) Bp_val(*%a))" pp_code icty pp_var v);
                   ] ));
     init = code ~ovars:[ c ] "init" "";
@@ -398,8 +392,7 @@ let custom ?initialize ?finalize ?finalize_ptr ?hash ?compare ?get ?set ~ml
           code "ml2c" "*%a = *(%a);" pp_var c (data_custom_val' icty v).expr ()
       | Some f ->
           code "ml2c" "@[%a;@]" pp_call
-            ( f.get,
-              [ (f.i, data_custom_val' icty v); (f.c, expr "%a" pp_var c) ] ));
+            (f.get, [ (f.i, data_custom_val' icty v); (f.c, e_var c) ]));
     c2ml =
       codef "c2ml" (fun { fmt } ->
           fmt "@[*%a = caml_alloc_custom(&%a,sizeof(%a), 0, 1);@]@," pp_var v
@@ -409,12 +402,10 @@ let custom ?initialize ?finalize ?finalize_ptr ?hash ?compare ?get ?set ~ml
               fmt "@[*(%a) = *%a;@]" (data_custom_val' icty v).expr () pp_var c
           | Some f ->
               fmt "@[%a;@]" pp_call
-                ( f.set,
-                  [ (f.i, data_custom_val' icty v); (f.c, expr "%a" pp_var c) ]
-                ));
+                (f.set, [ (f.i, data_custom_val' icty v); (f.c, e_var c) ]));
     init =
       (let pp_init fmt f =
-         Fmt.pf fmt "%a;" pp_call (f.initialize, [ (f.c, expr "%a" pp_var c) ])
+         Fmt.pf fmt "%a;" pp_call (f.initialize, [ (f.c, e_var c) ])
        in
        code ~ovars:[ c ] "init" "%a" Fmt.(option pp_init) initialize);
     init_expr = expr "((%a) { })" pp_code cty;
@@ -438,7 +429,7 @@ let mk_finalize ~icty finalize =
   { finalize = declare_existing finalize [ i ]; i }
 
 let mk_finalize_ptr ~icty finalize =
-  let i = Var.mk "i" (expr "%a" pp_code icty) in
+  let i = Var.mk "i" (e_code icty) in
   { finalize = declare_existing finalize [ i ]; i }
 
 let mk_hash ~icty hash =
@@ -461,7 +452,7 @@ let simple_param ?(binds = []) ?(input = false) ?(output = false)
     output;
     used_in_call;
     pty;
-    pc = Var.mk pname (expr "%a" pp_code pty.cty);
+    pc = Var.mk pname (e_code pty.cty);
     binds;
   }
 
@@ -562,7 +553,7 @@ let code_c_fun (f : func) =
         | Some r -> Fmt.pf fmt "%a = " pp_var r.rc
       in
       fmt "@[%a%a;@]@," pp_result f.result pp_call
-        (f.fid, List.map (fun v -> (v, expr "%a" pp_var v)) vars_used_in_calls);
+        (f.fid, List.map (fun v -> (v, e_var v)) vars_used_in_calls);
       (* create return value *)
       let pp_conv_out fmt (p : param) =
         Fmt.pf fmt "@[%a;@]@,"
@@ -650,19 +641,17 @@ let convert ?to_c ?to_ml ~(c : typedef) ~(ml : typedef) () =
       | None -> code "no_toml_given" ""
       | Some (to_ml : to_ml) ->
           code "c2ml" "%a tmp; %a;@ %a;" pp_code ml.cty pp_call
-            ( to_ml.to_ml,
-              [ (to_ml.src, expr "%a" pp_var c.c); (to_ml.dst, expr "&tmp") ] )
-            (c2ml ~v:(expr "%a" pp_var ml.v) ~c:(expr "&tmp") ())
+            (to_ml.to_ml, [ (to_ml.src, e_var c.c); (to_ml.dst, expr "&tmp") ])
+            (c2ml ~v:(e_var ml.v) ~c:(expr "&tmp") ())
             ml);
     ml2c =
       (match to_c with
       | None -> code "no_toml_given" ""
       | Some (to_c : to_c) ->
           code "c2ml" "%a tmp; %a;@ %a;" pp_code ml.cty
-            (ml2c ~v:(expr "%a" pp_var ml.v) ~c:(expr "&tmp") ())
+            (ml2c ~v:(e_var ml.v) ~c:(expr "&tmp") ())
             ml pp_call
-            ( to_c.to_c,
-              [ (to_c.src, expr "%a" pp_var c.c); (to_c.dst, expr "&tmp") ] ));
+            (to_c.to_c, [ (to_c.src, e_var c.c); (to_c.dst, expr "&tmp") ]));
     init = c.init;
     init_expr = c.init_expr;
     free = c.free;

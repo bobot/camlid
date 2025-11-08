@@ -54,7 +54,7 @@ let func_id ~ml ?result ?ignored_result fid params =
               {
                 rty;
                 routput = true;
-                rc = Var.mk "res" (expr "%a" pp_code rty.cty);
+                rc = Var.mk "res" (e_code rty.cty);
                 binds = [];
               };
         }
@@ -69,7 +69,7 @@ let func_id ~ml ?result ?ignored_result fid params =
               {
                 rty;
                 routput = false;
-                rc = Var.mk "res" (expr "%a" pp_code rty.cty);
+                rc = Var.mk "res" (e_code rty.cty);
                 binds = [];
               };
         }
@@ -82,7 +82,7 @@ let func ?(declare = false) ?ml ?result ?ignored_result fname params =
     let vars_used_in_calls = List.map (fun p -> p.pc) used_in_calls in
     if declare then
       declare_existing
-        ?result:(Option.map (fun rty -> expr "%a" pp_code rty.cty) result)
+        ?result:(Option.map (fun rty -> e_code rty.cty) result)
         fname vars_used_in_calls
     else existing fname vars_used_in_calls
   in

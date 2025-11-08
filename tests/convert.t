@@ -17,8 +17,8 @@
   >       let src = Expr.Var.mk "src" (expr "%a *" pp_code int.cty) in
   >        { dst; src; to_ml =
   >           Type.code "to_ml" "if(*%a){%a}{%a};"
-  >       Expr.pp_var src (Expert.AlgData.make Result.data ~dst:(expr "%a" Expr.pp_var dst) (expr "%a" Expr.pp_var data.pc)).expr ()
-  >        (Expert.AlgData.make Result.error ~dst:(expr "%a" Expr.pp_var dst)  (expr "%a" Expr.pp_var src)).expr ()
+  >       Expr.pp_var src (Expert.AlgData.make Result.data ~dst:(Expr.e_var dst) (Expr.e_var data.pc)).expr ()
+  >        (Expert.AlgData.make Result.error ~dst:(Expr.e_var dst)  (Expr.e_var src)).expr ()
   > 
   >        }
   >   in
@@ -26,7 +26,7 @@
   >   data, {
   >              Type.rty = ty;
   >              routput = true;
-  >              rc = Expr.Var.mk "res" (expr "%a" pp_code ty.cty);
+  >              rc = Expr.Var.mk "res" (Expr.e_code ty.cty);
   >              binds = [];
   >            }
   >   
@@ -34,7 +34,7 @@
   > let () = Generate.to_file "basic" [
   >  let other_input = input int "other" in
   >  let fid = Expert.declare_existing
-  >      ~result:(expr "%a" pp_code int.cty)
+  >      ~result:(Expr.e_code int.cty)
   >      "f" [other_input.pc;data.pc] in
   >  Expert.print_ml_fun {mlname="f";fid;params=[data;other_input;];
   >      result = Some data_or_status}

@@ -7,7 +7,7 @@ let bdd_t = typedef "bdd_t" "DdNode*"
 
 let bdd_wrapper_s =
   Expert.declare_struct "bdd_wrapper"
-    [ ("ptr", expr "%a" pp_code bdd_t); ("manager", expr "DdManager*") ]
+    [ ("ptr", Expr.e_code bdd_t); ("manager", expr "DdManager*") ]
 
 let bdd_wrapper = typedef "bdd_wrapper" "struct %a" pp_code bdd_wrapper_s
 
@@ -68,7 +68,7 @@ let () =
                {
                  rty = man;
                  routput = true;
-                 rc = Expr.Var.mk "res" (expr "%a" pp_code man.cty);
+                 rc = Expr.Var.mk "res" (Expr.e_code man.cty);
                  binds = [];
                };
            params = [];
@@ -108,7 +108,7 @@ let () =
        let _, ty = Expert.AlgData.close "result" uc in
        let b = input bdd "vbdd" in
        let dst_o = output (ptr_ref ty) "dst" in
-       let dst = expr "%a" Expr.pp_var dst_o.pc in
+       let dst = Expr.e_var dst_o.pc in
        let inspect =
          let open Expr in
          let open Expert in
