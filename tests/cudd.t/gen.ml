@@ -7,12 +7,12 @@ let bdd_t = typedef "bdd_t" "DdNode*"
 
 let bdd_wrapper_s =
   Expert.declare_struct "bdd_wrapper"
-    [ ("ptr", Expr.e_code bdd_t); ("manager", expr "DdManager*") ]
+    [ ("ptr", Expr.e_def bdd_t); ("manager", expr "DdManager*") ]
 
-let bdd_wrapper = typedef "bdd_wrapper" "struct %a" pp_code bdd_wrapper_s
+let bdd_wrapper = typedef "bdd_wrapper" "struct %a" pp_def bdd_wrapper_s
 
 let bdd_finalize =
-  let i = Expr.Var.mk "i" (Expr.expr "%a*" pp_code bdd_wrapper) in
+  let i = Expr.Var.mk "i" (Expr.expr "%a*" pp_def bdd_wrapper) in
   {
     Expert.finalize =
       Type.code "bdd_finalize" "Cudd_RecursiveDeref(%a->manager,%a->ptr);"
@@ -21,8 +21,8 @@ let bdd_finalize =
   }
 
 let bdd_set =
-  let i = Expr.Var.mk "i" (Expr.expr "%a*" pp_code bdd_wrapper) in
-  let c = Expr.Var.mk "c" (Expr.expr "%a*" pp_code bdd_t) in
+  let i = Expr.Var.mk "i" (Expr.expr "%a*" pp_def bdd_wrapper) in
+  let c = Expr.Var.mk "c" (Expr.expr "%a*" pp_def bdd_t) in
   {
     Expert.set =
       Type.code "bdd_set" "Cudd_Ref(*%a);@ %a->manager=%a;@ %a->ptr=*%a;"
@@ -33,8 +33,8 @@ let bdd_set =
   }
 
 let bdd_get =
-  let i = Expr.Var.mk "i" (Expr.expr "%a*" pp_code bdd_wrapper) in
-  let c = Expr.Var.mk "c" (Expr.expr "%a*" pp_code bdd_t) in
+  let i = Expr.Var.mk "i" (Expr.expr "%a*" pp_def bdd_wrapper) in
+  let c = Expr.Var.mk "c" (Expr.expr "%a*" pp_def bdd_t) in
   {
     Expert.get = Type.code "bdd_get" "*%a=%a->ptr;" Expr.pp_var c Expr.pp_var i;
     i;
@@ -68,7 +68,7 @@ let () =
                {
                  rty = man;
                  routput = true;
-                 rc = Expr.Var.mk "res" (Expr.e_code man.cty);
+                 rc = Expr.Var.mk "res" (Expr.e_def man.cty);
                  binds = [];
                };
            params = [];
@@ -123,8 +123,8 @@ let () =
               ~else_:
                 (seq
                    [
-                     expr "%a th = Cudd_T(%a);" pp_code bdd_t pp_var b.pc;
-                     expr "%a el = Cudd_E(%a);" pp_code bdd_t pp_var b.pc;
+                     expr "%a th = Cudd_T(%a);" pp_def bdd_t pp_var b.pc;
+                     expr "%a el = Cudd_E(%a);" pp_def bdd_t pp_var b.pc;
                      if_
                        (expr "Cudd_IsComplement(%a)" pp_var b.pc)
                        ~then_:

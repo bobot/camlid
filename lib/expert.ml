@@ -3,15 +3,15 @@ open Type
 
 let typedef name =
   let id = ID.mk name in
-  Format.kdprintf (fun k -> dfp ~kind:H id "typedef %t %a;@." k pp_id id)
+  Format.kdprintf (fun k -> ddef ~kind:H id "typedef %t %a;@." k pp_id id)
 
 let mlalias name =
   let id = ID.mk name in
-  Format.kdprintf (fun k -> dfp ~kind:ML id "type %a = %t@." pp_id id k)
+  Format.kdprintf (fun k -> ddef ~kind:ML id "type %a = %t@." pp_id id k)
 
 let mlabstract name =
   let id = ID.mk name in
-  dfp ~kind:ML id "type %a@." pp_id id
+  ddef ~kind:ML id "type %a@." pp_id id
 
 let declare_existing ?(result = expr "void") f params =
   let id = ID.mk ~keep_name:true f in
@@ -38,7 +38,7 @@ let wrap_typedef ?c2ml ?ml2c ?init ?free ty =
 let builtin_mltypes ~ml_type ~c_type ~c2ml ~ml2c =
   let cty = typedef ml_type "%s" c_type in
   let v = Var.mk "v" (expr "value *") in
-  let c = Var.mk "c" (expr "%a *" pp_code cty) in
+  let c = Var.mk "c" (expr "%a *" pp_def cty) in
   {
     descr = "int";
     cty;
@@ -47,39 +47,39 @@ let builtin_mltypes ~ml_type ~c_type ~c2ml ~ml2c =
     c2ml = code "c2ml" "*%a = %s(*%a);" pp_var v c2ml pp_var c;
     ml2c = code "ml2c" "*%a = %s(*%a);" pp_var c ml2c pp_var v;
     init = code ~ovars:[ c ] "init" "";
-    init_expr = expr "((%a) { })" pp_code cty;
+    init_expr = expr "((%a) { })" pp_def cty;
     free = code ~ovars:[ c ] "free" "";
     v;
     c;
   }
 
 let ptr_ref (ty : typedef) =
-  let cty = typedef "ref" "%a *" pp_code ty.cty in
+  let cty = typedef "ref" "%a *" pp_def ty.cty in
   let v = Var.mk "v" (expr "value *") in
-  let c = Var.mk "c" (expr "%a *" pp_code cty) in
+  let c = Var.mk "c" (expr "%a *" pp_def cty) in
   {
     descr = "ref on " ^ ty.descr;
     cty;
-    mlty = mlalias "ptr_ref" "%a" pp_code ty.mlty;
+    mlty = mlalias "ptr_ref" "%a" pp_def ty.mlty;
     mlname = None;
-    c2ml = code "c2ml" "%a;" (c2ml ~v:(e_var v) ~c:(expr "*%a" pp_var c) ()) ty;
-    ml2c = code "ml2c" "%a;" (ml2c ~v:(e_var v) ~c:(expr "*%a" pp_var c) ()) ty;
-    init = code "init" "%a;" (init ~c:(expr "*%a" pp_var c) ()) ty;
+    c2ml = code "c2ml" "%a" (c2ml ~v:(e_var v) ~c:(expr "*%a" pp_var c) ()) ty;
+    ml2c = code "ml2c" "%a" (ml2c ~v:(e_var v) ~c:(expr "*%a" pp_var c) ()) ty;
+    init = code "init" "%a" (init ~c:(expr "*%a" pp_var c) ()) ty;
     init_expr =
-      expr "&(((struct { %a a; }) { %a }).a)" pp_code ty.cty init_expr ty;
+      expr "&(((struct { %a a; }) { %a }).a)" pp_def ty.cty init_expr ty;
     free = code ~ovars:[ c ] "free" "";
     v;
     c;
   }
 
 let array ~len (ty : typedef) =
-  let cty = typedef "array" "%a*" pp_code ty.cty in
+  let cty = typedef "array" "%a*" pp_def ty.cty in
   let v = Var.mk "v" (expr "value *") in
-  let c = Var.mk "c" (expr "%a *" pp_code cty) in
+  let c = Var.mk "c" (expr "%a *" pp_def cty) in
   {
     descr = "array_length on " ^ ty.descr;
     cty;
-    mlty = mlalias "array" "%a array" pp_code ty.mlty;
+    mlty = mlalias "array" "%a array" pp_def ty.mlty;
     mlname = None;
     c2ml =
       codef "c2ml" (fun { fmt } ->
@@ -89,7 +89,7 @@ let array ~len (ty : typedef) =
           fmt
             "@[<hv 2>@[for(size_t cid_i=0;@ cid_i < %a;@ cid_i++@,\
              ){@]@,\
-             %a;@,\
+             %a@,\
              Store_field(*%a,cid_i,cid_temp);@,\
              }@]@,"
             pp_var len
@@ -100,21 +100,21 @@ let array ~len (ty : typedef) =
       codef "ml2c" (fun { fmt } ->
           fmt "CAMLparam0 ();@,";
           fmt "CAMLlocal1(cid_temp);@,";
-          fmt "@[*%a = malloc(sizeof(%a)*%a);@]@," pp_var c pp_code ty.cty
-            pp_var len;
+          fmt "@[*%a = malloc(sizeof(%a)*%a);@]@," pp_var c pp_def ty.cty pp_var
+            len;
           fmt
             "@[<hv 2>@[<hv 2>for(@,\
              size_t cid_i=0;@ cid_i < %a;@ cid_i++@,\
              ){@]@,\
              cid_temp=Field(*%a,cid_i);@,\
-             %a;@,\
+             %a@,\
              }@]@,"
             pp_var len pp_var v
             (ml2c ~v:(expr "&cid_temp") ~c:(expr "&((*%a)[cid_i])" pp_var c) ())
             ty;
           fmt "CAMLreturn0;");
     init = code ~ovars:[ c ] "init" "";
-    init_expr = expr "((%a) { })" pp_code cty;
+    init_expr = expr "((%a) { })" pp_def cty;
     free = code "free" "free(*%a);" pp_var c;
     v;
     c;
@@ -123,15 +123,15 @@ let array ~len (ty : typedef) =
 let array_length (ty : typedef) =
   let sstruct =
     let id = ID.mk "array_s" in
-    toplevel id "struct %a { %a* t; size_t len; };@." pp_id id pp_code ty.cty
+    toplevel id "struct %a { %a* t; size_t len; };@." pp_id id pp_def ty.cty
   in
-  let cty = typedef "array" "struct %a" pp_code sstruct in
+  let cty = typedef "array" "struct %a" pp_def sstruct in
   let v = Var.mk "v" (expr "value *") in
-  let c = Var.mk "c" (expr "%a *" pp_code cty) in
+  let c = Var.mk "c" (expr "%a *" pp_def cty) in
   {
     descr = "array_length on " ^ ty.descr;
     cty;
-    mlty = mlalias "array" "%a array" pp_code ty.mlty;
+    mlty = mlalias "array" "%a array" pp_def ty.mlty;
     mlname = None;
     c2ml =
       codef "c2ml" (fun { fmt } ->
@@ -141,7 +141,7 @@ let array_length (ty : typedef) =
           fmt
             "@[<hv 2>@[for(size_t cid_i=0;@ cid_i < %a->len;@ cid_i++@,\
              ){@]@,\
-             %a;@,\
+             %a@,\
              Store_field(*%a,cid_i,cid_temp);@,\
              }@]@,"
             pp_var c
@@ -153,30 +153,30 @@ let array_length (ty : typedef) =
           fmt "CAMLparam0 ();@,";
           fmt "CAMLlocal1(cid_temp);@,";
           fmt "@[%a->len = Wosize_val(*%a);@]@," pp_var c pp_var v;
-          fmt "@[%a->t = malloc(sizeof(%a)*%a->len);@]@," pp_var c pp_code
-            ty.cty pp_var c;
+          fmt "@[%a->t = malloc(sizeof(%a)*%a->len);@]@," pp_var c pp_def ty.cty
+            pp_var c;
           fmt
             "@[<hv 2>@[<hv 2>for(@,\
              size_t cid_i=0;@ cid_i < %a->len;@ cid_i++@,\
              ){@]@,\
              cid_temp=Field(*%a,cid_i);@,\
-             %a;@,\
+             %a@,\
              }@]@,"
             pp_var c pp_var v
             (ml2c ~v:(expr "&cid_temp") ~c:(expr "&%a->t[cid_i]" pp_var c) ())
             ty;
           fmt "CAMLreturn0;");
     init = code ~ovars:[ c ] "init" "";
-    init_expr = expr "((%a) { })" pp_code cty;
+    init_expr = expr "((%a) { })" pp_def cty;
     free = code "free" "free(%a->t);" pp_var c;
     v;
     c;
   }
 
 let array_ptr_of_array_length ty array_length =
-  let cty = typedef "array" "%a*" pp_code ty.cty in
+  let cty = typedef "array" "%a*" pp_def ty.cty in
   let v = Var.mk "v" (expr "value *") in
-  let c = Var.mk "c" (expr "%a *" pp_code cty) in
+  let c = Var.mk "c" (expr "%a *" pp_def cty) in
   {
     descr = "array on " ^ ty.descr;
     cty;
@@ -194,7 +194,7 @@ let array_ptr_of_array_length ty array_length =
 let length_ptr_of_array_length ty array_length =
   let cty = typedef "length_array" "size_t*" in
   let v = Var.mk "v" (expr "value *") in
-  let c = Var.mk "c" (expr "%a *" pp_code cty) in
+  let c = Var.mk "c" (expr "%a *" pp_def cty) in
   {
     descr = "array on " ^ ty.descr;
     cty;
@@ -212,7 +212,7 @@ let length_ptr_of_array_length ty array_length =
 let length_of_array_length ty array_length =
   let cty = typedef "length_array" "size_t" in
   let v = Var.mk "v" (expr "value *") in
-  let c = Var.mk "c" (expr "%a *" pp_code cty) in
+  let c = Var.mk "c" (expr "%a *" pp_def cty) in
   {
     descr = "array on " ^ ty.descr;
     cty;
@@ -242,7 +242,7 @@ type set = {
 (** Encapsulate a c type into an abstract ml type *)
 let abstract ?get ?set ~icty ~descr ~ml ~cty () =
   let v = Var.mk "v" (expr "value *") in
-  let c = Var.mk "c" (expr "%a *" pp_code (cty : code)) in
+  let c = Var.mk "c" (expr "%a *" pp_def cty) in
   {
     descr;
     cty;
@@ -253,33 +253,33 @@ let abstract ?get ?set ~icty ~descr ~ml ~cty () =
     ml2c =
       (match get with
       | None ->
-          code "ml2c" "*%a = *((%a *) Bp_val(*%a));" pp_var c pp_code icty
-            pp_var v
+          code "ml2c" "*%a = *((%a *) Bp_val(*%a));" pp_var c pp_def icty pp_var
+            v
       | Some f ->
-          code "ml2c" "%a;" pp_call
+          code "ml2c" "%a" pp_calli
             ( f.get,
               [
                 (f.c, e_var c);
-                (f.i, expr "((%a *) Bp_val(*%a))" pp_code icty pp_var v);
+                (f.i, expr "((%a *) Bp_val(*%a))" pp_def icty pp_var v);
               ] ));
     c2ml =
       codef "c2ml" (fun { fmt } ->
           fmt
             "@[*%a = caml_alloc((sizeof(%a) + sizeof(value) - 1) / \
              sizeof(value), Abstract_tag);@]@,"
-            pp_var v pp_code icty;
+            pp_var v pp_def icty;
           match set with
           | None ->
-              fmt "*((%a *) Bp_val(*%a)) = *%a;" pp_code icty pp_var v pp_var c
+              fmt "*((%a *) Bp_val(*%a)) = *%a;" pp_def icty pp_var v pp_var c
           | Some f ->
-              fmt "%a;" pp_call
+              fmt "%a" pp_calli
                 ( f.set,
                   [
                     (f.c, e_var c);
-                    (f.i, expr "((%a *) Bp_val(*%a))" pp_code icty pp_var v);
+                    (f.i, expr "((%a *) Bp_val(*%a))" pp_def icty pp_var v);
                   ] ));
     init = code ~ovars:[ c ] "init" "";
-    init_expr = expr "((%a) { })" pp_code cty;
+    init_expr = expr "((%a) { })" pp_def cty;
     free = code ~ovars:[ c ] "free" "";
   }
 
@@ -296,12 +296,12 @@ let custom ?initialize ?finalize ?finalize_ptr ?hash ?compare ?get ?set ~ml
     ~icty ~cty () =
   let descr = Printf.sprintf "abstract tag for type \"%s\"" ml in
   let v = Var.mk "v" (expr "value *") in
-  let c = Var.mk "c" (expr "%a *" pp_code cty) in
+  let c = Var.mk "c" (expr "%a *" pp_def cty) in
   let data_custom_val icty v =
-    expr "(%a *) Data_custom_val(%a)" pp_code icty pp_var v
+    expr "(%a *) Data_custom_val(%a)" pp_def icty pp_var v
   in
   let data_custom_val' icty v =
-    expr "(%a *) Data_custom_val(*%a)" pp_code icty pp_var v
+    expr "(%a *) Data_custom_val(*%a)" pp_def icty pp_var v
   in
   let finalize_op =
     match (finalize, finalize_ptr) with
@@ -311,7 +311,7 @@ let custom ?initialize ?finalize ?finalize_ptr ?hash ?compare ?get ?set ~ml
         Some
           {
             finalize_op =
-              code "finalize_op" "%a;" pp_call
+              code "finalize_op" "%a" pp_calli
                 (finalize.finalize, [ (finalize.i, data_custom_val icty v) ]);
             v;
           }
@@ -320,7 +320,7 @@ let custom ?initialize ?finalize ?finalize_ptr ?hash ?compare ?get ?set ~ml
         Some
           {
             finalize_op =
-              code "finalize_op" "%a;" pp_call
+              code "finalize_op" "%a" pp_calli
                 ( finalize.finalize,
                   [ (finalize.i, expr "*%a" (data_custom_val icty v).expr ()) ]
                 );
@@ -362,7 +362,7 @@ let custom ?initialize ?finalize ?finalize_ptr ?hash ?compare ?get ?set ~ml
     let id = ID.mk "cops" in
     let pp_op op_name get fmt = function
       | None -> Fmt.pf fmt "custom_%s_default" op_name
-      | Some f -> Fmt.pf fmt "%a" pp_code (get f)
+      | Some f -> Fmt.pf fmt "%a" pp_def (def_of_code @@ get f)
     in
     toplevel id
       "struct custom_operations %a = {\n\
@@ -396,7 +396,7 @@ let custom ?initialize ?finalize ?finalize_ptr ?hash ?compare ?get ?set ~ml
     c2ml =
       codef "c2ml" (fun { fmt } ->
           fmt "@[*%a = caml_alloc_custom(&%a,sizeof(%a), 0, 1);@]@," pp_var v
-            pp_code custom_op pp_code icty;
+            pp_def custom_op pp_def icty;
           match set with
           | None ->
               fmt "@[*(%a) = *%a;@]" (data_custom_val' icty v).expr () pp_var c
@@ -408,53 +408,46 @@ let custom ?initialize ?finalize ?finalize_ptr ?hash ?compare ?get ?set ~ml
          Fmt.pf fmt "%a;" pp_call (f.initialize, [ (f.c, e_var c) ])
        in
        code ~ovars:[ c ] "init" "%a" Fmt.(option pp_init) initialize);
-    init_expr = expr "((%a) { })" pp_code cty;
+    init_expr = expr "((%a) { })" pp_def cty;
     free = code ~ovars:[ c ] "free" "";
     v;
     c;
   }
 
 let mk_get ~icty ~cty get =
-  let c = Var.mk "c" (expr "%a *" pp_code cty) in
-  let i = Var.mk "i" (expr "%a *" pp_code icty) in
+  let c = Var.mk "c" (expr "%a *" pp_def cty) in
+  let i = Var.mk "i" (expr "%a *" pp_def icty) in
   { get = declare_existing get [ c; i ]; c; i }
 
 let mk_set ~icty ~cty set =
-  let c = Var.mk "c" (expr "%a *" pp_code cty) in
-  let i = Var.mk "i" (expr "%a *" pp_code icty) in
+  let c = Var.mk "c" (expr "%a *" pp_def cty) in
+  let i = Var.mk "i" (expr "%a *" pp_def icty) in
   { set = declare_existing set [ i; c ]; c; i }
 
 let mk_finalize ~icty finalize =
-  let i = Var.mk "i" (expr "%a *" pp_code icty) in
+  let i = Var.mk "i" (expr "%a *" pp_def icty) in
   { finalize = declare_existing finalize [ i ]; i }
 
 let mk_finalize_ptr ~icty finalize =
-  let i = Var.mk "i" (e_code icty) in
+  let i = Var.mk "i" (e_def icty) in
   { finalize = declare_existing finalize [ i ]; i }
 
 let mk_hash ~icty hash =
-  let i = Var.mk "i" (expr "%a *" pp_code icty) in
+  let i = Var.mk "i" (expr "%a *" pp_def icty) in
   { hash = declare_existing ~result:(expr "intnat") hash [ i ]; i }
 
 let mk_compare ~icty compare =
-  let i1 = Var.mk "c" (expr "%a *" pp_code icty) in
-  let i2 = Var.mk "i" (expr "%a *" pp_code icty) in
+  let i1 = Var.mk "c" (expr "%a *" pp_def icty) in
+  let i2 = Var.mk "i" (expr "%a *" pp_def icty) in
   { compare = declare_existing ~result:(expr "int") compare [ i1; i2 ]; i1; i2 }
 
 let mk_initialize ~cty initialize =
-  let c = Var.mk "c" (expr "%a *" pp_code cty) in
+  let c = Var.mk "c" (expr "%a *" pp_def cty) in
   { initialize = declare_existing initialize [ c ]; c }
 
 let simple_param ?(binds = []) ?(input = false) ?(output = false)
     ?(used_in_call = true) pty pname =
-  {
-    input;
-    output;
-    used_in_call;
-    pty;
-    pc = Var.mk pname (e_code pty.cty);
-    binds;
-  }
+  { input; output; used_in_call; pty; pc = Var.mk pname (e_def pty.cty); binds }
 
 let input ?used_in_call ?binds = simple_param ?used_in_call ?binds ~input:true
 let output ?used_in_call ?binds = simple_param ?used_in_call ?binds ~output:true
@@ -507,7 +500,7 @@ let code_c_fun (f : func) =
   let vars_used_in_calls = List.map (fun p -> p.pc) used_in_calls in
   (* local C variable declaration *)
   let tuple_var = Var.mk "tup" (expr "value[%i]" (List.length results)) in
-  let id = ID.mk ("stub_" ^ f.fid.id.name) in
+  let id = ID.mk ("stub_" ^ (def_of_code f.fid).id.name) in
   fp ~kind:C ~params:(List.map snd inputs) id (fun { fmt } ->
       (* Formals *)
       let pp_formal fmt (_, pv) = Fmt.pf fmt "value %a" pp_var pv in
@@ -516,14 +509,13 @@ let code_c_fun (f : func) =
         inputs;
       (* Locals *)
       let pp_local fmt p =
-        Fmt.pf fmt "@[%a %a = %a;@]@," pp_code p.pty.cty pp_var p.pc init_expr
+        Fmt.pf fmt "@[%a %a = %a;@]@," pp_def p.pty.cty pp_var p.pc init_expr
           p.pty
       in
       fmt "%a" Fmt.(list ~sep:nop pp_local) f.params;
       (match f.result with
       | None -> ()
-      | Some result ->
-          fmt "@[%a %a;@]@," pp_code result.rty.cty pp_var result.rc);
+      | Some result -> fmt "@[%a %a;@]@," pp_def result.rty.cty pp_var result.rc);
       fmt "@[value %a;@]@," pp_var return_var;
       (match results with
       | [] | [ _ ] -> ()
@@ -533,7 +525,7 @@ let code_c_fun (f : func) =
             l);
       (* convert input variables *)
       let pp_conv_in fmt ((p : param), vc) =
-        Fmt.pf fmt "@[%a;@]@,"
+        Fmt.pf fmt "@[%a@]@,"
           (ml2c ~binds:p.binds ~v:(expr "&%a" pp_var vc)
              ~c:(expr "&%a" pp_var p.pc) ())
           p.pty
@@ -542,7 +534,7 @@ let code_c_fun (f : func) =
       (* initialize variables that are not input *)
       let pp_init_out fmt p =
         if not p.input then
-          Fmt.pf fmt "@[%a;@]@,"
+          Fmt.pf fmt "@[%a@]@,"
             (init ~binds:p.binds ~c:(expr "&%a" pp_var p.pc) ())
             p.pty
       in
@@ -556,7 +548,7 @@ let code_c_fun (f : func) =
         (f.fid, List.map (fun v -> (v, e_var v)) vars_used_in_calls);
       (* create return value *)
       let pp_conv_out fmt (p : param) =
-        Fmt.pf fmt "@[%a;@]@,"
+        Fmt.pf fmt "@[%a@]@,"
           (c2ml ~binds:p.binds
              ~v:(expr "&%a" pp_var return_var)
              ~c:(expr "&%a" pp_var p.pc) ())
@@ -573,7 +565,7 @@ let code_c_fun (f : func) =
           fmt "@[<hv 2>@[Begin_roots_block(%a, %i)@]@," pp_var tuple_var len;
           (* convert outputs *)
           let pp_conv_out fmt (i, (p : param)) =
-            Fmt.pf fmt "@[%a;@]"
+            Fmt.pf fmt "@[%a@]"
               (c2ml
                  ~v:(expr "&%a[%i]" pp_var tuple_var i)
                  ~c:(expr "&%a" pp_var p.pc) ~binds:p.binds ())
@@ -590,7 +582,7 @@ let code_c_fun (f : func) =
           fmt "@[End_roots()@]@,");
       (* free allocated memory *)
       let pp_init_out fmt (p : param) =
-        Fmt.pf fmt "@[%a;@]@,"
+        Fmt.pf fmt "@[%a@]@,"
           (free ~binds:p.binds ~c:(expr "&%a" pp_var p.pc) ())
           p.pty
       in
@@ -603,13 +595,13 @@ let print_ml_fun (f : func) =
   let code_c = code_c_fun f in
   let results = results f in
   let inputs = List.filter (fun p -> p.input) f.params in
-  let pp_result fmt p = pp_code fmt p.pty.mlty in
-  let pp_param fmt p = Fmt.pf fmt "@[%a ->@]@ " pp_code p.pty.mlty in
+  let pp_result fmt p = pp_def fmt p.pty.mlty in
+  let pp_param fmt p = Fmt.pf fmt "@[%a ->@]@ " pp_def p.pty.mlty in
   expr "@[<hv 2>external %s:@ %a@[<hv>%a@]@ = \"%a\"@]" f.mlname
     Fmt.(list_or_empty ~empty:(any "unit -> ") ~sep:nop pp_param)
     inputs
     Fmt.(list_or_empty ~empty:(any "unit") ~sep:(any "@ *@ ") pp_result)
-    results pp_code code_c
+    results pp_def (def_of_code code_c)
 
 let declare_struct name fields =
   let id = ID.mk name in
@@ -640,7 +632,7 @@ let convert ?to_c ?to_ml ~(c : typedef) ~(ml : typedef) () =
       (match to_ml with
       | None -> code "no_toml_given" ""
       | Some (to_ml : to_ml) ->
-          code "c2ml" "%a tmp; %a;@ %a;" pp_code ml.cty pp_call
+          code "c2ml" "%a tmp; %a;@ %a" pp_def ml.cty pp_call
             (to_ml.to_ml, [ (to_ml.src, e_var c.c); (to_ml.dst, expr "&tmp") ])
             (c2ml ~v:(e_var ml.v) ~c:(expr "&tmp") ())
             ml);
@@ -648,7 +640,7 @@ let convert ?to_c ?to_ml ~(c : typedef) ~(ml : typedef) () =
       (match to_c with
       | None -> code "no_toml_given" ""
       | Some (to_c : to_c) ->
-          code "c2ml" "%a tmp; %a;@ %a;" pp_code ml.cty
+          code "c2ml" "%a tmp; %a@ %a;" pp_def ml.cty
             (ml2c ~v:(e_var ml.v) ~c:(expr "&tmp") ())
             ml pp_call
             (to_c.to_c, [ (to_c.src, e_var c.c); (to_c.dst, expr "&tmp") ]));
@@ -774,7 +766,7 @@ end = struct
                 fun i -> function
                   | Constant -> ()
                   | Field (ty, var, f) ->
-                      Fmt.pf fmt "%a;@,"
+                      Fmt.pf fmt "%a@,"
                         (c2ml ~v:(expr "&tmp")
                            ~c:(expr "&%a->u.%s.%s" pp_var c name var.name)
                            ())
@@ -812,7 +804,7 @@ end = struct
         fun fmt -> function
           | Constant -> ()
           | Field (ty, var, fields) ->
-              Fmt.pf fmt "%a %s;@ %a" pp_code ty.cty var.name
+              Fmt.pf fmt "%a %s;@ %a" pp_def ty.cty var.name
                 (pp_fields (i + 1))
                 fields
       in
@@ -843,15 +835,15 @@ end = struct
           | Constant -> ()
           | Field (ty, _, fields) ->
               if i <> 0 then Fmt.pf fmt " *@ ";
-              Fmt.pf fmt "%a%a" pp_code ty.mlty (pp_fields (i + 1)) fields
+              Fmt.pf fmt "%a%a" pp_def ty.mlty (pp_fields (i + 1)) fields
       in
       let id = ID.mk ml_type in
       toplevel ~kind:ML id "@[<hv 2>type %a =%a@]@," pp_id id pp_constrs uc
     in
-    (let dst = Var.mk "dst" (expr "%a*" pp_code cty) in
+    (let dst = Var.mk "dst" (expr "%a*" pp_def cty) in
      add_code_to_constr dst uc);
     let v = Var.mk "v" (expr "value *") in
-    let c = Var.mk "c" (expr "%a *" pp_code cty) in
+    let c = Var.mk "c" (expr "%a *" pp_def cty) in
     ( { uc },
       {
         descr = "int";
@@ -861,14 +853,14 @@ end = struct
         c2ml = c2ml ~v ~c uc;
         ml2c = code ~ovars:[ v; c ] "not_yet_implemented" "";
         init = code ~ovars:[ c ] "init" "";
-        init_expr = expr "((%a) { })" pp_code cty;
+        init_expr = expr "((%a) { })" pp_def cty;
         free = code ~ovars:[ c ] "free" "";
         v;
         c;
       } )
 
   let const = Constant
-  let ( + ) (name, ty) f = Field (ty, Var.mk name (expr "%a*" pp_code ty.cty), f)
+  let ( + ) (name, ty) f = Field (ty, Var.mk name (expr "%a*" pp_def ty.cty), f)
   let start = Empty
   let destruct { uc = _ } = assert false
 end

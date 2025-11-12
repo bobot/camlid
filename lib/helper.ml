@@ -6,7 +6,7 @@ type code = Expr.code
 type expr = Expr.expr
 
 let expr = expr
-let pp_code = pp_code
+let pp_def = pp_def
 let typedef = typedef
 
 let int : typedef =
@@ -54,7 +54,7 @@ let func_id ~ml ?result ?ignored_result fid params =
               {
                 rty;
                 routput = true;
-                rc = Var.mk "res" (e_code rty.cty);
+                rc = Var.mk "res" (e_def rty.cty);
                 binds = [];
               };
         }
@@ -69,7 +69,7 @@ let func_id ~ml ?result ?ignored_result fid params =
               {
                 rty;
                 routput = false;
-                rc = Var.mk "res" (e_code rty.cty);
+                rc = Var.mk "res" (e_def rty.cty);
                 binds = [];
               };
         }
@@ -82,7 +82,7 @@ let func ?(declare = false) ?ml ?result ?ignored_result fname params =
     let vars_used_in_calls = List.map (fun p -> p.pc) used_in_calls in
     if declare then
       declare_existing
-        ?result:(Option.map (fun rty -> e_code rty.cty) result)
+        ?result:(Option.map (fun rty -> e_def rty.cty) result)
         fname vars_used_in_calls
     else existing fname vars_used_in_calls
   in
@@ -140,16 +140,16 @@ let abstract ?get ?set ?internal ~ml ~c () : typedef =
   let get =
     Option.map
       (fun get ->
-        let c = Var.mk "c" (expr "%a *" pp_code cty) in
-        let i = Var.mk "i" (expr "%a *" pp_code icty) in
+        let c = Var.mk "c" (expr "%a *" pp_def cty) in
+        let i = Var.mk "i" (expr "%a *" pp_def icty) in
         { get = declare_existing get [ c; i ]; c; i })
       get
   in
   let set =
     Option.map
       (fun set ->
-        let c = Var.mk "c" (expr "%a *" pp_code cty) in
-        let i = Var.mk "i" (expr "%a *" pp_code icty) in
+        let c = Var.mk "c" (expr "%a *" pp_def cty) in
+        let i = Var.mk "i" (expr "%a *" pp_def icty) in
         { set = declare_existing set [ i; c ]; c; i })
       set
   in

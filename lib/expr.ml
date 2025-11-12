@@ -1,18 +1,15 @@
-type code = { id : id; kind : kind; toplevel : expr; params : var list }
-(** Allows for a piece of text/code to depend on parameters, bind parameters,
-    and depend on the avalaibility of other code *)
+type defined = { id : id; kind : kind; toplevel : expr }
+(** Allows for a piece of text/code to depend on parameters, and depend on the
+    avalaibility of other code *)
+
+and code =
+  | Nop
+  | Defined of { defined : defined; params : var list }
+  | Binds of { def : code; binds : (var * expr) list }
 
 and expr = { expr : unit Fmt.t }
 and kind = C | ML | H
-
-and id = {
-  id : int;
-  name : string;
-  args : id list;
-  mutable code : code option;
-  keep_name : bool;
-}
-
+and id = { id : int; name : string; args : id list; keep_name : bool }
 and var = { id : int; name : string; args : var list; ty : expr }
 
 let expr p = Format.kdprintf (fun k -> { expr = (fun fmt () -> k fmt) }) p
@@ -27,7 +24,7 @@ module ID = struct
 
   let mk ?(keep_name = false) ?(args = []) name : t =
     incr c;
-    { id = !c; name; args; code = None; keep_name }
+    { id = !c; name; args; keep_name }
 
   module H = Hashtbl.Make (struct
     type nonrec t = t
@@ -69,7 +66,7 @@ module Var = struct
   end)
 end
 
-type Format.stag += Dep of code | PrintID of ID.t | PrintVar of Var.t
+type Format.stag += Dep of defined | PrintID of ID.t | PrintVar of Var.t
 
 let open_close_stag fmt t =
   Format.pp_open_stag fmt t;
@@ -78,33 +75,50 @@ let open_close_stag fmt t =
 let pp_dep fmt c = open_close_stag fmt (Dep c)
 let pp_id fmt id = open_close_stag fmt (PrintID id)
 
-let pp_code fmt code =
+let pp_def fmt code =
   pp_dep fmt code;
   open_close_stag fmt (PrintID code.id)
 
-let e_code code = { expr = (fun fmt () -> pp_code fmt code) }
-let g code = Fmt.const pp_code code
+let e_def code = { expr = Fmt.const pp_def code }
 let pp_var fmt c = open_close_stag fmt (PrintVar c)
 let e_var var = { expr = Fmt.const pp_var var }
 
-let pp_call fmt (code, bind) =
-  open_close_stag fmt (Dep code);
-  let pp_arg fmt v =
-    match List.assq_opt v bind with
-    | None -> pp_var fmt v
-    | Some { expr } -> expr fmt ()
+let pp_call fmt (code, binds) =
+  let rec aux binds = function
+    | Nop -> ()
+    | Binds { def; binds = binds' } -> aux (binds' @ binds) def
+    | Defined { defined; params } ->
+        open_close_stag fmt (Dep defined);
+        let pp_arg fmt v =
+          match List.assq_opt v binds with
+          | None -> pp_var fmt v
+          | Some { expr } -> expr fmt ()
+        in
+        Fmt.pf fmt "@[<hv>@[<hv 2>@[%a(@]@,%a@]@,)@]" pp_id defined.id
+          Fmt.(list ~sep:comma pp_arg)
+          params
   in
-  Fmt.pf fmt "@[<hv>@[<hv 2>@[%a(@]@,%a@]@,)@]" pp_id code.id
-    Fmt.(list ~sep:comma pp_arg)
-    code.params
+  aux binds code
+
+let pp_calli fmt (c, b) =
+  match c with Nop -> () | c -> Fmt.pf fmt "%a;" pp_call (c, b)
+
+let pp_call_ret fmt (ret, c, b) = Fmt.pf fmt "%a=%a;" ret.expr () pp_call (c, b)
+let def ?(kind = C) id toplevel = { id; kind; toplevel = { expr = toplevel } }
+
+let ddef ?kind id p =
+  Format.kdprintf (fun k -> def ?kind id (fun fmt () -> k fmt)) p
 
 let mk ?(kind = C) ?(params = []) id toplevel =
-  let code = { id; kind; params; toplevel = { expr = toplevel } } in
-  id.code <- Some code;
+  let code =
+    Defined { defined = { id; kind; toplevel = { expr = toplevel } }; params }
+  in
   code
 
-(* let nop name = mk Fmt.nop
-let any s = mk (Fmt.any s) *)
+let rec def_of_code = function
+  | Nop -> invalid_arg "def_of_code: Nop"
+  | Binds { def; _ } -> def_of_code def
+  | Defined { defined; _ } -> defined
 
 type fp = { fmt : 'a. ('a, Format.formatter, unit) format -> 'a }
 
@@ -231,12 +245,15 @@ let params_of_expr expr =
   let l = List.sort Var.compare @@ List.of_seq @@ Var.H.to_seq_keys h in
   l
 
-let toplevel ?(kind = C) id p =
+let toplevel_callable ?(kind = C) id p =
   Format.kdprintf
     (fun k ->
       let params = params_of_expr k in
       mk ~kind ~params id (fun fmt () -> k fmt))
     p
+
+let toplevel ?(kind = C) id p =
+  Format.kdprintf (fun k -> def ~kind id (fun fmt () -> k fmt)) p
 
 let final_print ~prefix ~ml ~c ~h kind expr =
   let open struct

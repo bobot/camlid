@@ -3,8 +3,8 @@ open Expr
 type typedef = {
   descr : string;
   mlname : string option;  (** ml name *)
-  cty : code;  (** print the c type *)
-  mlty : code;  (** print the ocaml type *)
+  cty : defined;  (** print the c type *)
+  mlty : defined;  (** print the ocaml type *)
   c2ml : code;  (** convert C values of this type to ML value *)
   ml2c : code;  (** ml2c *)
   init : code;
@@ -50,11 +50,14 @@ let codef ?(kind = C) ?params ?keep_name ?(locals = []) ?(ovars = [])
     | Some params -> params
   in
   let pp_args fmt (var : var) = Fmt.pf fmt "%a %a" var.ty.expr () pp_var var in
-  mk ~kind ~params id (fun fmt () ->
-      Fmt.pf fmt "@[<hv 2>@[static %a %a(%a){@]@ %t@ @[};@]@]@." ret.expr ()
-        pp_id id
-        Fmt.(list ~sep:comma pp_args)
-        params p)
+  let c =
+    mk ~kind ~params id (fun fmt () ->
+        Fmt.pf fmt "@[<hv 2>@[static %a %a(%a){@]@ %t@ @[};@]@]@." ret.expr ()
+          pp_id id
+          Fmt.(list ~sep:comma pp_args)
+          params p)
+  in
+  c
 
 let code ?kind ?params ?keep_name ?locals ?ovars ?ret name p =
   Format.kdprintf
@@ -64,15 +67,15 @@ let code ?kind ?params ?keep_name ?locals ?ovars ?ret name p =
     p
 
 let c2ml ?(binds = []) ~v ~c () fmt ty =
-  pp_call fmt (ty.c2ml, [ (ty.v, v); (ty.c, c) ] @ binds)
+  pp_calli fmt (ty.c2ml, [ (ty.v, v); (ty.c, c) ] @ binds)
 
 let ml2c ?(binds = []) ~v ~c () fmt ty =
-  pp_call fmt (ty.ml2c, [ (ty.v, v); (ty.c, c) ] @ binds)
+  pp_calli fmt (ty.ml2c, [ (ty.v, v); (ty.c, c) ] @ binds)
 
 let init ?(binds = []) ~c () fmt ty =
-  pp_call fmt (ty.init, [ (ty.c, c) ] @ binds)
+  pp_calli fmt (ty.init, [ (ty.c, c) ] @ binds)
 
 let free ?(binds = []) ~c () fmt ty =
-  pp_call fmt (ty.free, [ (ty.c, c) ] @ binds)
+  pp_calli fmt (ty.free, [ (ty.c, c) ] @ binds)
 
 let init_expr fmt ty = Fmt.pf fmt "%a" ty.init_expr.expr ()
