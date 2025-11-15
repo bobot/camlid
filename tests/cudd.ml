@@ -51,8 +51,8 @@ let f_man fname mlname inputs result =
     ~result
 
 let () =
-  Generate.to_file ~in_header:false ~prefix:"caml_cudd_" ~headers:[ "./cudd.h" ]
-    "cudd_core"
+  Generate.to_file ~in_header:true ~prefix:"caml_cudd_" ~headers:[ "./cudd.h" ]
+    ~definitions:[ "./cudd_stub_def.h" ] "test_cudd"
     [
       (let cudd_init =
          Type.code ~ret:(expr "DdManager*") "cudd_init"
@@ -96,9 +96,9 @@ let () =
             Expr.pp_var mani.pc Expr.pp_var b1.pc)
          ~ml:"print" [ mani; b1 ]);
       (let uc = Expert.AlgData.start in
-       let false_, uc = Expert.AlgData.(close_constr "False" const uc) in
-       let true_, uc = Expert.AlgData.(close_constr "True" const uc) in
-       let ifte, uc =
+       let _, uc = Expert.AlgData.(close_constr "False" const uc) in
+       let _, uc = Expert.AlgData.(close_constr "True" const uc) in
+       let _, uc =
          Expert.(
            AlgData.(
              close_constr "Ifte"
@@ -106,45 +106,7 @@ let () =
                uc))
        in
        let _, ty = Expert.AlgData.close "result" uc in
-       let b = input bdd "vbdd" in
-       let dst_o = output (ptr_ref ty) "dst" in
-       let dst = Expr.e_var dst_o.pc in
-       let inspect =
-         let open Expr in
-         let open Expert in
-         Type.code "bdd_inspect" "%a"
-           (if_
-              (expr "Cudd_IsConstant(%a)" pp_var b.pc)
-              ~then_:
-                (if_
-                   (expr "%a == Cudd_ReadOne(%a)" pp_var b.pc pp_var mani.pc)
-                   ~then_:(Expert.AlgData.make true_ ~dst)
-                   ~else_:(Expert.AlgData.make false_ ~dst))
-              ~else_:
-                (seq
-                   [
-                     expr "%a th = Cudd_T(%a);" pp_def bdd_t pp_var b.pc;
-                     expr "%a el = Cudd_E(%a);" pp_def bdd_t pp_var b.pc;
-                     if_
-                       (expr "Cudd_IsComplement(%a)" pp_var b.pc)
-                       ~then_:
-                         (seq
-                            [
-                              expr "th = Cudd_Not(th);";
-                              expr "el = Cudd_Not(el);";
-                            ]);
-                     Expert.AlgData.make ifte ~dst
-                       (expr "Cudd_NodeReadIndex(%a)" pp_var b.pc)
-                       (expr "th") (expr "el");
-                   ]))
-             .expr
-           ()
-       in
-       Expert.print_ml_fun
-         {
-           Expert.fid = inspect;
-           mlname = "inspect";
-           result = None;
-           params = [ mani; b; dst_o ];
-         });
+       f_man "bdd_inspect" "inspect" [ ptr_ref ty; bdd ] bdd);
     ]
+
+let () = Utils.cat_and_compile "test_cudd"

@@ -1,0 +1,15 @@
+  $ cat test_no_arg_no_value_stub.c
+#include <stddef.h>
+#include <inttypes.h>
+#include <caml/mlvalues.h>
+#include <caml/memory.h>
+#include <caml/alloc.h>
+#include <caml/custom.h>
+void f();
+extern value camlid_stub_f(){value ret;f();ret = Val_unit;return ret;};
+
+  $ cat test_no_arg_no_value.ml
+external f: unit -> unit = "camlid_stub_f"
+  $ compile test_no_arg_no_value.c
+
+  $ compile test_no_arg_no_value.ml
