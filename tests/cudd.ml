@@ -52,7 +52,7 @@ let f_man fname mlname inputs result =
 
 let () =
   Generate.to_file ~in_header:false ~prefix:"caml_cudd_" ~headers:[ "./cudd.h" ]
-    "cudd_core"
+    "test_cudd"
     [
       (let cudd_init =
          Type.code ~ret:(expr "DdManager*") "cudd_init"
@@ -125,6 +125,7 @@ let () =
                    [
                      expr "%a th = Cudd_T(%a);" pp_def bdd_t pp_var b.pc;
                      expr "%a el = Cudd_E(%a);" pp_def bdd_t pp_var b.pc;
+                     expr "intnat v = Cudd_NodeReadIndex(%a);" pp_var b.pc;
                      if_
                        (expr "Cudd_IsComplement(%a)" pp_var b.pc)
                        ~then_:
@@ -133,9 +134,8 @@ let () =
                               expr "th = Cudd_Not(th);";
                               expr "el = Cudd_Not(el);";
                             ]);
-                     Expert.AlgData.make ifte ~dst
-                       (expr "Cudd_NodeReadIndex(%a)" pp_var b.pc)
-                       (expr "th") (expr "el");
+                     Expert.AlgData.make ifte ~dst (expr "&v") (expr "&th")
+                       (expr "&el");
                    ]))
              .expr
            ()
@@ -148,3 +148,5 @@ let () =
            params = [ mani; b; dst_o ];
          });
     ]
+
+let () = Utils.cat_and_compile "test_cudd"

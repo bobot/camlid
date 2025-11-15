@@ -1,5 +1,2 @@
-(cram (deps (package camlidl) ./camlid_toplevel.exe))
-
-(toplevel
- (name camlid_toplevel)
- (libraries camlid))
+(tests (names input output custom cudd abstract array convert inout no_arg_no_value result) (libraries camlid utils)
+(deps (glob_files *.h)))
