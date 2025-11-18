@@ -1,0 +1,1 @@
+external f: unit -> unit = "camlid_stub_f"
