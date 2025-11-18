@@ -1,12 +1,11 @@
-  $ cat test_result_stub.c
 #include <stddef.h>
 #include <inttypes.h>
 #include <caml/mlvalues.h>
 #include <caml/memory.h>
 #include <caml/alloc.h>
 #include <caml/custom.h>
+#include "lib.h"
 typedef intptr_t camlid_int;
-camlid_int f();
 static void camlid_c2ml(value * v, camlid_int * c){ *v = Val_long(*c); };
 extern value camlid_stub_f(){
   camlid_int res;
@@ -15,10 +14,3 @@ extern value camlid_stub_f(){
   camlid_c2ml(&ret, &res);
   return ret;
 };
-
-  $ cat test_result.ml
-type camlid_int = int
-external f: unit -> camlid_int = "camlid_stub_f"
-  $ compile test_result.c
-
-  $ compile test_result.ml

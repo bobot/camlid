@@ -1,2 +1,2 @@
-(tests (names cudd array convert no_arg_no_value result) (libraries camlid utils)
+(tests (names cudd array convert no_arg_no_value) (libraries camlid utils)
 (deps (glob_files *.h)))
