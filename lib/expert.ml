@@ -446,8 +446,8 @@ let mk_initialize ~cty initialize =
   { initialize = declare_existing initialize [ c ]; c }
 
 let simple_param ?(binds = []) ?(input = false) ?(output = false)
-    ?(used_in_call = true) pty pname =
-  { input; output; used_in_call; pty; pc = Var.mk pname (e_def pty.cty); binds }
+    ?(used_in_call = true) ?(name = "p") pty =
+  { input; output; used_in_call; pty; pc = Var.mk name (e_def pty.cty); binds }
 
 let input ?used_in_call ?binds = simple_param ?used_in_call ?binds ~input:true
 let output ?used_in_call ?binds = simple_param ?used_in_call ?binds ~output:true

@@ -2,7 +2,7 @@ open Camlid
 open Helper
 
 let man = custom ~finalize_ptr:"Cudd_Quit" ~ml:"man" ~c:"DdManager*" ()
-let mani = input man "man"
+let mani = input man ~name:"man"
 let bdd_t = typedef "bdd_t" "DdNode*"
 
 let bdd_wrapper_s =
@@ -46,9 +46,7 @@ let bdd =
     ~icty:bdd_wrapper ~cty:bdd_t ()
 
 let f_man fname mlname inputs result =
-  func fname ~ml:mlname
-    (mani :: List.map (fun ty -> input ty "v") inputs)
-    ~result
+  func fname ~ml:mlname (mani :: List.map (fun ty -> input ty) inputs) ~result
 
 let () =
   Generate.to_file ~in_header:true ~prefix:"caml_cudd_" ~headers:[ "./cudd.h" ]
@@ -80,16 +78,16 @@ let () =
       f_man "Cudd_bddAnd" "bdd_and" [ bdd; bdd ] bdd;
       f_man "Cudd_bddOr" "bdd_or" [ bdd; bdd ] bdd;
       func "Cudd_Not" ~ml:"bdd_not"
-        [ { mani with used_in_call = false }; input bdd "v" ]
+        [ { mani with used_in_call = false }; input bdd ]
         ~result:bdd;
-      (let b1 = input bdd "b" in
-       let b2 = input bdd "b" in
+      (let b1 = input bdd in
+       let b2 = input bdd in
        func_id
          (Type.code ~ret:(expr "int") "equal_bdd" "return (%a == %a);@,"
             Expr.pp_var b1.pc Expr.pp_var b2.pc)
          ~ml:"bdd_is_equal" [ b1; b2 ] ~result:bool);
       f_man "Cudd_bddLeq" "bdd_leq" [ bdd; bdd ] bool;
-      (let b1 = input bdd "b" in
+      (let b1 = input bdd in
        func_id
          (Type.code "print"
             "fflush(stdout);@ Cudd_PrintMinterm(%a,%a);@ fflush(stdout);"
@@ -103,8 +101,7 @@ let () =
              ("Ifte", [ ("cond", int); ("then_", bdd); ("else_", bdd) ]);
            ]
        in
-       func "bdd_inspect" ~ml:"inspect"
-         [ mani; output (ptr_ref ty) "res"; input bdd "bdd" ]);
+       func "bdd_inspect" ~ml:"inspect" [ mani; output (ptr_ref ty); input bdd ]);
     ]
 
 let () = Utils.cat_and_compile "test_cudd"

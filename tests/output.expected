@@ -14,12 +14,12 @@ static void camlid_c2ml1(value * v, camlid_int * c){ *v = Val_long(*c); };
 static void camlid_c2ml(value * v, camlid_ref * c){ camlid_c2ml1(v, *c); };
 static void camlid_free(camlid_ref * c){  };
 extern value camlid_stub_f(){
-  camlid_ref x = &(((struct { camlid_int a; }) { ((camlid_int) { }) }).a);
+  camlid_ref p = &(((struct { camlid_int a; }) { ((camlid_int) { }) }).a);
   value ret;
-  camlid_init(&x);
-  f(x);
-  camlid_c2ml(&ret, &x);
-  camlid_free(&x);
+  camlid_init(&p);
+  f(p);
+  camlid_c2ml(&ret, &p);
+  camlid_free(&p);
   return ret;
 };
 typedef camlid_int * camlid_ref1;
@@ -32,22 +32,22 @@ static void camlid_c2ml3(value * v, camlid_ref2 * c){ camlid_c2ml1(v, *c); };
 static void camlid_free1(camlid_ref1 * c){  };
 static void camlid_free2(camlid_ref2 * c){  };
 extern value camlid_stub_f2(){
-  camlid_ref1 x = &(((struct { camlid_int a; }) { ((camlid_int) { }) }).a);
-  camlid_ref2 y = &(((struct { camlid_int a; }) { ((camlid_int) { }) }).a);
+  camlid_ref1 p = &(((struct { camlid_int a; }) { ((camlid_int) { }) }).a);
+  camlid_ref2 p1 = &(((struct { camlid_int a; }) { ((camlid_int) { }) }).a);
   value ret;
   value tup[2] = {Val_unit, Val_unit};
-  camlid_init2(&x);
-  camlid_init3(&y);
-  f2(x, y);
+  camlid_init2(&p);
+  camlid_init3(&p1);
+  f2(p, p1);
   Begin_roots_block(tup, 2)
-    camlid_c2ml2(&tup[0], &x);
-    camlid_c2ml3(&tup[1], &y);
+    camlid_c2ml2(&tup[0], &p);
+    camlid_c2ml3(&tup[1], &p1);
     ret = caml_alloc(2,0);
     Store_field(ret, 0, tup[0]);
     Store_field(ret, 1, tup[1]);
   End_roots()
-  camlid_free1(&x);
-  camlid_free2(&y);
+  camlid_free1(&p);
+  camlid_free2(&p1);
   return ret;
 };
 

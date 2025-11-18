@@ -89,44 +89,48 @@ let func ?(declare = false) ?ml ?result ?ignored_result fname params =
   func_id ~ml ?result ?ignored_result fid params
 
 let func_in ?ml ?result fname inputs =
-  func ?ml ?result fname (List.map (fun ty -> input ty "v") inputs)
+  func ?ml ?result fname (List.map (fun ty -> input ty ~name:"v") inputs)
 
-let output_array ?(input = false) name ty =
+let output_array ?(input = false) ?(name = "array") ty =
   let a_len = array_length ty in
   let a = array_ptr_of_array_length ty a_len in
   let len_ptr = length_ptr_of_array_length ty a_len in
   let io_a_len =
-    simple_param ~input ~output:true ~used_in_call:false a_len name
+    simple_param ~input ~output:true ~used_in_call:false a_len ~name
   in
   let a =
-    ignored a (name ^ "_a") ~binds:[ (a_len.c, expr "&%a" pp_var io_a_len.pc) ]
+    ignored a ~name:(name ^ "_a")
+      ~binds:[ (a_len.c, expr "&%a" pp_var io_a_len.pc) ]
   in
   let len_ptr =
-    ignored len_ptr (name ^ "_len")
+    ignored len_ptr ~name:(name ^ "_len")
       ~binds:[ (a_len.c, expr "&%a" pp_var io_a_len.pc) ]
   in
   (io_a_len, a, len_ptr)
 
-let input_array ?(output = false) name ty =
+let input_array ?(output = false) ?(name = "array") ty =
   let a_len = array_length ty in
   let a = array_ptr_of_array_length ty a_len in
   let len = length_of_array_length ty a_len in
   let io_a_len =
-    simple_param ~input:true ~output ~used_in_call:false a_len name
+    simple_param ~input:true ~output ~used_in_call:false a_len ~name
   in
   let a =
-    ignored a (name ^ "_a") ~binds:[ (a_len.c, expr "&%a" pp_var io_a_len.pc) ]
+    ignored a ~name:(name ^ "_a")
+      ~binds:[ (a_len.c, expr "&%a" pp_var io_a_len.pc) ]
   in
   let len =
-    ignored len (name ^ "_len")
+    ignored len ~name:(name ^ "_len")
       ~binds:[ (a_len.c, expr "&%a" pp_var io_a_len.pc) ]
   in
   (io_a_len, a, len)
 
 let output_set_length_array ?(input = false) ?(output = true)
-    ?(len_used_in_call = false) name ty =
-  let len = Expert.input ~used_in_call:len_used_in_call int (name ^ "_len") in
-  let a_len = simple_param ~input ~output (array ~len:len.pc ty) name in
+    ?(len_used_in_call = false) ?(name = "array") ty =
+  let len =
+    Expert.input ~used_in_call:len_used_in_call int ~name:(name ^ "_len")
+  in
+  let a_len = simple_param ~input ~output (array ~len:len.pc ty) ~name in
   (a_len, len)
 
 let abstract ?get ?set ?internal ~ml ~c () : typedef =

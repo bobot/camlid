@@ -8,7 +8,7 @@ let () =
 
 let () =
   Generate.to_file "test_input"
-    [ func "f" [ input int_trunc "x" ] ]
+    [ func "f" [ input int_trunc ] ]
     ~headers:[ "./test_input.h" ]
 
 let () = Utils.cat_and_compile "test_input"

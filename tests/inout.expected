@@ -10,13 +10,13 @@ static void camlid_ml2c(value * v, camlid_int * c){ *c = Long_val(*v); };
 void f_nat(camlid_int);
 static void camlid_c2ml(value * v, camlid_int * c){ *v = Val_long(*c); };
 static void camlid_free(camlid_int * c){  };
-extern value camlid_stub_f_nat(value x){
-  camlid_int x1 = ((camlid_int) { });
+extern value camlid_stub_f_nat(value p){
+  camlid_int p1 = ((camlid_int) { });
   value ret;
-  camlid_ml2c(&x, &x1);
-  f_nat(x1);
-  camlid_c2ml(&ret, &x1);
-  camlid_free(&x1);
+  camlid_ml2c(&p, &p1);
+  f_nat(p1);
+  camlid_c2ml(&ret, &p1);
+  camlid_free(&p1);
   return ret;
 };
 typedef int camlid_int1;
@@ -24,13 +24,13 @@ static void camlid_ml2c1(value * v, camlid_int1 * c){ *c = Int_val(*v); };
 void f_int(camlid_int1);
 static void camlid_c2ml1(value * v, camlid_int1 * c){ *v = Val_int(*c); };
 static void camlid_free1(camlid_int1 * c){  };
-extern value camlid_stub_f_int(value x){
-  camlid_int1 x1 = ((camlid_int1) { });
+extern value camlid_stub_f_int(value p){
+  camlid_int1 p1 = ((camlid_int1) { });
   value ret;
-  camlid_ml2c1(&x, &x1);
-  f_int(x1);
-  camlid_c2ml1(&ret, &x1);
-  camlid_free1(&x1);
+  camlid_ml2c1(&p, &p1);
+  f_int(p1);
+  camlid_c2ml1(&ret, &p1);
+  camlid_free1(&p1);
   return ret;
 };
 typedef double camlid_float;
@@ -42,13 +42,13 @@ static void camlid_c2ml2(value * v, camlid_float * c){
   *v = caml_copy_double(*c);
   };
 static void camlid_free2(camlid_float * c){  };
-extern value camlid_stub_f_double(value x){
-  camlid_float x1 = ((camlid_float) { });
+extern value camlid_stub_f_double(value p){
+  camlid_float p1 = ((camlid_float) { });
   value ret;
-  camlid_ml2c2(&x, &x1);
-  f_double(x1);
-  camlid_c2ml2(&ret, &x1);
-  camlid_free2(&x1);
+  camlid_ml2c2(&p, &p1);
+  f_double(p1);
+  camlid_c2ml2(&ret, &p1);
+  camlid_free2(&p1);
   return ret;
 };
 typedef int32_t camlid_int32;
@@ -58,13 +58,13 @@ static void camlid_c2ml3(value * v, camlid_int32 * c){
   *v = caml_copy_int32(*c);
   };
 static void camlid_free3(camlid_int32 * c){  };
-extern value camlid_stub_f_int32(value x){
-  camlid_int32 x1 = ((camlid_int32) { });
+extern value camlid_stub_f_int32(value p){
+  camlid_int32 p1 = ((camlid_int32) { });
   value ret;
-  camlid_ml2c3(&x, &x1);
-  f_int32(x1);
-  camlid_c2ml3(&ret, &x1);
-  camlid_free3(&x1);
+  camlid_ml2c3(&p, &p1);
+  f_int32(p1);
+  camlid_c2ml3(&ret, &p1);
+  camlid_free3(&p1);
   return ret;
 };
 typedef int64_t camlid_int64;
@@ -74,13 +74,13 @@ static void camlid_c2ml4(value * v, camlid_int64 * c){
   *v = caml_copy_int64(*c);
   };
 static void camlid_free4(camlid_int64 * c){  };
-extern value camlid_stub_f_int64(value x){
-  camlid_int64 x1 = ((camlid_int64) { });
+extern value camlid_stub_f_int64(value p){
+  camlid_int64 p1 = ((camlid_int64) { });
   value ret;
-  camlid_ml2c4(&x, &x1);
-  f_int64(x1);
-  camlid_c2ml4(&ret, &x1);
-  camlid_free4(&x1);
+  camlid_ml2c4(&p, &p1);
+  f_int64(p1);
+  camlid_c2ml4(&ret, &p1);
+  camlid_free4(&p1);
   return ret;
 };
 typedef intptr_t camlid_nativeint;
@@ -92,13 +92,13 @@ static void camlid_c2ml5(value * v, camlid_nativeint * c){
   *v = caml_copy_nativeint(*c);
   };
 static void camlid_free5(camlid_nativeint * c){  };
-extern value camlid_stub_f_nativeint(value x){
-  camlid_nativeint x1 = ((camlid_nativeint) { });
+extern value camlid_stub_f_nativeint(value p){
+  camlid_nativeint p1 = ((camlid_nativeint) { });
   value ret;
-  camlid_ml2c5(&x, &x1);
-  f_nativeint(x1);
-  camlid_c2ml5(&ret, &x1);
-  camlid_free5(&x1);
+  camlid_ml2c5(&p, &p1);
+  f_nativeint(p1);
+  camlid_c2ml5(&ret, &p1);
+  camlid_free5(&p1);
   return ret;
 };
 

@@ -16,12 +16,12 @@ static void camlid_c2ml(value * v, camlid_abstract * c){
   };
 static void camlid_free(camlid_abstract * c){  };
 extern value camlid_stub_f(){
-  camlid_abstract x = ((camlid_abstract) { });
+  camlid_abstract p = ((camlid_abstract) { });
   value ret;
-  camlid_init(&x);
-  f(x);
-  camlid_c2ml(&ret, &x);
-  camlid_free(&x);
+  camlid_init(&p);
+  f(p);
+  camlid_c2ml(&ret, &p);
+  camlid_free(&p);
   return ret;
 };
 

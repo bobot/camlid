@@ -8,7 +8,7 @@ module Result = struct
 end
 
 let data, data_or_status =
-  let data = ignored (ptr_ref int) "data" in
+  let data = ignored (ptr_ref int) ~name:"data" in
   let conv =
     Expert.mk_converter ~dst:Result.ty ~src:int "combine_data_or_status"
       (fun ~src ~dst -> [ dst; src; data.pc ])
@@ -19,8 +19,6 @@ let data, data_or_status =
 let () =
   Generate.to_file "test_convert" ~in_header:true
     ~definitions:[ "convert_defs.h" ]
-    [
-      func ~declare:true "f" ~result:data_or_status [ input int "other"; data ];
-    ]
+    [ func ~declare:true "f" ~result:data_or_status [ input int; data ] ]
 
 let () = Utils.cat_and_compile "test_convert"

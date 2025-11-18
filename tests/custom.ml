@@ -6,7 +6,6 @@ let pointer =
     ~ml:"myptr" ~c:"int *" ()
 
 let () =
-  Generate.to_file "test_custom"
-    [ func ~declare:true "f" [ output pointer "x" ] ]
+  Generate.to_file "test_custom" [ func ~declare:true "f" [ output pointer ] ]
 
 let () = Utils.cat_and_compile "test_custom"
