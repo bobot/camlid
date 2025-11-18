@@ -133,13 +133,20 @@ let output_set_length_array ?(input = false) ?(output = true)
   let a_len = simple_param ~input ~output (array ~len:len.pc ty) ~name in
   (a_len, len)
 
-let abstract ?get ?set ?internal ~ml ~c () : typedef =
+let abstract ?initialize ?get ?set ?internal ~ml ~c () : typedef =
   let descr = Printf.sprintf "abstract tag for type \"%s\"" c in
   let cty = typedef "abstract" "%s" c in
   let icty =
     match internal with
     | None -> cty
     | Some internal -> typedef "abstract_intern" "%s" internal
+  in
+  let initialize =
+    Option.map
+      (fun initialize ->
+        let c = Var.mk "c" (expr "%a *" pp_def cty) in
+        { initialize = declare_existing initialize [ c ]; c })
+      initialize
   in
   let get =
     Option.map
@@ -157,7 +164,7 @@ let abstract ?get ?set ?internal ~ml ~c () : typedef =
         { set = declare_existing set [ i; c ]; c; i })
       set
   in
-  Expert.abstract ?set ?get ~icty ~descr ~cty ~ml ()
+  Expert.abstract ?initialize ?set ?get ~icty ~descr ~cty ~ml ()
 
 (** Encapsulate a c type into an custom ml type *)
 let custom ?initialize ?finalize ?finalize_ptr ?hash ?compare ?get ?set

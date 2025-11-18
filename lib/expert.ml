@@ -239,8 +239,10 @@ type set = {
   i : var;  (** internal type *)
 }
 
+type initialize = { initialize : code; c : var }
+
 (** Encapsulate a c type into an abstract ml type *)
-let abstract ?get ?set ~icty ~descr ~ml ~cty () =
+let abstract ?initialize ?get ?set ~icty ~descr ~ml ~cty () =
   let v = Var.mk "v" (expr "value *") in
   let c = Var.mk "c" (expr "%a *" pp_def cty) in
   {
@@ -278,14 +280,17 @@ let abstract ?get ?set ~icty ~descr ~ml ~cty () =
                     (f.c, e_var c);
                     (f.i, expr "((%a *) Bp_val(*%a))" pp_def icty pp_var v);
                   ] ));
-    init = code ~ovars:[ c ] "init" "";
+    init =
+      (let pp_init fmt f =
+         Fmt.pf fmt "%a;" pp_call (f.initialize, [ (f.c, e_var c) ])
+       in
+       code ~ovars:[ c ] "init" "%a" Fmt.(option pp_init) initialize);
     init_expr = expr "((%a) { })" pp_def cty;
     free = code ~ovars:[ c ] "free" "";
   }
 
 type finalize = { finalize : code; i : var }
 type finalize_op = { finalize_op : code; v : var }
-type initialize = { initialize : code; c : var }
 type hash = { hash : code; i : var }
 type hash_op = { hash_op : code; v : var }
 type compare = { compare : code; i1 : var; i2 : var }
