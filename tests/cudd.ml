@@ -95,18 +95,16 @@ let () =
             "fflush(stdout);@ Cudd_PrintMinterm(%a,%a);@ fflush(stdout);"
             Expr.pp_var mani.pc Expr.pp_var b1.pc)
          ~ml:"print" [ mani; b1 ]);
-      (let uc = Expert.AlgData.start in
-       let _, uc = Expert.AlgData.(close_constr "False" const uc) in
-       let _, uc = Expert.AlgData.(close_constr "True" const uc) in
-       let _, uc =
-         Expert.(
-           AlgData.(
-             close_constr "Ifte"
-               (("cond", int) + (("then_", bdd) + (("else_", bdd) + const)))
-               uc))
+      (let ty =
+         algdata "result"
+           [
+             ("False", []);
+             ("True", []);
+             ("Ifte", [ ("cond", int); ("then_", bdd); ("else_", bdd) ]);
+           ]
        in
-       let _, ty = Expert.AlgData.close "result" uc in
-       f_man "bdd_inspect" "inspect" [ ptr_ref ty; bdd ] bdd);
+       func "bdd_inspect" ~ml:"inspect"
+         [ mani; output (ptr_ref ty) "res"; input bdd "bdd" ]);
     ]
 
 let () = Utils.cat_and_compile "test_cudd"

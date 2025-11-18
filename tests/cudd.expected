@@ -224,22 +224,6 @@ extern value caml_cudd_stub_print(value man,
 };
 static void caml_cudd_init1(caml_cudd_result * c){  };
 static void caml_cudd_init(caml_cudd_ref * c){ caml_cudd_init1(*c); };
-static void caml_cudd_bdd_inspect(caml_cudd_custom man, caml_cudd_bdd_t vbdd,
-caml_cudd_ref dst){
-  if(Cudd_IsConstant(vbdd)){
-    if(vbdd == Cudd_ReadOne(man)){
-      caml_cudd_True(dst);
-      } else {
-      caml_cudd_False(dst);
-      };
-    } else {
-    caml_cudd_bdd_t th = Cudd_T(vbdd);
-    caml_cudd_bdd_t el = Cudd_E(vbdd);
-    intptr_t v = Cudd_NodeReadIndex(vbdd);
-    if(Cudd_IsComplement(vbdd)){ th = Cudd_Not(th);el = Cudd_Not(el); };
-    caml_cudd_Ifte(dst, &v, &th, &el);
-    };
-  };
 static void caml_cudd_c2ml5(value * v, caml_cudd_int1 * c){
   *v = Val_long(*c);
   };
@@ -248,18 +232,19 @@ caml_cudd_result * c){
   CAMLparam0();
   CAMLlocal1(tmp);
   switch(c->tag){
+  case caml_cudd_result_False: /* False */ *v = Val_int(0); break;
+  case caml_cudd_result_True: /* True */ *v = Val_int(1); break;
   case caml_cudd_result_Ifte: /* Ifte */
     *v=caml_alloc(3,0);
     caml_cudd_c2ml5(&tmp, &c->u.Ifte.cond);
     Store_field(*v,0,tmp);
+    
     caml_cudd_c2ml1(man, &tmp, &c->u.Ifte.then_);
     Store_field(*v,1,tmp);
+    
     caml_cudd_c2ml1(man, &tmp, &c->u.Ifte.else_);
     Store_field(*v,2,tmp);
-    break;
-  case caml_cudd_result_True: /* True */ *v = Val_int(1); break;
-  case caml_cudd_result_False: /* False */ *v = Val_int(0); break;
-  };
+    break;};
   CAMLreturn0;
   };
 static void caml_cudd_c2ml3(caml_cudd_custom man, value * v,
@@ -268,19 +253,19 @@ caml_cudd_ref * c){
   };
 static void caml_cudd_free3(caml_cudd_ref * c){  };
 extern value caml_cudd_stub_bdd_inspect(value man,
-  value vbdd){
+  value bdd){
   caml_cudd_custom man1 = ((caml_cudd_custom) { });
-  caml_cudd_bdd_t vbdd1 = ((caml_cudd_bdd_t) { });
-  caml_cudd_ref dst = &(((struct { caml_cudd_result a; }) { ((caml_cudd_result) { }) }).a);
+  caml_cudd_ref res = &(((struct { caml_cudd_result a; }) { ((caml_cudd_result) { }) }).a);
+  caml_cudd_bdd_t bdd1 = ((caml_cudd_bdd_t) { });
   value ret;
   caml_cudd_ml2c(&man, &man1);
-  caml_cudd_ml2c2(&vbdd, &vbdd1);
-  caml_cudd_init(&dst);
-  caml_cudd_bdd_inspect(man1, vbdd1, dst);
-  caml_cudd_c2ml3(man1, &ret, &dst);
+  caml_cudd_ml2c2(&bdd, &bdd1);
+  caml_cudd_init(&res);
+  bdd_inspect(man1, res, bdd1);
+  caml_cudd_c2ml3(man1, &ret, &res);
   caml_cudd_free(&man1);
-  caml_cudd_free2(&vbdd1);
-  caml_cudd_free3(&dst);
+  caml_cudd_free3(&res);
+  caml_cudd_free2(&bdd1);
   return ret;
 };
 
@@ -290,11 +275,11 @@ type caml_cudd_bdd
 type caml_cudd_int = int
 type caml_cudd_bool = bool
 type caml_cudd_int1 = int
-type caml_cudd_result =
+type result =
   | False
   | True
-  | Ifte of caml_cudd_int1 * caml_cudd_bdd * caml_cudd_bdd
-type caml_cudd_ptr_ref = caml_cudd_result
+  | Ifte of caml_cudd_int1*caml_cudd_bdd*caml_cudd_bdd
+type caml_cudd_ptr_ref = result
 external init: unit -> caml_cudd_man = "caml_cudd_stub_cudd_init"
 external bdd_true:
   caml_cudd_man ->

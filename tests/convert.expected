@@ -1,51 +1,33 @@
   $ cat test_convert_stub.c
-#include <stddef.h>
-#include <inttypes.h>
+#include "test_convert_stub.h"
 #include <caml/mlvalues.h>
 #include <caml/memory.h>
 #include <caml/alloc.h>
 #include <caml/custom.h>
-typedef intptr_t camlid_int;
-typedef camlid_int * camlid_ref;
+#include "convert_defs.h"
 static void camlid_ml2c(value * v, camlid_int * c){ *c = Long_val(*v); };
 static void camlid_init1(camlid_int * c){  };
 static void camlid_init(camlid_ref * c){ camlid_init1(*c); };
 camlid_int f(camlid_int, camlid_ref);
-typedef struct {
-  enum { camlid_result_Data, camlid_result_Error, } tag;
-  union {
-    struct { camlid_int error;  } Error; struct { camlid_int data;  } Data; } u; 
-  } camlid_result;
-static void camlid_Data(camlid_result* dst, camlid_int* data){
-  dst->tag=camlid_result_Data;
-  dst->u.Data.data = *data;
-  
-  };
-static void camlid_Error(camlid_result* dst, camlid_int* error){
-  dst->tag=camlid_result_Error;
-  dst->u.Error.error = *error;
-  
-  };
 static void camlid_to_ml(camlid_ref data, camlid_result * dst,
 camlid_int * src){
-  if(*src){camlid_Data(dst, data);}{camlid_Error(dst, src);};
+  combine_data_or_status(dst,src,data);
   };
 static void camlid_c2ml2(value * v, camlid_int * c){ *v = Val_long(*c); };
 static void camlid_c2ml1(value * v, camlid_result * c){
   CAMLparam0();
   CAMLlocal1(tmp);
   switch(c->tag){
-  case camlid_result_Error: /* Error */
-    *v=caml_alloc(1,1);
-    camlid_c2ml2(&tmp, &c->u.Error.error);
-    Store_field(*v,0,tmp);
-    break;
   case camlid_result_Data: /* Data */
     *v=caml_alloc(1,0);
     camlid_c2ml2(&tmp, &c->u.Data.data);
     Store_field(*v,0,tmp);
     break;
-  };
+  case camlid_result_Error: /* Error */
+    *v=caml_alloc(1,1);
+    camlid_c2ml2(&tmp, &c->u.Error.error);
+    Store_field(*v,0,tmp);
+    break;};
   CAMLreturn0;
   };
 static void camlid_c2ml(camlid_int * c, value * v, camlid_ref data){
@@ -70,8 +52,8 @@ extern value camlid_stub_f(value other){
 
   $ cat test_convert.ml
 type camlid_int = int
-type camlid_result = | Data of camlid_int | Error of camlid_int
-external f: camlid_int -> camlid_result = "camlid_stub_f"
+type result = | Data of camlid_int | Error of camlid_int
+external f: camlid_int -> result = "camlid_stub_f"
   $ compile test_convert.c
 
   $ compile test_convert.ml

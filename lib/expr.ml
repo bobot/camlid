@@ -1,11 +1,16 @@
-type defined = { id : id; kind : kind; toplevel : expr }
-(** Allows for a piece of text/code to depend on parameters, and depend on the
-    avalaibility of other code *)
+type defined =
+  | Def of definition
+      (** Allows for a piece of text/code to depend on parameters, and depend on
+          the avalaibility of other code *)
+  | DImplicit of (defined * code list)
+
+and definition = { id : id; kind : kind; toplevel : expr }
 
 and code =
   | Nop
   | Defined of { defined : defined; params : var list }
   | Binds of { def : code; binds : (var * expr) list }
+  | Implicit of (code * code list)
 
 and expr = { expr : unit Fmt.t }
 and kind = C | ML | H
@@ -66,7 +71,16 @@ module Var = struct
   end)
 end
 
-type Format.stag += Dep of defined | PrintID of ID.t | PrintVar of Var.t
+type Format.stag += Dep of definition | PrintID of ID.t | PrintVar of Var.t
+
+let rec def_of_code = function
+  | Nop -> invalid_arg "def_of_code: Nop"
+  | Binds { def; _ } | Implicit (def, _) -> def_of_code def
+  | Defined { defined; _ } -> defined
+
+let rec def_of_def = function
+  | Def def -> def
+  | DImplicit (def, _) -> def_of_def def
 
 let open_close_stag fmt t =
   Format.pp_open_stag fmt t;
@@ -75,9 +89,30 @@ let open_close_stag fmt t =
 let pp_dep fmt c = open_close_stag fmt (Dep c)
 let pp_id fmt id = open_close_stag fmt (PrintID id)
 
-let pp_def fmt code =
-  pp_dep fmt code;
-  open_close_stag fmt (PrintID code.id)
+let rec pp_def fmt def =
+  let rec aux = function
+    | Def def ->
+        pp_dep fmt def;
+        open_close_stag fmt (PrintID def.id)
+    | DImplicit (def, others) ->
+        List.iter (code_dep fmt) others;
+        aux def
+  in
+  aux def
+
+and def_dep fmt = function
+  | Def def -> pp_dep fmt def
+  | DImplicit (def, others) ->
+      List.iter (code_dep fmt) others;
+      def_dep fmt def
+
+and code_dep fmt = function
+  | Nop -> ()
+  | Binds { def; _ } -> code_dep fmt def
+  | Defined { defined; _ } -> def_dep fmt defined
+  | Implicit (def, others) ->
+      code_dep fmt def;
+      List.iter (code_dep fmt) others
 
 let e_def code = { expr = Fmt.const pp_def code }
 let pp_var fmt c = open_close_stag fmt (PrintVar c)
@@ -88,15 +123,17 @@ let pp_call fmt (code, binds) =
     | Nop -> ()
     | Binds { def; binds = binds' } -> aux (binds' @ binds) def
     | Defined { defined; params } ->
-        open_close_stag fmt (Dep defined);
         let pp_arg fmt v =
           match List.assq_opt v binds with
           | None -> pp_var fmt v
           | Some { expr } -> expr fmt ()
         in
-        Fmt.pf fmt "@[<hv>@[<hv 2>@[%a(@]@,%a@]@,)@]" pp_id defined.id
+        Fmt.pf fmt "@[<hv>@[<hv 2>@[%a(@]@,%a@]@,)@]" pp_def defined
           Fmt.(list ~sep:comma pp_arg)
           params
+    | Implicit (def, others) ->
+        aux binds def;
+        List.iter (code_dep fmt) others
   in
   aux binds code
 
@@ -104,21 +141,19 @@ let pp_calli fmt (c, b) =
   match c with Nop -> () | c -> Fmt.pf fmt "%a;" pp_call (c, b)
 
 let pp_call_ret fmt (ret, c, b) = Fmt.pf fmt "%a=%a;" ret.expr () pp_call (c, b)
-let def ?(kind = C) id toplevel = { id; kind; toplevel = { expr = toplevel } }
+
+let def ?(kind = C) id toplevel =
+  Def { id; kind; toplevel = { expr = toplevel } }
 
 let ddef ?kind id p =
   Format.kdprintf (fun k -> def ?kind id (fun fmt () -> k fmt)) p
 
 let mk ?(kind = C) ?(params = []) id toplevel =
   let code =
-    Defined { defined = { id; kind; toplevel = { expr = toplevel } }; params }
+    Defined
+      { defined = Def { id; kind; toplevel = { expr = toplevel } }; params }
   in
   code
-
-let rec def_of_code = function
-  | Nop -> invalid_arg "def_of_code: Nop"
-  | Binds { def; _ } -> def_of_code def
-  | Defined { defined; _ } -> defined
 
 type fp = { fmt : 'a. ('a, Format.formatter, unit) format -> 'a }
 

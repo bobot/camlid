@@ -10,7 +10,7 @@ let pp_def = pp_def
 let typedef = typedef
 
 let int : typedef =
-  builtin_mltypes ~ml_type:"int" ~c_type:"intnat" ~c2ml:"Val_long"
+  builtin_mltypes ~ml_type:"int" ~c_type:"intptr_t" ~c2ml:"Val_long"
     ~ml2c:"Long_val"
 
 let int_trunc : typedef =
@@ -29,7 +29,7 @@ let int64 : typedef =
     ~ml2c:"Int64_val"
 
 let nativeint : typedef =
-  builtin_mltypes ~ml_type:"nativeint" ~c_type:"intnat"
+  builtin_mltypes ~ml_type:"nativeint" ~c_type:"intptr_t"
     ~c2ml:"caml_copy_nativeint" ~ml2c:"Nativeint_val"
 
 let bool : typedef =
@@ -176,3 +176,8 @@ let inout = Expert.inout
 let input = Expert.input
 let output = Expert.output
 let ignored = Expert.ignored
+
+let algdata ml_type l =
+  let t = AlgData.algdata ml_type l in
+  let others = List.map (fun c -> c.AlgData.smart_constructor) t.constrs in
+  { t.ty with cty = DImplicit (t.ty.cty, others) }

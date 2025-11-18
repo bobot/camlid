@@ -36,7 +36,7 @@ type result = {
 type conf = Expr.expr list
 
 let codef ?(kind = C) ?params ?keep_name ?(locals = []) ?(ovars = [])
-    ?(ret = expr "void") name pp =
+    ?(ret = expr "void") ?(doc = Fmt.nop) name pp =
   let p = fun fmt -> pp { fmt = (fun p -> Fmt.pf fmt p) } in
   let id = ID.mk ?keep_name name in
   let params =
@@ -52,18 +52,18 @@ let codef ?(kind = C) ?params ?keep_name ?(locals = []) ?(ovars = [])
   let pp_args fmt (var : var) = Fmt.pf fmt "%a %a" var.ty.expr () pp_var var in
   let c =
     mk ~kind ~params id (fun fmt () ->
-        Fmt.pf fmt "@[<hv 2>@[static %a %a(%a){@]@ %t@ @[};@]@]@." ret.expr ()
-          pp_id id
+        Fmt.pf fmt "%a@[<hv 2>@[static %a %a(%a){@]@ %t@ @[};@]@]@." doc ()
+          ret.expr () pp_id id
           Fmt.(list ~sep:comma pp_args)
           params p)
   in
   c
 
-let code ?kind ?params ?keep_name ?locals ?ovars ?ret name p =
+let code ?kind ?params ?keep_name ?locals ?ovars ?ret ?doc name p =
   Format.kdprintf
     (fun k ->
-      codef ?kind ?params ?keep_name ?locals ?ovars ?ret name (fun { fmt } ->
-          fmt "%t" k))
+      codef ?kind ?params ?keep_name ?locals ?ovars ?ret ?doc name
+        (fun { fmt } -> fmt "%t" k))
     p
 
 let c2ml ?(binds = []) ~v ~c () fmt ty =
