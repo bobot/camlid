@@ -619,36 +619,43 @@ let if_ ?else_ cond ~then_ =
 
 let seq l = expr "%a" Fmt.(list ~sep:cut (fun fmt e -> e.expr fmt ())) l
 
-type to_ml = { to_ml : code; src : Var.t; dst : Var.t }
-type to_c = { to_c : code; src : Var.t; dst : Var.t }
+type convert = { convert : code; src : Var.t; dst : Var.t }
 
-let convert ?to_c ?to_ml ~(c : typedef) ~(ml : typedef) () =
+let mk_converter ~src ~dst name params =
+  let dst = Expr.Var.mk "dst" (expr "%a *" pp_def dst.cty) in
+  let src = Expr.Var.mk "src" (expr "%a *" pp_def src.cty) in
+  let params = params ~src ~dst in
+  { dst; src; convert = mk ~params (ID.mk ~keep_name:true name) Fmt.nop }
+
+let convert ?a_to_b ?b_to_a ~(a : typedef) ~(b : typedef) () =
   {
     descr = "int";
-    cty = c.cty;
-    mlty = ml.mlty;
-    mlname = ml.mlname;
+    cty = b.cty;
+    mlty = a.mlty;
+    mlname = a.mlname;
     c2ml =
-      (match to_ml with
-      | None -> code "no_toml_given" ""
-      | Some (to_ml : to_ml) ->
-          code "c2ml" "%a tmp; %a;@ %a" pp_def ml.cty pp_call
-            (to_ml.to_ml, [ (to_ml.src, e_var c.c); (to_ml.dst, expr "&tmp") ])
-            (c2ml ~v:(e_var ml.v) ~c:(expr "&tmp") ())
-            ml);
+      (match b_to_a with
+      | None -> code "no_b_to_a_given" ""
+      | Some (b_to_a : convert) ->
+          code "c2ml" "%a tmp; %a;@ %a" pp_def a.cty pp_call
+            ( b_to_a.convert,
+              [ (b_to_a.src, e_var b.c); (b_to_a.dst, expr "&tmp") ] )
+            (c2ml ~v:(e_var a.v) ~c:(expr "&tmp") ())
+            a);
     ml2c =
-      (match to_c with
-      | None -> code "no_toml_given" ""
-      | Some (to_c : to_c) ->
-          code "c2ml" "%a tmp; %a@ %a;" pp_def ml.cty
-            (ml2c ~v:(e_var ml.v) ~c:(expr "&tmp") ())
-            ml pp_call
-            (to_c.to_c, [ (to_c.src, e_var c.c); (to_c.dst, expr "&tmp") ]));
-    init = c.init;
-    init_expr = c.init_expr;
-    free = c.free;
-    v = ml.v;
-    c = c.c;
+      (match a_to_b with
+      | None -> code "no_a_to_b_given" ""
+      | Some (a_to_b : convert) ->
+          code "c2ml" "%a tmp; %a@ %a;" pp_def a.cty
+            (ml2c ~v:(e_var a.v) ~c:(expr "&tmp") ())
+            a pp_call
+            ( a_to_b.convert,
+              [ (a_to_b.src, e_var b.c); (a_to_b.dst, expr "&tmp") ] ));
+    init = b.init;
+    init_expr = b.init_expr;
+    free = b.free;
+    v = a.v;
+    c = b.c;
   }
 
 module AlgData = struct
