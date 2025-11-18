@@ -34,19 +34,19 @@ static void camlid_c2ml(camlid_int * c, value * v, camlid_ref data){
   camlid_result tmp; camlid_to_ml(data, &tmp, c);
   camlid_c2ml1(v, &tmp);
   };
-static void camlid_free(camlid_ref * c){  };
-static void camlid_free1(camlid_int * c){  };
+static void camlid_free(camlid_int * c){  };
+static void camlid_free1(camlid_ref * c){  };
 extern value camlid_stub_f(value other){
-  camlid_ref data = &(((struct { camlid_int a; }) { ((camlid_int) { }) }).a);
   camlid_int other1 = ((camlid_int) { });
+  camlid_ref data = &(((struct { camlid_int a; }) { ((camlid_int) { }) }).a);
   camlid_int res;
   value ret;
   camlid_ml2c(&other, &other1);
   camlid_init(&data);
   res = f(other1, data);
   camlid_c2ml(&res, &ret, data);
-  camlid_free(&data);
-  camlid_free1(&other1);
+  camlid_free(&other1);
+  camlid_free1(&data);
   return ret;
 };
 

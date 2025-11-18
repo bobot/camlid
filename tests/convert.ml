@@ -21,30 +21,13 @@ let data, data_or_status =
     }
   in
   let ty = Expert.convert ~to_ml ~c:int ~ml:Result.ty () in
-  ( data,
-    {
-      Type.rty = ty;
-      routput = true;
-      rc = Expr.Var.mk "res" (Expr.e_def ty.cty);
-      binds = [];
-    } )
+  (data, ty)
 
 let () =
   Generate.to_file "test_convert" ~in_header:true
     ~definitions:[ "convert_defs.h" ]
     [
-      (let other_input = input int "other" in
-       let fid =
-         Expert.declare_existing ~result:(Expr.e_def int.cty) "f"
-           [ other_input.pc; data.pc ]
-       in
-       Expert.print_ml_fun
-         {
-           mlname = "f";
-           fid;
-           params = [ data; other_input ];
-           result = Some data_or_status;
-         });
+      func ~declare:true "f" ~result:data_or_status [ input int "other"; data ];
     ]
 
 let () = Utils.cat_and_compile "test_convert"
