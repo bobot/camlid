@@ -1,16 +1,15 @@
-  $ cat test_output_stub.c
 #include <stddef.h>
 #include <inttypes.h>
 #include <caml/mlvalues.h>
 #include <caml/memory.h>
 #include <caml/alloc.h>
 #include <caml/custom.h>
-typedef intptr_t camlid_int;
+#include "lib.h"
+typedef int camlid_int;
 typedef camlid_int * camlid_ref;
 static void camlid_init1(camlid_int * c){  };
 static void camlid_init(camlid_ref * c){ camlid_init1(*c); };
-void f(camlid_ref);
-static void camlid_c2ml1(value * v, camlid_int * c){ *v = Val_long(*c); };
+static void camlid_c2ml1(value * v, camlid_int * c){ *v = Val_int(*c); };
 static void camlid_c2ml(value * v, camlid_ref * c){ camlid_c2ml1(v, *c); };
 static void camlid_free(camlid_ref * c){  };
 extern value camlid_stub_f(){
@@ -26,7 +25,6 @@ typedef camlid_int * camlid_ref1;
 typedef camlid_int * camlid_ref2;
 static void camlid_init2(camlid_ref1 * c){ camlid_init1(*c); };
 static void camlid_init3(camlid_ref2 * c){ camlid_init1(*c); };
-void f2(camlid_ref1, camlid_ref2);
 static void camlid_c2ml2(value * v, camlid_ref1 * c){ camlid_c2ml1(v, *c); };
 static void camlid_c2ml3(value * v, camlid_ref2 * c){ camlid_c2ml1(v, *c); };
 static void camlid_free1(camlid_ref1 * c){  };
@@ -50,14 +48,3 @@ extern value camlid_stub_f2(){
   camlid_free2(&p1);
   return ret;
 };
-
-  $ cat test_output.ml
-type camlid_int = int
-type camlid_ptr_ref = camlid_int
-type camlid_ptr_ref1 = camlid_int
-type camlid_ptr_ref2 = camlid_int
-external f: unit -> camlid_ptr_ref = "camlid_stub_f"
-external f2: unit -> camlid_ptr_ref1 * camlid_ptr_ref2 = "camlid_stub_f2"
-  $ compile test_output.c
-
-  $ compile test_output.ml
