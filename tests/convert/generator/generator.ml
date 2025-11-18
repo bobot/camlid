@@ -17,8 +17,5 @@ let data, data_or_status =
   (data, ty)
 
 let () =
-  Generate.to_file "test_convert" ~in_header:true
-    ~definitions:[ "convert_defs.h" ]
+  Generate.to_file "mylib" ~in_header:true ~definitions:[ "defs.h" ]
     [ func ~declare:true "f" ~result:data_or_status [ input int; data ] ]
-
-let () = Utils.cat_and_compile "test_convert"
