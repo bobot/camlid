@@ -46,9 +46,9 @@ let builtin_mltypes ~ml_type ~c_type ~c2ml ~ml2c =
     mlname = None;
     c2ml = code "c2ml" "*%a = %s(*%a);" pp_var v c2ml pp_var c;
     ml2c = code "ml2c" "*%a = %s(*%a);" pp_var c ml2c pp_var v;
-    init = code ~ovars:[ c ] "init" "";
+    init = None;
     init_expr = expr "((%a) { })" pp_def cty;
-    free = code ~ovars:[ c ] "free" "";
+    free = None;
     v;
     c;
   }
@@ -64,10 +64,10 @@ let ptr_ref (ty : typedef) =
     mlname = None;
     c2ml = code "c2ml" "%a" (c2ml ~v:(e_var v) ~c:(expr "*%a" pp_var c) ()) ty;
     ml2c = code "ml2c" "%a" (ml2c ~v:(e_var v) ~c:(expr "*%a" pp_var c) ()) ty;
-    init = code "init" "%a" (init ~c:(expr "*%a" pp_var c) ()) ty;
+    init = codeo "init" "%a" (init ~c:(expr "*%a" pp_var c) ()) ty;
     init_expr =
       expr "&(((struct { %a a; }) { %a }).a)" pp_def ty.cty init_expr ty;
-    free = code ~ovars:[ c ] "free" "";
+    free = None;
     v;
     c;
   }
@@ -115,11 +115,9 @@ let array ?(init = true) ?(owned = true) ~len (ty : typedef) =
             (ml2c ~v:(expr "&cid_temp") ~c:(expr "&((*%a)[cid_i])" pp_var c) ())
             ty;
           fmt "CAMLreturn0;");
-    init = (if init then codef "init" malloc else code "init" ~ovars:[ c ] "");
+    init = (if init then codefo "init" malloc else None);
     init_expr = expr "((%a) { })" pp_def cty;
-    free =
-      (if owned then code "free" "free(*%a);" pp_var c
-       else code "free" "" ~ovars:[ c ]);
+    free = (if owned then codeo "free" "free(*%a);" pp_var c else None);
     v;
     c;
   }
@@ -170,11 +168,9 @@ let array_length ?(owned = true) (ty : typedef) =
             (ml2c ~v:(expr "&cid_temp") ~c:(expr "&%a->t[cid_i]" pp_var c) ())
             ty;
           fmt "CAMLreturn0;");
-    init = code ~ovars:[ c ] "init" "";
+    init = None;
     init_expr = expr "((%a) { })" pp_def cty;
-    free =
-      (if owned then code "free" "free(%a->t);" pp_var c
-       else code "free" "" ~ovars:[ c ]);
+    free = (if owned then codeo "free" "free(%a->t);" pp_var c else None);
     v;
     c;
   }
@@ -190,9 +186,9 @@ let array_ptr_of_array_length ty array_length =
     mlname = None;
     c2ml = code "should_not_appear" "";
     ml2c = code "should not appear" "";
-    init = code "init" "*%a = &(%a->t);" pp_var c pp_var array_length.c;
+    init = Some (code "init" "*%a = &(%a->t);" pp_var c pp_var array_length.c);
     init_expr = expr "0";
-    free = code ~ovars:[ c ] "free" "";
+    free = None;
     v;
     c;
   }
@@ -208,9 +204,9 @@ let array_of_array_length ty array_length =
     mlname = None;
     c2ml = code "should_not_appear" "";
     ml2c = code "should not appear" "";
-    init = code "init" "*%a = (%a->t);" pp_var c pp_var array_length.c;
+    init = Some (code "init" "*%a = (%a->t);" pp_var c pp_var array_length.c);
     init_expr = expr "0";
-    free = code ~ovars:[ c ] "free" "";
+    free = None;
     v;
     c;
   }
@@ -226,9 +222,9 @@ let length_ptr_of_array_length ty array_length =
     mlname = None;
     c2ml = code "should_not_appear" "";
     ml2c = code "should not appear" "";
-    init = code "init" "*%a = &%a->len;" pp_var c pp_var array_length.c;
+    init = Some (code "init" "*%a = &%a->len;" pp_var c pp_var array_length.c);
     init_expr = expr "0";
-    free = code ~ovars:[ c ] "free" "";
+    free = None;
     v;
     c;
   }
@@ -244,9 +240,9 @@ let length_of_array_length ty array_length =
     mlname = None;
     c2ml = code "should_not_appear" "";
     ml2c = code "should not appear" "";
-    init = code "init" "*%a = %a->len;" pp_var c pp_var array_length.c;
+    init = Some (code "init" "*%a = %a->len;" pp_var c pp_var array_length.c);
     init_expr = expr "0";
-    free = code ~ovars:[ c ] "free" "";
+    free = None;
     v;
     c;
   }
@@ -308,9 +304,9 @@ let abstract ?initialize ?get ?set ~icty ~descr ~ml ~cty () =
       (let pp_init fmt f =
          Fmt.pf fmt "%a;" pp_call (f.initialize, [ (f.c, e_var c) ])
        in
-       code ~ovars:[ c ] "init" "%a" Fmt.(option pp_init) initialize);
+       codeo ~ovars:[ c ] "init" "%a" Fmt.(option pp_init) initialize);
     init_expr = expr "((%a) { })" pp_def cty;
-    free = code ~ovars:[ c ] "free" "";
+    free = None;
   }
 
 type finalize = { finalize : code; i : var }
@@ -436,9 +432,9 @@ let custom ?initialize ?finalize ?finalize_ptr ?hash ?compare ?get ?set ~ml
       (let pp_init fmt f =
          Fmt.pf fmt "%a;" pp_call (f.initialize, [ (f.c, e_var c) ])
        in
-       code ~ovars:[ c ] "init" "%a" Fmt.(option pp_init) initialize);
+       codeo ~ovars:[ c ] "init" "%a" Fmt.(option pp_init) initialize);
     init_expr = expr "((%a) { })" pp_def cty;
-    free = code ~ovars:[ c ] "free" "";
+    free = None;
     v;
     c;
   }
@@ -562,7 +558,7 @@ let code_c_fun (f : func) =
       fmt "%a" Fmt.(list ~sep:nop pp_conv_in) inputs;
       (* initialize variables that are not input *)
       let pp_init_out fmt p =
-        if not p.input then
+        if (not p.input) && Option.is_some p.pty.init then
           Fmt.pf fmt "@[%a@]@,"
             (init ~binds:p.binds ~c:(expr "&%a" pp_var p.pc) ())
             p.pty
@@ -611,9 +607,10 @@ let code_c_fun (f : func) =
           fmt "@[End_roots()@]@,");
       (* free allocated memory *)
       let pp_init_out fmt (p : param) =
-        Fmt.pf fmt "@[%a@]@,"
-          (free ~binds:p.binds ~c:(expr "&%a" pp_var p.pc) ())
-          p.pty
+        if Option.is_some p.pty.free then
+          Fmt.pf fmt "@[%a@]@,"
+            (free ~binds:p.binds ~c:(expr "&%a" pp_var p.pc) ())
+            p.pty
       in
       fmt "%a" Fmt.(list ~sep:nop pp_init_out) f.params;
       (* return *)
@@ -793,9 +790,9 @@ module AlgData = struct
         mlname = None;
         c2ml;
         ml2c = code ~ovars:[ v; c ] "not_yet_implemented" "";
-        init = code ~ovars:[ c ] "init" "";
+        init = None;
         init_expr = expr "((%a) { })" pp_def cty;
-        free = code ~ovars:[ c ] "free" "";
+        free = None;
         v;
         c;
       }

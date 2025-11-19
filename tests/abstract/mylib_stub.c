@@ -15,8 +15,6 @@ static void camlid_c2ml(value * v, camlid_abstract * c){
   *v = caml_alloc((sizeof(camlid_abstract) + sizeof(value) - 1) / sizeof(value), Abstract_tag);
   *((camlid_abstract *) Bp_val(*v)) = *c;
   };
-static void camlid_free(camlid_int * c){  };
-static void camlid_free1(camlid_abstract * c){  };
 extern value camlid_stub_of_int(value p){
   camlid_int p1 = ((camlid_int) { });
   camlid_abstract p2 = ((camlid_abstract) { });
@@ -25,8 +23,6 @@ extern value camlid_stub_of_int(value p){
   camlid_init(&p2);
   of_int(p1, p2);
   camlid_c2ml(&ret, &p2);
-  camlid_free(&p1);
-  camlid_free1(&p2);
   return ret;
 };
 static void camlid_ml2c1(value * v, camlid_abstract * c){
@@ -40,7 +36,6 @@ extern value camlid_stub_to_int(value p){
   camlid_ml2c1(&p, &p1);
   res = to_int(p1);
   camlid_c2ml1(&ret, &res);
-  camlid_free1(&p1);
   return ret;
 };
 extern value camlid_stub_lib_free(value p){
@@ -49,6 +44,5 @@ extern value camlid_stub_lib_free(value p){
   camlid_ml2c1(&p, &p1);
   lib_free(p1);
   ret = Val_unit;
-  camlid_free1(&p1);
   return ret;
 };

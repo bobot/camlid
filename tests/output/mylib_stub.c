@@ -8,35 +8,24 @@
 #include "lib.h"
 typedef int camlid_int;
 typedef camlid_int * camlid_ref;
-static void camlid_init1(camlid_int * c){  };
-static void camlid_init(camlid_ref * c){ camlid_init1(*c); };
 static void camlid_c2ml1(value * v, camlid_int * c){ *v = Val_int(*c); };
 static void camlid_c2ml(value * v, camlid_ref * c){ camlid_c2ml1(v, *c); };
-static void camlid_free(camlid_ref * c){  };
 extern value camlid_stub_f(){
   camlid_ref p = &(((struct { camlid_int a; }) { ((camlid_int) { }) }).a);
   value ret;
-  camlid_init(&p);
   f(p);
   camlid_c2ml(&ret, &p);
-  camlid_free(&p);
   return ret;
 };
 typedef camlid_int * camlid_ref1;
 typedef camlid_int * camlid_ref2;
-static void camlid_init2(camlid_ref1 * c){ camlid_init1(*c); };
-static void camlid_init3(camlid_ref2 * c){ camlid_init1(*c); };
 static void camlid_c2ml2(value * v, camlid_ref1 * c){ camlid_c2ml1(v, *c); };
 static void camlid_c2ml3(value * v, camlid_ref2 * c){ camlid_c2ml1(v, *c); };
-static void camlid_free1(camlid_ref1 * c){  };
-static void camlid_free2(camlid_ref2 * c){  };
 extern value camlid_stub_f2(){
   camlid_ref1 p = &(((struct { camlid_int a; }) { ((camlid_int) { }) }).a);
   camlid_ref2 p1 = &(((struct { camlid_int a; }) { ((camlid_int) { }) }).a);
   value ret;
   value tup[2] = {Val_unit, Val_unit};
-  camlid_init2(&p);
-  camlid_init3(&p1);
   f2(p, p1);
   Begin_roots_block(tup, 2)
     camlid_c2ml2(&tup[0], &p);
@@ -45,7 +34,5 @@ extern value camlid_stub_f2(){
     Store_field(ret, 0, tup[0]);
     Store_field(ret, 1, tup[1]);
   End_roots()
-  camlid_free1(&p);
-  camlid_free2(&p1);
   return ret;
 };

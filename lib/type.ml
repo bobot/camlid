@@ -7,10 +7,10 @@ type typedef = {
   mlty : defined;  (** print the ocaml type *)
   c2ml : code;  (** convert C values of this type to ML value *)
   ml2c : code;  (** ml2c *)
-  init : code;
+  init : code option;
       (** Initialize values of this type before giving them to stub function *)
   init_expr : expr;  (** expression initialization *)
-  free : code;
+  free : code option;
       (** Free the C memory allocated during the call (not accessible in output
           OCaml value) *)
   v : var; (* variable for the ml version *)
@@ -59,11 +59,26 @@ let codef ?(kind = C) ?params ?keep_name ?(locals = []) ?(ovars = [])
   in
   c
 
+let codefo ?kind ?params ?keep_name ?locals ?ovars ?ret ?doc name pp =
+  let k = fun fmt -> pp { fmt = (fun p -> Fmt.pf fmt p) } in
+  if expr_is_empty k then None
+  else Some (codef ?kind ?params ?keep_name ?locals ?ovars ?ret ?doc name pp)
+
 let code ?kind ?params ?keep_name ?locals ?ovars ?ret ?doc name p =
   Format.kdprintf
     (fun k ->
       codef ?kind ?params ?keep_name ?locals ?ovars ?ret ?doc name
         (fun { fmt } -> fmt "%t" k))
+    p
+
+let codeo ?kind ?params ?keep_name ?locals ?ovars ?ret ?doc name p =
+  Format.kdprintf
+    (fun k ->
+      if expr_is_empty k then None
+      else
+        Some
+          (codef ?kind ?params ?keep_name ?locals ?ovars ?ret ?doc name
+             (fun { fmt } -> fmt "%t" k)))
     p
 
 let c2ml ?(binds = []) ~v ~c () fmt ty =
@@ -73,9 +88,13 @@ let ml2c ?(binds = []) ~v ~c () fmt ty =
   pp_calli fmt (ty.ml2c, [ (ty.v, v); (ty.c, c) ] @ binds)
 
 let init ?(binds = []) ~c () fmt ty =
-  pp_calli fmt (ty.init, [ (ty.c, c) ] @ binds)
+  match ty.init with
+  | None -> ()
+  | Some f -> pp_calli fmt (f, [ (ty.c, c) ] @ binds)
 
 let free ?(binds = []) ~c () fmt ty =
-  pp_calli fmt (ty.free, [ (ty.c, c) ] @ binds)
+  match ty.free with
+  | None -> ()
+  | Some f -> pp_calli fmt (f, [ (ty.c, c) ] @ binds)
 
 let init_expr fmt ty = Fmt.pf fmt "%a" ty.init_expr.expr ()

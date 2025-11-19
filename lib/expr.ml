@@ -7,7 +7,6 @@ type defined =
 and definition = { id : id; kind : kind; toplevel : expr }
 
 and code =
-  | Nop
   | Defined of { defined : defined; params : var list }
   | Binds of { def : code; binds : (var * expr) list }
   | Implicit of (code * code list)
@@ -74,7 +73,6 @@ end
 type Format.stag += Dep of definition | PrintID of ID.t | PrintVar of Var.t
 
 let rec def_of_code = function
-  | Nop -> invalid_arg "def_of_code: Nop"
   | Binds { def; _ } | Implicit (def, _) -> def_of_code def
   | Defined { defined; _ } -> defined
 
@@ -107,7 +105,6 @@ and def_dep fmt = function
       def_dep fmt def
 
 and code_dep fmt = function
-  | Nop -> ()
   | Binds { def; _ } -> code_dep fmt def
   | Defined { defined; _ } -> def_dep fmt defined
   | Implicit (def, others) ->
@@ -120,7 +117,6 @@ let e_var var = { expr = Fmt.const pp_var var }
 
 let pp_call fmt (code, binds) =
   let rec aux binds = function
-    | Nop -> ()
     | Binds { def; binds = binds' } -> aux (binds' @ binds) def
     | Defined { defined; params } ->
         let pp_arg fmt v =
@@ -137,9 +133,7 @@ let pp_call fmt (code, binds) =
   in
   aux binds code
 
-let pp_calli fmt (c, b) =
-  match c with Nop -> () | c -> Fmt.pf fmt "%a;" pp_call (c, b)
-
+let pp_calli fmt (c, b) = Fmt.pf fmt "%a;" pp_call (c, b)
 let pp_call_ret fmt (ret, c, b) = Fmt.pf fmt "%a=%a;" ret.expr () pp_call (c, b)
 
 let def ?(kind = C) id toplevel =
@@ -279,6 +273,31 @@ let params_of_expr expr =
   expr fmt;
   let l = List.sort Var.compare @@ List.of_seq @@ Var.H.to_seq_keys h in
   l
+
+exception Expr_is_not_empty
+
+let expr_is_empty expr =
+  let print_sub s start len =
+    for i = start to len - 1 do
+      match s.[i] with ' ' | '\n' -> () | _ -> raise Expr_is_not_empty
+    done
+  in
+  let fmt = Format.make_formatter print_sub (fun () -> ()) in
+  Format.pp_set_tags fmt true;
+  Format.pp_set_print_tags fmt true;
+  Format.pp_set_formatter_stag_functions fmt
+    {
+      mark_open_stag = (fun _ -> "");
+      mark_close_stag = (fun _ -> "");
+      print_open_stag =
+        (function
+        | Dep _ -> ()
+        | PrintID _ -> raise Expr_is_not_empty
+        | PrintVar _ -> raise Expr_is_not_empty
+        | _ -> ());
+      print_close_stag = (fun _ -> ());
+    };
+  match expr fmt with () -> true | exception Expr_is_not_empty -> false
 
 let toplevel_callable ?(kind = C) id p =
   Format.kdprintf
