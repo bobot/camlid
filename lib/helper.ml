@@ -44,36 +44,19 @@ let func_id ~ml ?result ?ignored_result fid params =
   | Some _, Some _ ->
       failwith "Camlid.Helper.func: can't set both result and ignored_result"
   | Some rty, None ->
-      print_ml_fun
-        {
-          fid;
-          mlname = ml;
-          params;
-          result =
-            Some
-              {
-                rty;
-                routput = true;
-                rc = Var.mk "res" (e_def rty.cty);
-                binds = [];
-              };
-        }
+      print_ml_fun fid ~mlname:ml ~params
+        ~result:
+          { rty; routput = true; rc = Var.mk "res" (e_def rty.cty); binds = [] }
   | None, Some rty ->
-      print_ml_fun
-        {
-          fid;
-          mlname = ml;
-          params;
-          result =
-            Some
-              {
-                rty;
-                routput = false;
-                rc = Var.mk "res" (e_def rty.cty);
-                binds = [];
-              };
-        }
-  | None, None -> print_ml_fun { fid; mlname = ml; params; result = None }
+      print_ml_fun fid ~mlname:ml ~params
+        ~result:
+          {
+            rty;
+            routput = false;
+            rc = Var.mk "res" (e_def rty.cty);
+            binds = [];
+          }
+  | None, None -> print_ml_fun fid ~mlname:ml ~params
 
 let func ?(declare = false) ?ml ?result ?ignored_result fname params =
   let ml = Option.value ~default:fname ml in

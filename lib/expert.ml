@@ -487,16 +487,9 @@ let list_or_empty ~empty ~sep pp fmt = function
   | [] -> empty fmt ()
   | l -> Fmt.list ~sep pp fmt l
 
-type func = {
-  fid : code;
-  mlname : string;
-  params : param list;
-  result : result option;
-}
-
-let results f =
-  let out_params = List.filter (fun p -> p.output) f.params in
-  match f.result with
+let results params result =
+  let out_params = List.filter (fun p -> p.output) params in
+  match result with
   | None -> out_params
   | Some result ->
       if result.routput then
@@ -513,19 +506,19 @@ let results f =
 
 let return_var = Var.mk "ret" (expr "value")
 
-let code_c_fun (f : func) =
+let code_c_fun ~params ~result fid =
   let inputs =
     List.filter_map
       (fun p ->
         if p.input then Some (p, Var.mk p.pc.name (expr "value")) else None)
-      f.params
+      params
   in
-  let results = results f in
-  let used_in_calls = List.filter (fun p -> p.used_in_call) f.params in
+  let results = results params result in
+  let used_in_calls = List.filter (fun p -> p.used_in_call) params in
   let vars_used_in_calls = List.map (fun p -> p.pc) used_in_calls in
   (* local C variable declaration *)
   let tuple_var = Var.mk "tup" (expr "value[%i]" (List.length results)) in
-  let id = ID.mk ("stub_" ^ (def_of_def (def_of_code f.fid)).id.name) in
+  let id = ID.mk ("stub_" ^ (def_of_def (def_of_code fid)).id.name) in
   fp ~kind:C ~params:(List.map snd inputs) id (fun { fmt } ->
       (* Formals *)
       let pp_formal fmt (_, pv) = Fmt.pf fmt "value %a" pp_var pv in
@@ -537,8 +530,8 @@ let code_c_fun (f : func) =
         Fmt.pf fmt "@[%a %a = %a;@]@," pp_def p.pty.cty pp_var p.pc init_expr
           p.pty
       in
-      fmt "%a" Fmt.(list ~sep:nop pp_local) f.params;
-      (match f.result with
+      fmt "%a" Fmt.(list ~sep:nop pp_local) params;
+      (match result with
       | None -> ()
       | Some result -> fmt "@[%a %a;@]@," pp_def result.rty.cty pp_var result.rc);
       fmt "@[value %a;@]@," pp_var return_var;
@@ -563,14 +556,14 @@ let code_c_fun (f : func) =
             (init ~binds:p.binds ~c:(expr "&%a" pp_var p.pc) ())
             p.pty
       in
-      fmt "%a" Fmt.(list ~sep:nop pp_init_out) f.params;
+      fmt "%a" Fmt.(list ~sep:nop pp_init_out) params;
       (* function call *)
       let pp_result fmt = function
         | None -> ()
         | Some r -> Fmt.pf fmt "%a = " pp_var r.rc
       in
-      fmt "@[%a%a;@]@," pp_result f.result pp_call
-        (f.fid, List.map (fun v -> (v, e_var v)) vars_used_in_calls);
+      fmt "@[%a%a;@]@," pp_result result pp_call
+        (fid, List.map (fun v -> (v, e_var v)) vars_used_in_calls);
       (* create return value *)
       let pp_conv_out fmt (p : param) =
         Fmt.pf fmt "@[%a@]@,"
@@ -612,18 +605,18 @@ let code_c_fun (f : func) =
             (free ~binds:p.binds ~c:(expr "&%a" pp_var p.pc) ())
             p.pty
       in
-      fmt "%a" Fmt.(list ~sep:nop pp_init_out) f.params;
+      fmt "%a" Fmt.(list ~sep:nop pp_init_out) params;
       (* return *)
       fmt "@[return %a;@]" pp_var return_var;
       fmt "@]@,@[};@]@]@.")
 
-let print_ml_fun (f : func) =
-  let code_c = code_c_fun f in
-  let results = results f in
-  let inputs = List.filter (fun p -> p.input) f.params in
+let print_ml_fun ~params ?result ~mlname fid =
+  let code_c = code_c_fun ~params ~result fid in
+  let results = results params result in
+  let inputs = List.filter (fun p -> p.input) params in
   let pp_result fmt p = pp_def fmt p.pty.mlty in
   let pp_param fmt p = Fmt.pf fmt "@[%a ->@]@ " pp_def p.pty.mlty in
-  expr "@[<hv 2>external %s:@ %a@[<hv>%a@]@ = \"%a\"@]" f.mlname
+  expr "@[<hv 2>external %s:@ %a@[<hv>%a@]@ = \"%a\"@]" mlname
     Fmt.(list_or_empty ~empty:(any "unit -> ") ~sep:nop pp_param)
     inputs
     Fmt.(list_or_empty ~empty:(any "unit") ~sep:(any "@ *@ ") pp_result)
