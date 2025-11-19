@@ -525,6 +525,31 @@ let code_c_fun ~params ~result fid =
       fmt "@[<hv>@[<hv 2>@[extern value %a@](%a)@[{@]@," pp_id id
         Fmt.(list ~sep:comma pp_formal)
         inputs;
+      (* Local roots *)
+      let rec camlParam ~first l =
+        let add_x fmt = if first then () else Fmt.pf fmt "x" in
+        let pp_input fmt (_, v) = pp_var fmt v in
+        let p, l =
+          match l with
+          | [] -> ([], [])
+          | a1 :: a2 :: a3 :: a4 :: a5 :: l -> ([ a1; a2; a3; a4; a5 ], l)
+          | a1 :: a2 :: a3 :: a4 :: l -> ([ a1; a2; a3; a4 ], l)
+          | a1 :: a2 :: a3 :: l -> ([ a1; a2; a3 ], l)
+          | a1 :: a2 :: l -> ([ a1; a2 ], l)
+          | a1 :: l -> ([ a1 ], l)
+        in
+        if List.is_empty p then (if first then fmt "@[CAMLparam0();@]@,")
+        else (
+          fmt "@[CAML%tparam%i(%a);@]@," add_x (List.length p)
+            Fmt.(list ~sep:comma pp_input)
+            p;
+          camlParam ~first:false l)
+      in
+      camlParam ~first:true inputs;
+      fmt "@[CAMLlocal1(%a);@]@," pp_var return_var;
+      (match results with
+      | [] | [ _ ] -> ()
+      | l -> fmt "@[CAMLlocalN(%a,%i);@]@," pp_var tuple_var (List.length l));
       (* Locals *)
       let pp_local fmt p =
         Fmt.pf fmt "@[%a %a = %a;@]@," pp_def p.pty.cty pp_var p.pc init_expr
@@ -534,13 +559,6 @@ let code_c_fun ~params ~result fid =
       (match result with
       | None -> ()
       | Some result -> fmt "@[%a %a;@]@," pp_def result.rty.cty pp_var result.rc);
-      fmt "@[value %a;@]@," pp_var return_var;
-      (match results with
-      | [] | [ _ ] -> ()
-      | l ->
-          fmt "@[value %a[%i] = {%a};@]@," pp_var tuple_var (List.length l)
-            Fmt.(list ~sep:comma (Fmt.any "Val_unit"))
-            l);
       (* convert input variables *)
       let pp_conv_in fmt ((p : param), vc) =
         Fmt.pf fmt "@[%a@]@,"
@@ -580,7 +598,6 @@ let code_c_fun ~params ~result fid =
       | l ->
           let len = List.length l in
           let li = List.mapi (fun i p -> (i, p)) l in
-          fmt "@[<hv 2>@[Begin_roots_block(%a, %i)@]@," pp_var tuple_var len;
           (* convert outputs *)
           let pp_conv_out fmt (i, (p : param)) =
             Fmt.pf fmt "@[%a@]"
@@ -596,8 +613,7 @@ let code_c_fun ~params ~result fid =
             Fmt.pf fmt "@[Store_field(%a, %i, %a[%i]);@]" pp_var return_var i
               pp_var tuple_var i
           in
-          fmt "%a@]@," Fmt.(list ~sep:Fmt.cut pp_store) li;
-          fmt "@[End_roots()@]@,");
+          fmt "%a@]@," Fmt.(list ~sep:Fmt.cut pp_store) li);
       (* free allocated memory *)
       let pp_init_out fmt (p : param) =
         if Option.is_some p.pty.free then
@@ -607,7 +623,7 @@ let code_c_fun ~params ~result fid =
       in
       fmt "%a" Fmt.(list ~sep:nop pp_init_out) params;
       (* return *)
-      fmt "@[return %a;@]" pp_var return_var;
+      fmt "@[CAMLreturn(%a);@]" pp_var return_var;
       fmt "@]@,@[};@]@]@.")
 
 let print_ml_fun ~params ?result ~mlname fid =

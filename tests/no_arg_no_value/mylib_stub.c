@@ -6,4 +6,10 @@
 #include <caml/alloc.h>
 #include <caml/custom.h>
 #include "lib.h"
-extern value camlid_stub_f(){value ret;f();ret = Val_unit;return ret;};
+extern value camlid_stub_f(){
+  CAMLparam0();
+  CAMLlocal1(ret);
+  f();
+  ret = Val_unit;
+  CAMLreturn(ret);
+};

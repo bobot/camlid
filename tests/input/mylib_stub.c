@@ -9,10 +9,11 @@
 typedef int camlid_int;
 static void camlid_ml2c(value * v, camlid_int * c){ *c = Int_val(*v); };
 extern value camlid_stub_f(value p){
+  CAMLparam1(p);
+  CAMLlocal1(ret);
   camlid_int p1 = ((camlid_int) { });
-  value ret;
   camlid_ml2c(&p, &p1);
   f(p1);
   ret = Val_unit;
-  return ret;
+  CAMLreturn(ret);
 };
