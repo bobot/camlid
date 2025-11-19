@@ -59,7 +59,7 @@ external print:
   caml_cudd_man ->
   caml_cudd_bdd ->
   unit
-  = "caml_cudd_stub_print"
+  = "caml_cudd_stub_bdd_print"
 external inspect:
   caml_cudd_man ->
   caml_cudd_bdd ->

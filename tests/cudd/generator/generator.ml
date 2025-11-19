@@ -54,25 +54,7 @@ let () =
   Generate.to_file ~in_header:true ~prefix:"caml_cudd_" ~headers:[ "./cudd.h" ]
     ~definitions:[ "./defs.h" ] "mylib"
     [
-      (let cudd_init =
-         Type.code ~ret:(expr "DdManager*") "cudd_init"
-           "return Cudd_Init(0, 0, CUDD_UNIQUE_SLOTS, CUDD_CACHE_SLOTS, 0);"
-       in
-
-       Expert.print_ml_fun
-         {
-           Expert.fid = cudd_init;
-           mlname = "init";
-           result =
-             Some
-               {
-                 rty = man;
-                 routput = true;
-                 rc = Expr.Var.mk "res" (Expr.e_def man.cty);
-                 binds = [];
-               };
-           params = [];
-         });
+      func ~ml:"init" "cudd_init" [] ~result:man;
       f_man "Cudd_ReadOne" "bdd_true" [] bdd;
       f_man "Cudd_ReadLogicZero" "bdd_false" [] bdd;
       f_man "Cudd_bddIthVar" "bdd_var" [ int_trunc ] bdd;
@@ -82,19 +64,9 @@ let () =
       func "Cudd_Not" ~ml:"bdd_not"
         [ { mani with used_in_call = false }; input bdd ]
         ~result:bdd;
-      (let b1 = input bdd in
-       let b2 = input bdd in
-       func_id
-         (Type.code ~ret:(expr "int") "equal_bdd" "return (%a == %a);@,"
-            Expr.pp_var b1.pc Expr.pp_var b2.pc)
-         ~ml:"bdd_is_equal" [ b1; b2 ] ~result:bool);
+      func "equal_bdd" ~ml:"bdd_is_equal" [ input bdd; input bdd ] ~result:bool;
       f_man "Cudd_bddLeq" "bdd_leq" [ bdd; bdd ] bool;
-      (let b1 = input bdd in
-       func_id
-         (Type.code "print"
-            "fflush(stdout);@ Cudd_PrintMinterm(%a,%a);@ fflush(stdout);"
-            Expr.pp_var mani.pc Expr.pp_var b1.pc)
-         ~ml:"print" [ mani; b1 ]);
+      func "bdd_print" ~ml:"print" [ mani; input bdd ];
       (let ty =
          algdata "result"
            [

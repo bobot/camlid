@@ -1,5 +1,9 @@
 #include "mylib_stub.h"
 
+static DdManager* cudd_init(){
+    return Cudd_Init(0, 0, CUDD_UNIQUE_SLOTS, CUDD_CACHE_SLOTS, 0);
+}
+
 static void bdd_inspect(DdManager *man, caml_cudd_result *dst, DdNode *src)
 {
 
@@ -22,4 +26,14 @@ static void bdd_inspect(DdManager *man, caml_cudd_result *dst, DdNode *src)
         };
         caml_cudd_mk_result_Ifte(dst, &v, &th, &el);
     }
+}
+
+static int equal_bdd(DdNode *a, DdNode *b){
+    return (a == b);
+}
+
+static void bdd_print(DdManager *man, DdNode *a){
+    fflush(stdout);
+    Cudd_PrintMinterm(man,a);
+    fflush(stdout);
 }

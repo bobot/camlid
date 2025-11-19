@@ -5,9 +5,6 @@
 #include <caml/alloc.h>
 #include <caml/custom.h>
 #include "./defs.h"
-static DdManager* caml_cudd_cudd_init(){
-  return Cudd_Init(0, 0, CUDD_UNIQUE_SLOTS, CUDD_CACHE_SLOTS, 0);
-  };
 void Cudd_Quit(caml_cudd_custom);
 static void caml_cudd_finalize_op(value v){
   Cudd_Quit(*(caml_cudd_custom *) Data_custom_val(v));
@@ -27,7 +24,7 @@ static void caml_cudd_c2ml(value * v, caml_cudd_custom * c){
 extern value caml_cudd_stub_cudd_init(){
   caml_cudd_custom res;
   value ret;
-  res = caml_cudd_cudd_init();
+  res = cudd_init();
   caml_cudd_c2ml(&ret, &res);
   return ret;
 };
@@ -149,10 +146,6 @@ extern value caml_cudd_stub_Cudd_Not(value man,
   caml_cudd_c2ml1(man1, &ret, &res);
   return ret;
 };
-static int caml_cudd_equal_bdd(caml_cudd_bdd_t p, caml_cudd_bdd_t p1){
-  return (p == p1);
-  
-  };
 static void caml_cudd_c2ml2(value * v, caml_cudd_bool * c){
   *v = Val_bool(*c);
   };
@@ -164,7 +157,7 @@ extern value caml_cudd_stub_equal_bdd(value p,
   value ret;
   caml_cudd_ml2c2(&p, &p2);
   caml_cudd_ml2c2(&p1, &p3);
-  res = caml_cudd_equal_bdd(p2, p3);
+  res = equal_bdd(p2, p3);
   caml_cudd_c2ml2(&ret, &res);
   return ret;
 };
@@ -183,19 +176,14 @@ extern value caml_cudd_stub_Cudd_bddLeq(value man,
   caml_cudd_c2ml2(&ret, &res);
   return ret;
 };
-static void caml_cudd_print(caml_cudd_custom man, caml_cudd_bdd_t p){
-  fflush(stdout);
-  Cudd_PrintMinterm(man,p);
-  fflush(stdout);
-  };
-extern value caml_cudd_stub_print(value man,
+extern value caml_cudd_stub_bdd_print(value man,
   value p){
   caml_cudd_custom man1 = ((caml_cudd_custom) { });
   caml_cudd_bdd_t p1 = ((caml_cudd_bdd_t) { });
   value ret;
   caml_cudd_ml2c(&man, &man1);
   caml_cudd_ml2c2(&p, &p1);
-  caml_cudd_print(man1, p1);
+  bdd_print(man1, p1);
   ret = Val_unit;
   return ret;
 };
