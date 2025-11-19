@@ -204,8 +204,7 @@ module PPGenID (H : Hashtbl.S) = struct
         let s =
           if id_keep_name then (
             if StringH.mem string_ids id_name then
-              Format.eprintf
-                "%s is already used but it is asked to keep its name" id_name
+              (* todo, iterate first to find all the keep name *) ()
             else StringH.add string_ids id_name 0;
             id_name)
           else find (Printf.sprintf "%s%s" prefix id_name)
