@@ -1,3 +1,4 @@
+(* generated using generator.exe and camlid *)
 type camlid_int = int
 type camlid_array = camlid_int array
 type camlid_array1 = camlid_int array

@@ -1,3 +1,4 @@
+(* generated using generator.exe and camlid *)
 type camlid_int = int
 type camlid_myptr
 external of_int: camlid_int -> camlid_myptr = "camlid_stub_of_int"

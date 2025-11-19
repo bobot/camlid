@@ -1,3 +1,4 @@
+// generated using generator.exe and camlid
 #include "mylib_stub.h"
 #include <caml/mlvalues.h>
 #include <caml/memory.h>

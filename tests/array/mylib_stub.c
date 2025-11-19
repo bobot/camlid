@@ -1,3 +1,4 @@
+// generated using generator.exe and camlid
 #include <stddef.h>
 #include <inttypes.h>
 #include <caml/mlvalues.h>

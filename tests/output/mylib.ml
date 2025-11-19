@@ -1,3 +1,4 @@
+(* generated using generator.exe and camlid *)
 type camlid_int = int
 type camlid_ptr_ref = camlid_int
 type camlid_ptr_ref1 = camlid_int

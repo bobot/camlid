@@ -1,3 +1,4 @@
+(* generated using generator.exe and camlid *)
 type caml_cudd_man
 type caml_cudd_bdd
 type caml_cudd_int = int

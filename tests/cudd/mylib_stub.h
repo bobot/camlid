@@ -1,3 +1,4 @@
+// generated using generator.exe and camlid
 #ifndef mylib
 #define mylib
 #include <stddef.h>
