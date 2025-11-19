@@ -5,6 +5,7 @@
 #include <caml/memory.h>
 #include <caml/alloc.h>
 #include <caml/custom.h>
+#include <string.h>
 #include "./lib.h"
 typedef int camlid_int;
 static void camlid_ml2c(value * v, camlid_int * c){ *c = Int_val(*v); };

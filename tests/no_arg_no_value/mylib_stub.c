@@ -5,6 +5,7 @@
 #include <caml/memory.h>
 #include <caml/alloc.h>
 #include <caml/custom.h>
+#include <string.h>
 #include "lib.h"
 extern value camlid_stub_f(){
   CAMLparam0();

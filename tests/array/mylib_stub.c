@@ -5,6 +5,7 @@
 #include <caml/memory.h>
 #include <caml/alloc.h>
 #include <caml/custom.h>
+#include <string.h>
 #include "lib.h"
 typedef intptr_t camlid_int;
 struct camlid_array_s { camlid_int* t; size_t len; };

@@ -36,6 +36,7 @@ let bool : typedef =
   builtin_mltypes ~ml_type:"bool" ~c_type:"int" ~c2ml:"Val_bool"
     ~ml2c:"Bool_val"
 
+let string_nt = Expert.string_nt
 let ptr_ref = ptr_ref
 
 let func_id ~ml ?result ?ignored_result fid params =
@@ -108,13 +109,23 @@ let input_array ?owned ?(output = false) ?(name = "array") ty =
   in
   (io_a_len, a, len)
 
-let output_fixed_length_array ?init ?owned ?(input = false) ?(output = true)
+let fixed_length_array ?init ?owned ?(input = false) ?(output = true)
     ?(len_used_in_call = false) ?(name = "array") ty =
   let len =
     Expert.input ~used_in_call:len_used_in_call int ~name:(name ^ "_len")
   in
   let a_len =
     simple_param ~input ~output (array ?init ?owned ~len:len.pc ty) ~name
+  in
+  (a_len, len)
+
+let fixed_length_string ?init ?owned ?(input = false) ?(output = true)
+    ?(len_used_in_call = false) ?(name = "string") () =
+  let len =
+    Expert.input ~used_in_call:len_used_in_call int ~name:(name ^ "_len")
+  in
+  let a_len =
+    simple_param ~input ~output (string_fixed_length ?init ?owned len.pc) ~name
   in
   (a_len, len)
 

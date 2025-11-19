@@ -53,6 +53,54 @@ let builtin_mltypes ~ml_type ~c_type ~c2ml ~ml2c =
     c;
   }
 
+(* string null terminated, convert until the first null character *)
+let string_nt ?(owned = true) () =
+  let cty = typedef "string_nt" "char *" in
+  let v = Var.mk "v" (expr "value *") in
+  let c = Var.mk "c" (expr "%a *" pp_def cty) in
+  {
+    descr = "int";
+    cty;
+    mlty = mlalias "string_nt" "string";
+    mlname = None;
+    c2ml = code "c2ml" "*%a = caml_copy_string(*%a);" pp_var v pp_var c;
+    ml2c =
+      codef "ml2c" (fun { fmt } ->
+          fmt "size_t len=strlen(String_val(*%a))+1;@ " pp_var v;
+          fmt "*%a=malloc(len);@ " pp_var c;
+          fmt "memcpy(*%a,String_val(*%a),len);" pp_var c pp_var v);
+    init = None;
+    init_expr = expr "((%a) { })" pp_def cty;
+    free = (if owned then codeo "free" "free(*%a);" pp_var c else None);
+    v;
+    c;
+  }
+
+let string_fixed_length ?(init = true) ?(owned = true) len =
+  let cty = typedef "string_fs" "char *" in
+  let v = Var.mk "v" (expr "value *") in
+  let c = Var.mk "c" (expr "%a *" pp_def cty) in
+  let malloc { fmt } = fmt "*%a=malloc(%a);@ " pp_var c pp_var len in
+  {
+    descr = "int";
+    cty;
+    mlty = mlalias "string_fs" "string";
+    mlname = None;
+    c2ml =
+      codef "c2ml" (fun { fmt } ->
+          fmt "*%a = caml_alloc_string(%a);" pp_var v pp_var len;
+          fmt "memcpy(&Byte(*%a,0),*%a,%a);" pp_var v pp_var c pp_var len);
+    ml2c =
+      codef "ml2c" (fun { fmt } ->
+          malloc { fmt };
+          fmt "memcpy(*%a,String_val(*%a),%a);" pp_var c pp_var v pp_var len);
+    init = (if init then codefo "init" malloc else None);
+    init_expr = expr "((%a) { })" pp_def cty;
+    free = (if owned then codeo "free" "free(*%a);" pp_var c else None);
+    v;
+    c;
+  }
+
 let ptr_ref (ty : typedef) =
   let cty = typedef "ref" "%a *" pp_def ty.cty in
   let v = Var.mk "v" (expr "value *") in
@@ -67,7 +115,7 @@ let ptr_ref (ty : typedef) =
     init = codeo "init" "%a" (init ~c:(expr "*%a" pp_var c) ()) ty;
     init_expr =
       expr "&(((struct { %a a; }) { %a }).a)" pp_def ty.cty init_expr ty;
-    free = None;
+    free = codeo "free" "%a" (free ~c:(expr "*%a" pp_var c) ()) ty;
     v;
     c;
   }

@@ -8,7 +8,8 @@ let print_c cout =
   output_string cout "#include <caml/mlvalues.h>\n";
   output_string cout "#include <caml/memory.h>\n";
   output_string cout "#include <caml/alloc.h>\n";
-  output_string cout "#include <caml/custom.h>\n"
+  output_string cout "#include <caml/custom.h>\n";
+  output_string cout "#include <string.h>\n"
 
 let header copen cclose cout =
   Printf.fprintf cout "%sgenerated using %s and camlid%s\n%!" copen

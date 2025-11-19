@@ -4,6 +4,7 @@
 #include <caml/memory.h>
 #include <caml/alloc.h>
 #include <caml/custom.h>
+#include <string.h>
 #include "defs.h"
 static void camlid_ml2c(value * v, camlid_int * c){ *c = Long_val(*v); };
 camlid_int f(camlid_int, camlid_ref);

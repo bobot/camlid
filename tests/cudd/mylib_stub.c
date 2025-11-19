@@ -4,6 +4,7 @@
 #include <caml/memory.h>
 #include <caml/alloc.h>
 #include <caml/custom.h>
+#include <string.h>
 #include "./defs.h"
 void Cudd_Quit(caml_cudd_custom);
 static void caml_cudd_finalize_op(value v){

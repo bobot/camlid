@@ -5,6 +5,7 @@
 #include <caml/memory.h>
 #include <caml/alloc.h>
 #include <caml/custom.h>
+#include <string.h>
 #include "lib.h"
 typedef intptr_t camlid_int;
 static void camlid_c2ml(value * v, camlid_int * c){ *v = Val_long(*c); };
