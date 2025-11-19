@@ -1,5 +1,5 @@
   $ ../camlid_toplevel.exe -stdin < gen.ml
-  /tmp/dune_cram_ee7943_.cram.sh/main.sh: 1: /tmp/dune_cram_ee7943_.cram.sh/1.sh: cannot open gen.ml: No such file
+  /tmp/dune_cram_75fcd9_.cram.sh/main.sh: 1: /tmp/dune_cram_75fcd9_.cram.sh/1.sh: cannot open gen.ml: No such file
   [2]
 
   $ cat cudd_core_stub.c

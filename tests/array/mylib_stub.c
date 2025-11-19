@@ -1,14 +1,14 @@
-  $ cat test_array_stub.c
 #include <stddef.h>
 #include <inttypes.h>
 #include <caml/mlvalues.h>
 #include <caml/memory.h>
 #include <caml/alloc.h>
 #include <caml/custom.h>
+#include "lib.h"
 typedef intptr_t camlid_int;
 struct camlid_array_s { camlid_int* t; size_t len; };
 typedef struct camlid_array_s camlid_array;
-typedef camlid_int* camlid_array1;
+typedef camlid_int** camlid_array1;
 typedef size_t* camlid_length_array;
 static void camlid_ml2c1(value * v, camlid_int * c){ *c = Long_val(*v); };
 static void camlid_ml2c(value * v, camlid_array * c){
@@ -22,11 +22,12 @@ static void camlid_ml2c(value * v, camlid_array * c){
     }
   CAMLreturn0;
   };
-static void camlid_init(camlid_array * c, camlid_array1 * c1){ *c1 = c->t; };
+static void camlid_init(camlid_array * c, camlid_array1* c1){
+  *c1 = &(c->t);
+  };
 static void camlid_init1(camlid_array * c, camlid_length_array * c1){
   *c1 = &c->len;
   };
-void f(camlid_array1, camlid_length_array);
 static void camlid_c2ml1(value * v, camlid_int * c){ *v = Val_long(*c); };
 static void camlid_c2ml(value * v, camlid_array * c){
   CAMLparam0 ();
@@ -39,7 +40,7 @@ static void camlid_c2ml(value * v, camlid_array * c){
   CAMLreturn0;
   };
 static void camlid_free(camlid_array * c){ free(c->t); };
-static void camlid_free1(camlid_array1 * c){  };
+static void camlid_free1(camlid_array1* c){  };
 static void camlid_free2(camlid_length_array * c){  };
 extern value camlid_stub_f(value array){
   camlid_array array1 = ((camlid_array) { });
@@ -58,16 +59,15 @@ extern value camlid_stub_f(value array){
 };
 struct camlid_array_s1 { camlid_int* t; size_t len; };
 typedef struct camlid_array_s1 camlid_array2;
-typedef camlid_int* camlid_array3;
+typedef camlid_int** camlid_array3;
 typedef size_t* camlid_length_array1;
 static void camlid_init2(camlid_array2 * c){  };
-static void camlid_init3(camlid_array2 * c, camlid_array3 * c1){
-  *c1 = c->t;
+static void camlid_init3(camlid_array2 * c, camlid_array3* c1){
+  *c1 = &(c->t);
   };
 static void camlid_init4(camlid_array2 * c, camlid_length_array1 * c1){
   *c1 = &c->len;
   };
-void f1(camlid_array3, camlid_length_array1);
 static void camlid_c2ml2(value * v, camlid_array2 * c){
   CAMLparam0 ();
   CAMLlocal1(cid_temp);
@@ -79,7 +79,7 @@ static void camlid_c2ml2(value * v, camlid_array2 * c){
   CAMLreturn0;
   };
 static void camlid_free3(camlid_array2 * c){ free(c->t); };
-static void camlid_free4(camlid_array3 * c){  };
+static void camlid_free4(camlid_array3* c){  };
 static void camlid_free5(camlid_length_array1 * c){  };
 extern value camlid_stub_f1(){
   camlid_array2 array = ((camlid_array2) { });
@@ -89,7 +89,7 @@ extern value camlid_stub_f1(){
   camlid_init2(&array);
   camlid_init3(&array, &array_a);
   camlid_init4(&array, &array_len);
-  f1(array_a, array_len);
+  f(array_a, array_len);
   camlid_c2ml2(&ret, &array);
   camlid_free3(&array);
   camlid_free4(&array_a);
@@ -111,13 +111,12 @@ static void camlid_ml2c2(value * v, camlid_array4 * c){
     }
   CAMLreturn0;
   };
-static void camlid_init5(camlid_array4 * c, camlid_array5 * c1){
-  *c1 = c->t;
+static void camlid_init5(camlid_array4 * c, camlid_array5* c1){
+  *c1 = (c->t);
   };
 static void camlid_init6(camlid_array4 * c, camlid_length_array2 * c1){
   *c1 = c->len;
   };
-void f2(camlid_array5, camlid_length_array2);
 static void camlid_c2ml3(value * v, camlid_array4 * c){
   CAMLparam0 ();
   CAMLlocal1(cid_temp);
@@ -129,7 +128,7 @@ static void camlid_c2ml3(value * v, camlid_array4 * c){
   CAMLreturn0;
   };
 static void camlid_free6(camlid_array4 * c){ free(c->t); };
-static void camlid_free7(camlid_array5 * c){  };
+static void camlid_free7(camlid_array5* c){  };
 static void camlid_free8(camlid_length_array2 * c){  };
 extern value camlid_stub_f2(value array){
   camlid_array4 array1 = ((camlid_array4) { });
@@ -161,17 +160,16 @@ static void camlid_ml2c3(value * v, camlid_array6 * c){
     }
   CAMLreturn0;
   };
-static void camlid_init7(camlid_array6 * c, camlid_array7 * c1){
-  *c1 = c->t;
+static void camlid_init7(camlid_array6 * c, camlid_array7* c1){
+  *c1 = (c->t);
   };
 static void camlid_init8(camlid_array6 * c, camlid_length_array3 * c1){
   *c1 = c->len;
   };
-void f3(camlid_array7, camlid_length_array3);
 static void camlid_free9(camlid_array6 * c){ free(c->t); };
-static void camlid_free10(camlid_array7 * c){  };
+static void camlid_free10(camlid_array7* c){  };
 static void camlid_free11(camlid_length_array3 * c){  };
-extern value camlid_stub_f3(value array){
+extern value camlid_stub_f21(value array){
   camlid_array6 array1 = ((camlid_array6) { });
   camlid_array7 array_a = 0;
   camlid_length_array3 array_len = 0;
@@ -179,7 +177,7 @@ extern value camlid_stub_f3(value array){
   camlid_ml2c3(&array, &array1);
   camlid_init7(&array1, &array_a);
   camlid_init8(&array1, &array_len);
-  f3(array_a, array_len);
+  f2(array_a, array_len);
   ret = Val_unit;
   camlid_free9(&array1);
   camlid_free10(&array_a);
@@ -187,8 +185,10 @@ extern value camlid_stub_f3(value array){
   return ret;
 };
 typedef camlid_int* camlid_array8;
-static void camlid_init9(camlid_array8 * c){  };
-void f4(camlid_array8);
+static void camlid_init9(camlid_int array_len, camlid_array8 * c){
+  *c = malloc(sizeof(camlid_int)*array_len);
+  
+  };
 static void camlid_c2ml4(camlid_int array_len, value * v, camlid_array8 * c){
   CAMLparam0 ();
   CAMLlocal1(cid_temp);
@@ -206,26 +206,10 @@ extern value camlid_stub_f4(value array_len){
   camlid_array8 array = ((camlid_array8) { });
   value ret;
   camlid_ml2c1(&array_len, &array_len1);
-  camlid_init9(&array);
+  camlid_init9(array_len1, &array);
   f4(array);
   camlid_c2ml4(array_len1, &ret, &array);
   camlid_free12(&array_len1);
   camlid_free13(&array);
   return ret;
 };
-
-  $ cat test_array.ml
-type camlid_int = int
-type camlid_array = camlid_int array
-type camlid_array1 = camlid_int array
-type camlid_array2 = camlid_int array
-type camlid_array3 = camlid_int array
-type camlid_array4 = camlid_int array
-external f: camlid_array -> camlid_array = "camlid_stub_f"
-external f1: unit -> camlid_array1 = "camlid_stub_f1"
-external f2: camlid_array2 -> camlid_array2 = "camlid_stub_f2"
-external f3: camlid_array3 -> unit = "camlid_stub_f3"
-external f4: camlid_int -> camlid_array4 = "camlid_stub_f4"
-  $ compile test_array.c
-
-  $ compile test_array.ml

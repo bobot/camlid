@@ -72,10 +72,13 @@ let ptr_ref (ty : typedef) =
     c;
   }
 
-let array ~len (ty : typedef) =
+let array ?(init = true) ?(owned = true) ~len (ty : typedef) =
   let cty = typedef "array" "%a*" pp_def ty.cty in
   let v = Var.mk "v" (expr "value *") in
   let c = Var.mk "c" (expr "%a *" pp_def cty) in
+  let malloc { fmt } =
+    fmt "@[*%a = malloc(sizeof(%a)*%a);@]@," pp_var c pp_def ty.cty pp_var len
+  in
   {
     descr = "array_length on " ^ ty.descr;
     cty;
@@ -100,8 +103,7 @@ let array ~len (ty : typedef) =
       codef "ml2c" (fun { fmt } ->
           fmt "CAMLparam0 ();@,";
           fmt "CAMLlocal1(cid_temp);@,";
-          fmt "@[*%a = malloc(sizeof(%a)*%a);@]@," pp_var c pp_def ty.cty pp_var
-            len;
+          malloc { fmt };
           fmt
             "@[<hv 2>@[<hv 2>for(@,\
              size_t cid_i=0;@ cid_i < %a;@ cid_i++@,\
@@ -113,14 +115,16 @@ let array ~len (ty : typedef) =
             (ml2c ~v:(expr "&cid_temp") ~c:(expr "&((*%a)[cid_i])" pp_var c) ())
             ty;
           fmt "CAMLreturn0;");
-    init = code ~ovars:[ c ] "init" "";
+    init = (if init then codef "init" malloc else code "init" ~ovars:[ c ] "");
     init_expr = expr "((%a) { })" pp_def cty;
-    free = code "free" "free(*%a);" pp_var c;
+    free =
+      (if owned then code "free" "free(*%a);" pp_var c
+       else code "free" "" ~ovars:[ c ]);
     v;
     c;
   }
 
-let array_length (ty : typedef) =
+let array_length ?(owned = true) (ty : typedef) =
   let sstruct =
     let id = ID.mk "array_s" in
     toplevel id "struct %a { %a* t; size_t len; };@." pp_id id pp_def ty.cty
@@ -168,15 +172,17 @@ let array_length (ty : typedef) =
           fmt "CAMLreturn0;");
     init = code ~ovars:[ c ] "init" "";
     init_expr = expr "((%a) { })" pp_def cty;
-    free = code "free" "free(%a->t);" pp_var c;
+    free =
+      (if owned then code "free" "free(%a->t);" pp_var c
+       else code "free" "" ~ovars:[ c ]);
     v;
     c;
   }
 
 let array_ptr_of_array_length ty array_length =
-  let cty = typedef "array" "%a*" pp_def ty.cty in
+  let cty = typedef "array" "%a**" pp_def ty.cty in
   let v = Var.mk "v" (expr "value *") in
-  let c = Var.mk "c" (expr "%a *" pp_def cty) in
+  let c = Var.mk "c" (expr "%a*" pp_def cty) in
   {
     descr = "array on " ^ ty.descr;
     cty;
@@ -184,7 +190,25 @@ let array_ptr_of_array_length ty array_length =
     mlname = None;
     c2ml = code "should_not_appear" "";
     ml2c = code "should not appear" "";
-    init = code "init" "*%a = %a->t;" pp_var c pp_var array_length.c;
+    init = code "init" "*%a = &(%a->t);" pp_var c pp_var array_length.c;
+    init_expr = expr "0";
+    free = code ~ovars:[ c ] "free" "";
+    v;
+    c;
+  }
+
+let array_of_array_length ty array_length =
+  let cty = typedef "array" "%a*" pp_def ty.cty in
+  let v = Var.mk "v" (expr "value *") in
+  let c = Var.mk "c" (expr "%a*" pp_def cty) in
+  {
+    descr = "array on " ^ ty.descr;
+    cty;
+    mlty = mlabstract "should_not_appear";
+    mlname = None;
+    c2ml = code "should_not_appear" "";
+    ml2c = code "should not appear" "";
+    init = code "init" "*%a = (%a->t);" pp_var c pp_var array_length.c;
     init_expr = expr "0";
     free = code ~ovars:[ c ] "free" "";
     v;
