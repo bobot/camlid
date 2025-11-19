@@ -1,6 +1,8 @@
 open Camlid
 open Helper
 
+(** todo add reference counting on cudd manager *)
+
 let man = custom ~finalize_ptr:"Cudd_Quit" ~ml:"man" ~c:"DdManager*" ()
 let mani = input man ~name:"man"
 let bdd_t = typedef "bdd_t" "DdNode*"
