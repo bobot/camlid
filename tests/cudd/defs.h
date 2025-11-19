@@ -1,4 +1,4 @@
-#include "test_cudd_stub.h"
+#include "mylib_stub.h"
 
 static void bdd_inspect(DdManager *man, caml_cudd_result *dst, DdNode *src)
 {

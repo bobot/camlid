@@ -1,4 +1,6 @@
   #include <inttypes.h>
+  #include "stddef.h"
+
   typedef struct DdNode DdNode;
   typedef struct DdManager DdManager;
   #define CUDD_UNIQUE_SLOTS	256	/**< Initial size of subtables */

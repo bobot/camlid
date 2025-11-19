@@ -1,2 +1,0 @@
-(tests (names cudd) (libraries camlid utils)
-(deps (glob_files *.h)))

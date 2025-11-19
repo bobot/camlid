@@ -1,4 +1,4 @@
-#include "mylib_stub.h"
+#include "./mylib_stub.h"
 
 static void combine_data_or_status(camlid_result *dst, camlid_int *status, camlid_int *data)
 {

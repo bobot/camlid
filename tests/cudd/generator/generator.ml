@@ -50,7 +50,7 @@ let f_man fname mlname inputs result =
 
 let () =
   Generate.to_file ~in_header:true ~prefix:"caml_cudd_" ~headers:[ "./cudd.h" ]
-    ~definitions:[ "./cudd_stub_def.h" ] "test_cudd"
+    ~definitions:[ "./defs.h" ] "mylib"
     [
       (let cudd_init =
          Type.code ~ret:(expr "DdManager*") "cudd_init"
@@ -103,5 +103,3 @@ let () =
        in
        func "bdd_inspect" ~ml:"inspect" [ mani; output (ptr_ref ty); input bdd ]);
     ]
-
-let () = Utils.cat_and_compile "test_cudd"
