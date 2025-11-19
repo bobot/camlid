@@ -78,7 +78,7 @@ let func_in ?ml ?result fname inputs =
 let output_array ?owned ?(input = false) ?(name = "array") ty =
   let a_len = array_length ?owned ty in
   let a = array_ptr_of_array_length ty a_len in
-  let len_ptr = length_ptr_of_array_length ty a_len in
+  let len_ptr = length_ptr_of_array_length a_len in
   let io_a_len =
     simple_param ~input ~output:true ~used_in_call:false a_len ~name
   in
@@ -95,7 +95,7 @@ let output_array ?owned ?(input = false) ?(name = "array") ty =
 let input_array ?owned ?(output = false) ?(name = "array") ty =
   let a_len = array_length ?owned ty in
   let a = array_of_array_length ty a_len in
-  let len = length_of_array_length ty a_len in
+  let len = length_of_array_length a_len in
   let io_a_len =
     simple_param ~input:true ~output ~used_in_call:false a_len ~name
   in
@@ -130,7 +130,6 @@ let fixed_length_string ?init ?owned ?(input = false) ?(output = true)
   (a_len, len)
 
 let abstract ?initialize ?get ?set ?internal ~ml ~c () : typedef =
-  let descr = Printf.sprintf "abstract tag for type \"%s\"" c in
   let cty = typedef "abstract" "%s" c in
   let icty =
     match internal with
@@ -160,7 +159,7 @@ let abstract ?initialize ?get ?set ?internal ~ml ~c () : typedef =
         { set = declare_existing set [ i; c ]; c; i })
       set
   in
-  Expert.abstract ?initialize ?set ?get ~icty ~descr ~cty ~ml ()
+  Expert.abstract ?initialize ?set ?get ~icty ~cty ~ml ()
 
 (** Encapsulate a c type into an custom ml type *)
 let custom ?initialize ?finalize ?finalize_ptr ?hash ?compare ?get ?set

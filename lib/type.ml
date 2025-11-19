@@ -1,7 +1,6 @@
 open Expr
 
 type typedef = {
-  descr : string;
   mlname : string option;  (** ml name *)
   cty : defined;  (** print the c type *)
   mlty : defined;  (** print the ocaml type *)

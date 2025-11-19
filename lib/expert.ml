@@ -40,7 +40,6 @@ let builtin_mltypes ~ml_type ~c_type ~c2ml ~ml2c =
   let v = Var.mk "v" (expr "value *") in
   let c = Var.mk "c" (expr "%a *" pp_def cty) in
   {
-    descr = "int";
     cty;
     mlty = mlalias ml_type "%s" ml_type;
     mlname = None;
@@ -59,7 +58,6 @@ let string_nt ?(owned = true) () =
   let v = Var.mk "v" (expr "value *") in
   let c = Var.mk "c" (expr "%a *" pp_def cty) in
   {
-    descr = "int";
     cty;
     mlty = mlalias "string_nt" "string";
     mlname = None;
@@ -82,7 +80,6 @@ let string_fixed_length ?(init = true) ?(owned = true) len =
   let c = Var.mk "c" (expr "%a *" pp_def cty) in
   let malloc { fmt } = fmt "*%a=malloc(%a);@ " pp_var c pp_var len in
   {
-    descr = "int";
     cty;
     mlty = mlalias "string_fs" "string";
     mlname = None;
@@ -106,7 +103,6 @@ let ptr_ref (ty : typedef) =
   let v = Var.mk "v" (expr "value *") in
   let c = Var.mk "c" (expr "%a *" pp_def cty) in
   {
-    descr = "ref on " ^ ty.descr;
     cty;
     mlty = mlalias "ptr_ref" "%a" pp_def ty.mlty;
     mlname = None;
@@ -128,7 +124,6 @@ let array ?(init = true) ?(owned = true) ~len (ty : typedef) =
     fmt "@[*%a = malloc(sizeof(%a)*%a);@]@," pp_var c pp_def ty.cty pp_var len
   in
   {
-    descr = "array_length on " ^ ty.descr;
     cty;
     mlty = mlalias "array" "%a array" pp_def ty.mlty;
     mlname = None;
@@ -179,7 +174,6 @@ let array_length ?(owned = true) (ty : typedef) =
   let v = Var.mk "v" (expr "value *") in
   let c = Var.mk "c" (expr "%a *" pp_def cty) in
   {
-    descr = "array_length on " ^ ty.descr;
     cty;
     mlty = mlalias "array" "%a array" pp_def ty.mlty;
     mlname = None;
@@ -228,7 +222,6 @@ let array_ptr_of_array_length ty array_length =
   let v = Var.mk "v" (expr "value *") in
   let c = Var.mk "c" (expr "%a*" pp_def cty) in
   {
-    descr = "array on " ^ ty.descr;
     cty;
     mlty = mlabstract "should_not_appear";
     mlname = None;
@@ -246,7 +239,6 @@ let array_of_array_length ty array_length =
   let v = Var.mk "v" (expr "value *") in
   let c = Var.mk "c" (expr "%a*" pp_def cty) in
   {
-    descr = "array on " ^ ty.descr;
     cty;
     mlty = mlabstract "should_not_appear";
     mlname = None;
@@ -259,12 +251,11 @@ let array_of_array_length ty array_length =
     c;
   }
 
-let length_ptr_of_array_length ty array_length =
+let length_ptr_of_array_length array_length =
   let cty = typedef "length_array" "size_t*" in
   let v = Var.mk "v" (expr "value *") in
   let c = Var.mk "c" (expr "%a *" pp_def cty) in
   {
-    descr = "array on " ^ ty.descr;
     cty;
     mlty = mlabstract "should_not_appear";
     mlname = None;
@@ -277,12 +268,11 @@ let length_ptr_of_array_length ty array_length =
     c;
   }
 
-let length_of_array_length ty array_length =
+let length_of_array_length array_length =
   let cty = typedef "length_array" "size_t" in
   let v = Var.mk "v" (expr "value *") in
   let c = Var.mk "c" (expr "%a *" pp_def cty) in
   {
-    descr = "array on " ^ ty.descr;
     cty;
     mlty = mlabstract "should_not_appear";
     mlname = None;
@@ -310,11 +300,10 @@ type set = {
 type initialize = { initialize : code; c : var }
 
 (** Encapsulate a c type into an abstract ml type *)
-let abstract ?initialize ?get ?set ~icty ~descr ~ml ~cty () =
+let abstract ?initialize ?get ?set ~icty ~ml ~cty () =
   let v = Var.mk "v" (expr "value *") in
   let c = Var.mk "c" (expr "%a *" pp_def cty) in
   {
-    descr;
     cty;
     v;
     c;
@@ -367,7 +356,6 @@ type compare_op = { compare_op : code; v1 : var; v2 : var }
 (** Encapsulate a c type into an custom ml type *)
 let custom ?initialize ?finalize ?finalize_ptr ?hash ?compare ?get ?set ~ml
     ~icty ~cty () =
-  let descr = Printf.sprintf "abstract tag for type \"%s\"" ml in
   let v = Var.mk "v" (expr "value *") in
   let c = Var.mk "c" (expr "%a *" pp_def cty) in
   let data_custom_val icty v =
@@ -455,7 +443,6 @@ let custom ?initialize ?finalize ?finalize_ptr ?hash ?compare ?get ?set ~ml
       hash_op
   in
   {
-    descr;
     cty;
     mlty = mlabstract ml;
     mlname = Some ml;
@@ -712,7 +699,6 @@ let mk_converter ~src ~dst name params =
 
 let convert ?a_to_b ?b_to_a ~(a : typedef) ~(b : typedef) () =
   {
-    descr = "int";
     cty = b.cty;
     mlty = a.mlty;
     mlname = a.mlname;
@@ -841,7 +827,6 @@ module AlgData = struct
     in
     let ty =
       {
-        descr = "int";
         cty;
         mlty;
         mlname = None;
