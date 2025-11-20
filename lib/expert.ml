@@ -577,9 +577,8 @@ let code_c_fun ~params ~result fid =
     let pp fmt call = Fmt.pf fmt "@[%a@]@," pp_calli (call, []) in
     fmt "%a" Fmt.(list ~sep:nop pp) (List.filter_map proj l)
   in
-
   let inputs = List.filter_map (fun p -> p.pinput) params in
-  let all = add_result params result in
+  let params = add_result params result in
   (* local C variable declaration *)
   let id = ID.mk ("stub_" ^ (def_of_def (def_of_code fid)).id.name) in
   fp ~kind:C ~params:inputs id (fun { fmt } ->
@@ -612,14 +611,14 @@ let code_c_fun ~params ~result fid =
       camlParam ~is_param:true ~first:true
         (List.filter_map (fun p -> p.pinput) params);
       camlParam ~is_param:false ~first:false
-        (return_var :: List.filter_map (fun p -> p.poutput) all);
+        (return_var :: List.filter_map (fun p -> p.poutput) params);
       (* C Locals *)
       let pp_local fmt p =
         Fmt.pf fmt "@[%a %a%a;@]@," pp_expr p.pc.ty pp_var p.pc
           Fmt.(option (any " = " ++ pp_expr))
           p.pinit_expr
       in
-      fmt "%a" Fmt.(list ~sep:nop pp_local) all;
+      fmt "%a" Fmt.(list ~sep:nop pp_local) params;
       (* convert input variables *)
       pp_scall (fun p -> p.pml2c) { fmt } params;
       (* initialize variables that are not input *)
@@ -635,8 +634,8 @@ let code_c_fun ~params ~result fid =
             (fun p -> Option.map (fun c -> (p.pc, c)) p.pused_in_call)
             params );
       (* convert output variable *)
-      pp_scall (fun p -> p.pc2ml) { fmt } all;
-      (match List.filter_map (fun p -> p.poutput) all with
+      pp_scall (fun p -> p.pc2ml) { fmt } params;
+      (match List.filter_map (fun p -> p.poutput) params with
       | [] -> fmt "@[%a = Val_unit;@]@," pp_var return_var
       | [ v ] -> fmt "@[%a = %a;@]@," pp_var return_var pp_var v
       | l ->
@@ -650,7 +649,7 @@ let code_c_fun ~params ~result fid =
           in
           fmt "%a@]@," Fmt.(list ~sep:Fmt.cut pp_store) li);
       (* free allocated memory *)
-      pp_scall (fun p -> p.pfree) { fmt } all;
+      pp_scall (fun p -> p.pfree) { fmt } params;
       (* return *)
       fmt "@[CAMLreturn(%a);@]" pp_var return_var;
       fmt "@]@,@[};@]@]@.")
