@@ -4,7 +4,7 @@ open Helper
 (** todo add reference counting on cudd manager *)
 
 let man = custom ~finalize_ptr:"Cudd_Quit" ~ml:"man" ~c:"DdManager*" ()
-let mani = input man ~name:"man"
+let mani, mani_pc = Expert.simple_param' ~input:true man ~name:"man"
 let bdd_t = typedef "bdd_t" "DdNode*"
 
 let bdd_wrapper_s =
@@ -28,7 +28,7 @@ let bdd_set =
   {
     Expert.set =
       Type.code "bdd_set" "Cudd_Ref(*%a);@ %a->manager=%a;@ %a->ptr=*%a;"
-        Expr.pp_var c Expr.pp_var i Expr.pp_var mani.pc Expr.pp_var i
+        Expr.pp_var c Expr.pp_var i Expr.pp_var mani_pc Expr.pp_var i
         Expr.pp_var c;
     i;
     c;

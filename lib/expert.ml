@@ -217,6 +217,14 @@ let array_length ?(owned = true) (ty : typedef) =
     c;
   }
 
+let use_ptr_of_param_in_call param =
+  match param.pused_in_call with
+  | None -> invalid_arg "Not used in call"
+  | Some (pcall, e) ->
+      let pcall2 = Var.mk "ptr" (expr "%a *" pp_expr pcall.ty) in
+      let arg = expr "&(%a)" pp_expr e in
+      { param with pused_in_call = Some (pcall2, arg) }
+
 let array_ptr_of_array_length ty array_length =
   let cty = typedef "array" "%a**" pp_def ty.cty in
   let v = Var.mk "v" (expr "value *") in
@@ -505,7 +513,7 @@ let mk_initialize ~cty initialize =
   let c = Var.mk "c" (expr "%a *" pp_def cty) in
   { initialize = declare_existing initialize [ c ]; c }
 
-let simple_param ?(binds = []) ?(input = false) ?(output = false)
+let simple_param' ?(binds = []) ?(input = false) ?(output = false)
     ?(used_in_call = true) ?(name = "p") pty =
   let pc = Var.mk name (e_def pty.cty) in
   let pc_call = Var.mk name (e_def pty.cty) in
@@ -525,20 +533,23 @@ let simple_param ?(binds = []) ?(input = false) ?(output = false)
   let poutput, pc2ml =
     if output then (Some pv', Some (bind' pty.c2ml)) else (None, None)
   in
-  let pinit_expr = Some pty.init_expr in
+  let pinit_expr = [ (pc, Some pty.init_expr) ] in
   let pfree = Option.map bind pty.free in
-  {
-    pinput;
-    pinit_expr;
-    pml2c;
-    pinit;
-    pused_in_call;
-    pc2ml;
-    pfree;
-    poutput;
-    pc;
-    pmlty = pty.mlty;
-  }
+  ( {
+      pinput;
+      pinit_expr;
+      pml2c;
+      pinit;
+      pused_in_call;
+      pc2ml;
+      pfree;
+      poutput;
+      pmlty = pty.mlty;
+    },
+    pc )
+
+let simple_param ?binds ?input ?output ?used_in_call ?name pty =
+  fst (simple_param' ?binds ?input ?output ?used_in_call ?name pty)
 
 let input ?used_in_call ?binds = simple_param ?used_in_call ?binds ~input:true
 let output ?used_in_call ?binds = simple_param ?used_in_call ?binds ~output:true
@@ -564,8 +575,7 @@ let add_result params result =
         pc2ml = result.rc2ml;
         pfree = result.rfree;
         pinit = None;
-        pinit_expr = None;
-        pc = result.rc;
+        pinit_expr = [ (result.rc, None) ];
         pmlty = result.rmlty;
       }
       :: params
@@ -614,12 +624,15 @@ let code_c_fun ~params ~result fid =
       camlParam ~is_param:false ~first:false
         (return_var :: List.filter_map (fun p -> p.poutput) params);
       (* C Locals *)
-      let pp_local fmt p =
-        Fmt.pf fmt "@[%a %a%a;@]@," pp_expr p.pc.ty pp_var p.pc
+      let pp_local fmt (pc, pinit_expr) =
+        Fmt.pf fmt "@[%a %a%a;@]@," pp_expr pc.ty pp_var pc
           Fmt.(option (any " = " ++ pp_expr))
-          p.pinit_expr
+          pinit_expr
       in
-      fmt "%a" Fmt.(list ~sep:nop pp_local) params;
+      fmt "%a"
+        Fmt.(
+          list ~sep:nop (using (fun p -> p.pinit_expr) (list ~sep:nop pp_local)))
+        params;
       (* convert input variables *)
       pp_scall (fun p -> p.pml2c) { fmt } params;
       (* initialize variables that are not input *)

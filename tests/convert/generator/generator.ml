@@ -8,10 +8,10 @@ module Result = struct
 end
 
 let data, data_or_status =
-  let data = ignored (ptr_ref int) ~name:"data" in
+  let data, data_pc = Expert.simple_param' (ptr_ref int) ~name:"data" in
   let conv =
     Expert.mk_converter ~dst:Result.ty ~src:int "combine_data_or_status"
-      (fun ~src ~dst -> [ dst; src; data.pc ])
+      (fun ~src ~dst -> [ dst; src; data_pc ])
   in
   let ty = Expert.convert ~b_to_a:conv ~b:int ~a:Result.ty () in
   (data, ty)
