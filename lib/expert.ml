@@ -574,17 +574,13 @@ let return_var = Var.mk "ret" (expr "value")
 let pp_scall fmt call = Fmt.pf fmt "@[%a@]@," pp_calli (call, [])
 
 let code_c_fun ~params ~result fid =
-  let inputs =
-    List.filter_map
-      (fun p -> match p.pinput with None -> None | Some v -> Some (p, v))
-      params
-  in
+  let inputs = List.filter_map (fun p -> p.pinput) params in
   let all = add_result params result in
   (* local C variable declaration *)
   let id = ID.mk ("stub_" ^ (def_of_def (def_of_code fid)).id.name) in
-  fp ~kind:C ~params:(List.map snd inputs) id (fun { fmt } ->
+  fp ~kind:C ~params:inputs id (fun { fmt } ->
       (* Formals *)
-      let pp_formal fmt (_, pv) = Fmt.pf fmt "value %a" pp_var pv in
+      let pp_formal fmt pv = Fmt.pf fmt "value %a" pp_var pv in
       fmt "@[<hv>@[<hv 2>@[extern value %a@](%a)@[{@]@," pp_id id
         Fmt.(list ~sep:comma pp_formal)
         inputs;
