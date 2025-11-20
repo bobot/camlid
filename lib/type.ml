@@ -23,7 +23,7 @@ type param = {
   pc2ml : code option;
   pml2c : code option;
   pinit : code option;
-  pinit_expr : expr;
+  pinit_expr : expr option;
   pfree : code option;
   pc : var; (* c variable *)
   pmlty : defined;

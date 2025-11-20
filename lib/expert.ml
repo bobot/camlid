@@ -524,7 +524,7 @@ let simple_param ?(binds = []) ?(input = false) ?(output = false)
   let poutput, pc2ml =
     if output then (Some pv', Some (bind' pty.c2ml)) else (None, None)
   in
-  let pinit_expr = pty.init_expr in
+  let pinit_expr = Some pty.init_expr in
   let pfree = Option.map bind pty.free in
   {
     pinput;
@@ -563,7 +563,7 @@ let add_result params result =
         pc2ml = result.rc2ml;
         pfree = result.rfree;
         pinit = None;
-        pinit_expr = expr "";
+        pinit_expr = None;
         pc = result.rc;
         pmlty = result.rmlty;
       }
@@ -615,7 +615,8 @@ let code_c_fun ~params ~result fid =
         (return_var :: List.filter_map (fun p -> p.poutput) all);
       (* C Locals *)
       let pp_local fmt p =
-        Fmt.pf fmt "@[%a %a = %a;@]@," pp_expr p.pc.ty pp_var p.pc pp_expr
+        Fmt.pf fmt "@[%a %a%a;@]@," pp_expr p.pc.ty pp_var p.pc
+          Fmt.(option (any " = " ++ pp_expr))
           p.pinit_expr
       in
       fmt "%a" Fmt.(list ~sep:nop pp_local) params;
