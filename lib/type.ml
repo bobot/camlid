@@ -19,7 +19,7 @@ type typedef = {
 type param = {
   pinput : var option;
   poutput : var option;
-  pused_in_call : expr option;
+  pused_in_call : (var * expr) option;
   pc2ml : code option;
   pml2c : code option;
   pinit : code option;

@@ -508,6 +508,7 @@ let mk_initialize ~cty initialize =
 let simple_param ?(binds = []) ?(input = false) ?(output = false)
     ?(used_in_call = true) ?(name = "p") pty =
   let pc = Var.mk name (e_def pty.cty) in
+  let pc_call = Var.mk name (e_def pty.cty) in
   let pv = Var.mk name (expr "value") in
   let pv' = Var.mk (name ^ "_r") (expr "value") in
   let bind code =
@@ -520,7 +521,7 @@ let simple_param ?(binds = []) ?(input = false) ?(output = false)
     if input then (Some pv, Some (bind pty.ml2c), None)
     else (None, None, Option.map bind pty.init)
   in
-  let pused_in_call = if used_in_call then Some (e_var pc) else None in
+  let pused_in_call = if used_in_call then Some (pc_call, e_var pc) else None in
   let poutput, pc2ml =
     if output then (Some pv', Some (bind' pty.c2ml)) else (None, None)
   in
@@ -629,10 +630,7 @@ let code_c_fun ~params ~result fid =
         | Some r -> Fmt.pf fmt "%a = " pp_var r.rc
       in
       fmt "@[%a%a;@]@," pp_result result pp_call
-        ( fid,
-          List.filter_map
-            (fun p -> Option.map (fun c -> (p.pc, c)) p.pused_in_call)
-            params );
+        (fid, List.filter_map (fun p -> p.pused_in_call) params);
       (* convert output variable *)
       pp_scall (fun p -> p.pc2ml) { fmt } params;
       (match List.filter_map (fun p -> p.poutput) params with
