@@ -513,7 +513,7 @@ let mk_initialize ~cty initialize =
   let c = Var.mk "c" (expr "%a *" pp_def cty) in
   { initialize = declare_existing initialize [ c ]; c }
 
-let simple_param' ?(binds = []) ?(input = false) ?(output = false)
+let simple_param ?(binds = []) ?(input = false) ?(output = false)
     ?(used_in_call = true) ?(name = "p") pty =
   let pc = Var.mk name (e_def pty.cty) in
   let pc_call = Var.mk name (e_def pty.cty) in
@@ -547,18 +547,6 @@ let simple_param' ?(binds = []) ?(input = false) ?(output = false)
       pmlty = pty.mlty;
     },
     pc )
-
-let simple_param ?binds ?input ?output ?used_in_call ?name pty =
-  fst (simple_param' ?binds ?input ?output ?used_in_call ?name pty)
-
-let input ?used_in_call ?binds = simple_param ?used_in_call ?binds ~input:true
-let output ?used_in_call ?binds = simple_param ?used_in_call ?binds ~output:true
-
-let inout ?used_in_call ?binds =
-  simple_param ?used_in_call ?binds ~input:true ~output:true
-
-let ignored ?used_in_call ?binds =
-  simple_param ?used_in_call ?binds ~input:false ~output:false
 
 let list_or_empty ~empty ~sep pp fmt = function
   | [] -> empty fmt ()

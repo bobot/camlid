@@ -9,6 +9,18 @@ let expr = expr
 let pp_def = pp_def
 let typedef = typedef
 
+let simple_param ?binds ?input ?output ?used_in_call ?name pty =
+  fst (simple_param ?binds ?input ?output ?used_in_call ?name pty)
+
+let input ?used_in_call ?binds = simple_param ?used_in_call ?binds ~input:true
+let output ?used_in_call ?binds = simple_param ?used_in_call ?binds ~output:true
+
+let inout ?used_in_call ?binds =
+  simple_param ?used_in_call ?binds ~input:true ~output:true
+
+let ignored ?used_in_call ?binds =
+  simple_param ?used_in_call ?binds ~input:false ~output:false
+
 let int : typedef =
   builtin_mltypes ~ml_type:"int" ~c_type:"intptr_t" ~c2ml:"Val_long"
     ~ml2c:"Long_val"
@@ -95,7 +107,7 @@ let output_array ?owned ?(input = false) ?(name = "array") ty =
   let a = array_ptr_of_array_length ty a_len in
   let len_ptr = length_ptr_of_array_length a_len in
   let io_a_len, io_a_len_pc =
-    simple_param' ~input ~output:true ~used_in_call:false a_len ~name
+    Expert.simple_param ~input ~output:true ~used_in_call:false a_len ~name
   in
   let a =
     ignored a ~name:(name ^ "_a")
@@ -112,7 +124,7 @@ let input_array ?owned ?(output = false) ?(name = "array") ty =
   let a = array_of_array_length ty a_len in
   let len = length_of_array_length a_len in
   let io_a_len, io_a_len_pc =
-    simple_param' ~input:true ~output ~used_in_call:false a_len ~name
+    Expert.simple_param ~input:true ~output ~used_in_call:false a_len ~name
   in
   let a =
     ignored a ~name:(name ^ "_a")
@@ -127,7 +139,7 @@ let input_array ?owned ?(output = false) ?(name = "array") ty =
 let fixed_length_array ?init ?owned ?(input = false) ?(output = true)
     ?(len_used_in_call = false) ?(name = "array") ty =
   let len, len_pc =
-    Expert.simple_param' ~input:true ~used_in_call:len_used_in_call int
+    Expert.simple_param ~input:true ~used_in_call:len_used_in_call int
       ~name:(name ^ "_len")
   in
   let a_len =
@@ -138,7 +150,7 @@ let fixed_length_array ?init ?owned ?(input = false) ?(output = true)
 let fixed_length_string ?init ?owned ?(input = false) ?(output = true)
     ?(len_used_in_call = false) ?(name = "string") () =
   let len, len_pc =
-    Expert.simple_param' ~input:true ~used_in_call:len_used_in_call int
+    Expert.simple_param ~input:true ~used_in_call:len_used_in_call int
       ~name:(name ^ "_len")
   in
   let a_len =
@@ -194,11 +206,6 @@ let custom ?initialize ?finalize ?finalize_ptr ?hash ?compare ?get ?set
   let initialize = Option.map (mk_initialize ~cty) initialize in
   custom ?initialize ?finalize ?finalize_ptr ?hash ?compare ?get ?set ~ml ~icty
     ~cty ()
-
-let inout = Expert.inout
-let input = Expert.input
-let output = Expert.output
-let ignored = Expert.ignored
 
 let algdata ml_type l =
   let t = AlgData.algdata ml_type l in
