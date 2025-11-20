@@ -217,81 +217,45 @@ let array_length ?(owned = true) (ty : typedef) =
     c;
   }
 
-let use_ptr_of_param_in_call param =
+let map_param_in_call ?(name = "arg") map param =
   match param.pused_in_call with
   | None -> invalid_arg "Not used in call"
   | Some (pcall, e) ->
-      let pcall2 = Var.mk "ptr" (expr "%a *" pp_expr pcall.ty) in
-      let arg = expr "&(%a)" pp_expr e in
+      let ty, arg = map pcall.ty e in
+      let pcall2 = Var.mk name ty in
       { param with pused_in_call = Some (pcall2, arg) }
 
-let array_ptr_of_array_length ty array_length =
-  let cty = typedef "array" "%a**" pp_def ty.cty in
-  let v = Var.mk "v" (expr "value *") in
-  let c = Var.mk "c" (expr "%a*" pp_def cty) in
-  {
-    cty;
-    mlty = mlabstract "should_not_appear";
-    mlname = None;
-    c2ml = code "should_not_appear" "";
-    ml2c = code "should not appear" "";
-    init = Some (code "init" "*%a = &(%a->t);" pp_var c pp_var array_length.c);
-    init_expr = expr "0";
-    free = None;
-    v;
-    c;
-  }
+let use_ptr_of_param_in_call param =
+  map_param_in_call ~name:"ptr"
+    (fun ty e -> (expr "%a *" pp_expr ty, expr "&(%a)" pp_expr e))
+    param
 
-let array_of_array_length ty array_length =
-  let cty = typedef "array" "%a*" pp_def ty.cty in
-  let v = Var.mk "v" (expr "value *") in
-  let c = Var.mk "c" (expr "%a*" pp_def cty) in
-  {
-    cty;
-    mlty = mlabstract "should_not_appear";
-    mlname = None;
-    c2ml = code "should_not_appear" "";
-    ml2c = code "should not appear" "";
-    init = Some (code "init" "*%a = (%a->t);" pp_var c pp_var array_length.c);
-    init_expr = expr "0";
-    free = None;
-    v;
-    c;
-  }
+let use_new_param_only_in_call param =
+  match param.pused_in_call with
+  | None -> invalid_arg "Not used in call"
+  | Some (pcall, e) ->
+      let pcall2 = Var.mk "ptr" pcall.ty in
+      {
+        pused_in_call = Some (pcall2, e);
+        pinput = None;
+        poutput = None;
+        pc2ml = None;
+        pml2c = None;
+        pinit = None;
+        pinit_expr = [];
+        pfree = None;
+        pmlty = param.pmlty;
+      }
 
-let length_ptr_of_array_length array_length =
-  let cty = typedef "length_array" "size_t*" in
-  let v = Var.mk "v" (expr "value *") in
-  let c = Var.mk "c" (expr "%a *" pp_def cty) in
-  {
-    cty;
-    mlty = mlabstract "should_not_appear";
-    mlname = None;
-    c2ml = code "should_not_appear" "";
-    ml2c = code "should not appear" "";
-    init = Some (code "init" "*%a = &%a->len;" pp_var c pp_var array_length.c);
-    init_expr = expr "0";
-    free = None;
-    v;
-    c;
-  }
+let array_of_array_length ty param =
+  map_param_in_call ~name:"ptr"
+    (fun _ e -> (expr "%a*" pp_def ty.cty, expr "%a.t" pp_expr e))
+    param
 
-let length_of_array_length array_length =
-  let cty = typedef "length_array" "size_t" in
-  let v = Var.mk "v" (expr "value *") in
-  let c = Var.mk "c" (expr "%a *" pp_def cty) in
-  {
-    cty;
-    mlty = mlabstract "should_not_appear";
-    mlname = None;
-    c2ml = code "should_not_appear" "";
-    ml2c = code "should not appear" "";
-    init = Some (code "init" "*%a = %a->len;" pp_var c pp_var array_length.c);
-    init_expr = expr "0";
-    free = None;
-    v;
-    c;
-  }
+let length_of_array_length param =
+  map_param_in_call ~name:"ptr"
+    (fun _ e -> (expr "size_t", expr "%a.len" pp_expr e))
+    param
 
 type get = {
   get : code;

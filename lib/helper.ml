@@ -104,37 +104,21 @@ let func_in ?ml ?result fname inputs =
 
 let output_array ?owned ?(input = false) ?(name = "array") ty =
   let a_len = array_length ?owned ty in
-  let a = array_ptr_of_array_length ty a_len in
-  let len_ptr = length_ptr_of_array_length a_len in
-  let io_a_len, io_a_len_pc =
-    Expert.simple_param ~input ~output:true ~used_in_call:false a_len ~name
-  in
-  let a =
-    ignored a ~name:(name ^ "_a")
-      ~binds:[ (a_len.c, expr "&%a" pp_var io_a_len_pc) ]
-  in
+  let io_a_len, _ = Expert.simple_param ~input ~output:true a_len ~name in
+  let a = array_of_array_length ty io_a_len |> use_ptr_of_param_in_call in
   let len_ptr =
-    ignored len_ptr ~name:(name ^ "_len")
-      ~binds:[ (a_len.c, expr "&%a" pp_var io_a_len_pc) ]
+    length_of_array_length io_a_len
+    |> use_ptr_of_param_in_call |> use_new_param_only_in_call
   in
-  (io_a_len, a, len_ptr)
+  (a, len_ptr)
 
 let input_array ?owned ?(output = false) ?(name = "array") ty =
   let a_len = array_length ?owned ty in
-  let a = array_of_array_length ty a_len in
-  let len = length_of_array_length a_len in
-  let io_a_len, io_a_len_pc =
-    Expert.simple_param ~input:true ~output ~used_in_call:false a_len ~name
-  in
-  let a =
-    ignored a ~name:(name ^ "_a")
-      ~binds:[ (a_len.c, expr "&%a" pp_var io_a_len_pc) ]
-  in
-  let len =
-    ignored len ~name:(name ^ "_len")
-      ~binds:[ (a_len.c, expr "&%a" pp_var io_a_len_pc) ]
-  in
-  (io_a_len, a, len)
+  let io_a_len, _ = Expert.simple_param ~input:true ~output a_len ~name in
+
+  let a = array_of_array_length ty io_a_len in
+  let len_ptr = length_of_array_length io_a_len |> use_new_param_only_in_call in
+  (a, len_ptr)
 
 let fixed_length_array ?init ?owned ?(input = false) ?(output = true)
     ?(len_used_in_call = false) ?(name = "array") ty =
