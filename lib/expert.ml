@@ -619,10 +619,7 @@ let code_c_fun ~params ~result fid =
           Fmt.(option (any " = " ++ pp_expr))
           p.pinit_expr
       in
-      fmt "%a" Fmt.(list ~sep:nop pp_local) params;
-      (match result with
-      | None -> ()
-      | Some result -> fmt "@[%a %a;@]@," pp_expr result.rc.ty pp_var result.rc);
+      fmt "%a" Fmt.(list ~sep:nop pp_local) all;
       (* convert input variables *)
       let pp_conv_in fmt call = Fmt.pf fmt "@[%a@]@," pp_calli (call, []) in
       fmt "%a"

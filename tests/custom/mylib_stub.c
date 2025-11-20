@@ -58,8 +58,8 @@ static void camlid_c2ml1(value * v, camlid_int * c){ *v = Val_long(*c); };
 extern value camlid_stub_to_int(value p){
   CAMLparam1(p);
   CAMLlocal2(ret, vres);
-  camlid_custom p1 = ((camlid_custom) { });
   camlid_int res;
+  camlid_custom p1 = ((camlid_custom) { });
   camlid_ml2c1(&p, &p1);
   res = to_int(p1);
   camlid_c2ml1(&vres, &res);
