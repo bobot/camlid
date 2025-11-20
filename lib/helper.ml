@@ -45,24 +45,40 @@ let func_id ~ml ?result ?ignored_result fid params =
   | Some _, Some _ ->
       failwith "Camlid.Helper.func: can't set both result and ignored_result"
   | Some rty, None ->
-      print_ml_fun fid ~mlname:ml ~params
-        ~result:
-          { rty; routput = true; rc = Var.mk "res" (e_def rty.cty); binds = [] }
-  | None, Some rty ->
+      let rc = Var.mk "res" (e_def rty.cty) in
+      let rv' = Var.mk "vres" (expr "value") in
+      let bind' code =
+        Expr.binds [ (rty.c, e_addr rc); (rty.v, e_addr rv') ] code
+      in
       print_ml_fun fid ~mlname:ml ~params
         ~result:
           {
-            rty;
-            routput = false;
-            rc = Var.mk "res" (e_def rty.cty);
-            binds = [];
+            rmlty = rty.mlty;
+            routput = Some rv';
+            rc;
+            rfree = Option.map bind' rty.free;
+            rc2ml = Some (bind' rty.c2ml);
+          }
+  | None, Some rty ->
+      let rc = Var.mk "res" (e_def rty.cty) in
+      let bind' code = Expr.binds [ (rty.c, e_addr rc) ] code in
+      print_ml_fun fid ~mlname:ml ~params
+        ~result:
+          {
+            rmlty = rty.mlty;
+            routput = None;
+            rc;
+            rfree = Option.map bind' rty.free;
+            rc2ml = None;
           }
   | None, None -> print_ml_fun fid ~mlname:ml ~params
 
 let func ?(declare = false) ?ml ?result ?ignored_result fname params =
   let ml = Option.value ~default:fname ml in
   let fid =
-    let used_in_calls = List.filter (fun p -> p.used_in_call) params in
+    let used_in_calls =
+      List.filter (fun p -> Option.is_some p.pused_in_call) params
+    in
     let vars_used_in_calls = List.map (fun p -> p.pc) used_in_calls in
     if declare then
       declare_existing

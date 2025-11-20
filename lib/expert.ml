@@ -507,7 +507,37 @@ let mk_initialize ~cty initialize =
 
 let simple_param ?(binds = []) ?(input = false) ?(output = false)
     ?(used_in_call = true) ?(name = "p") pty =
-  { input; output; used_in_call; pty; pc = Var.mk name (e_def pty.cty); binds }
+  let pc = Var.mk name (e_def pty.cty) in
+  let pv = Var.mk name (expr "value") in
+  let pv' = Var.mk (name ^ "_r") (expr "value") in
+  let bind code =
+    Expr.binds ((pty.c, e_addr pc) :: (pty.v, e_addr pv) :: binds) code
+  in
+  let bind' code =
+    Expr.binds ((pty.c, e_addr pc) :: (pty.v, e_addr pv') :: binds) code
+  in
+  let pinput, pml2c, pinit =
+    if input then (Some pv, Some (bind pty.ml2c), None)
+    else (None, None, Option.map bind pty.init)
+  in
+  let pused_in_call = if used_in_call then Some (e_var pc) else None in
+  let poutput, pc2ml =
+    if output then (Some pv', Some (bind' pty.c2ml)) else (None, None)
+  in
+  let pinit_expr = pty.init_expr in
+  let pfree = Option.map bind pty.free in
+  {
+    pinput;
+    pinit_expr;
+    pml2c;
+    pinit;
+    pused_in_call;
+    pc2ml;
+    pfree;
+    poutput;
+    pc;
+    pmlty = pty.mlty;
+  }
 
 let input ?used_in_call ?binds = simple_param ?used_in_call ?binds ~input:true
 let output ?used_in_call ?binds = simple_param ?used_in_call ?binds ~output:true
@@ -522,37 +552,35 @@ let list_or_empty ~empty ~sep pp fmt = function
   | [] -> empty fmt ()
   | l -> Fmt.list ~sep pp fmt l
 
-let results params result =
-  let out_params = List.filter (fun p -> p.output) params in
+let add_result params result =
   match result with
-  | None -> out_params
-  | Some result ->
-      if result.routput then
-        {
-          input = false;
-          output = false;
-          used_in_call = false;
-          pty = result.rty;
-          pc = result.rc;
-          binds = result.binds;
-        }
-        :: out_params
-      else out_params
+  | Some ({ routput = Some _; _ } as result) ->
+      {
+        pinput = None;
+        poutput = result.routput;
+        pused_in_call = None;
+        pml2c = None;
+        pc2ml = result.rc2ml;
+        pfree = result.rfree;
+        pinit = None;
+        pinit_expr = expr "";
+        pc = result.rc;
+        pmlty = result.rmlty;
+      }
+      :: params
+  | _ -> params
 
 let return_var = Var.mk "ret" (expr "value")
+let pp_scall fmt call = Fmt.pf fmt "@[%a@]@," pp_calli (call, [])
 
 let code_c_fun ~params ~result fid =
   let inputs =
     List.filter_map
-      (fun p ->
-        if p.input then Some (p, Var.mk p.pc.name (expr "value")) else None)
+      (fun p -> match p.pinput with None -> None | Some v -> Some (p, v))
       params
   in
-  let results = results params result in
-  let used_in_calls = List.filter (fun p -> p.used_in_call) params in
-  let vars_used_in_calls = List.map (fun p -> p.pc) used_in_calls in
+  let all = add_result params result in
   (* local C variable declaration *)
-  let tuple_var = Var.mk "tup" (expr "value[%i]" (List.length results)) in
   let id = ID.mk ("stub_" ^ (def_of_def (def_of_code fid)).id.name) in
   fp ~kind:C ~params:(List.map snd inputs) id (fun { fmt } ->
       (* Formals *)
@@ -560,10 +588,11 @@ let code_c_fun ~params ~result fid =
       fmt "@[<hv>@[<hv 2>@[extern value %a@](%a)@[{@]@," pp_id id
         Fmt.(list ~sep:comma pp_formal)
         inputs;
-      (* Local roots *)
-      let rec camlParam ~first l =
-        let add_x fmt = if first then () else Fmt.pf fmt "x" in
-        let pp_input fmt (_, v) = pp_var fmt v in
+      (* Local ML values *)
+      let rec camlParam ~is_param ~first l =
+        let add_x fmt = if first || not is_param then () else Fmt.pf fmt "x" in
+        let name = if is_param then "param" else "local" in
+        let pp_input fmt v = pp_var fmt v in
         let p, l =
           match l with
           | [] -> ([], [])
@@ -575,98 +604,75 @@ let code_c_fun ~params ~result fid =
         in
         if List.is_empty p then (if first then fmt "@[CAMLparam0();@]@,")
         else (
-          fmt "@[CAML%tparam%i(%a);@]@," add_x (List.length p)
+          fmt "@[CAML%t%s%i(%a);@]@," add_x name (List.length p)
             Fmt.(list ~sep:comma pp_input)
             p;
-          camlParam ~first:false l)
+          camlParam ~is_param ~first:false l)
       in
-      camlParam ~first:true inputs;
-      fmt "@[CAMLlocal1(%a);@]@," pp_var return_var;
-      (match results with
-      | [] | [ _ ] -> ()
-      | l -> fmt "@[CAMLlocalN(%a,%i);@]@," pp_var tuple_var (List.length l));
-      (* Locals *)
+      camlParam ~is_param:true ~first:true
+        (List.filter_map (fun p -> p.pinput) params);
+      camlParam ~is_param:false ~first:false
+        (return_var :: List.filter_map (fun p -> p.poutput) all);
+      (* C Locals *)
       let pp_local fmt p =
-        Fmt.pf fmt "@[%a %a = %a;@]@," pp_def p.pty.cty pp_var p.pc init_expr
-          p.pty
+        Fmt.pf fmt "@[%a %a = %a;@]@," pp_expr p.pc.ty pp_var p.pc pp_expr
+          p.pinit_expr
       in
       fmt "%a" Fmt.(list ~sep:nop pp_local) params;
       (match result with
       | None -> ()
-      | Some result -> fmt "@[%a %a;@]@," pp_def result.rty.cty pp_var result.rc);
+      | Some result -> fmt "@[%a %a;@]@," pp_expr result.rc.ty pp_var result.rc);
       (* convert input variables *)
-      let pp_conv_in fmt ((p : param), vc) =
-        Fmt.pf fmt "@[%a@]@,"
-          (ml2c ~binds:p.binds ~v:(expr "&%a" pp_var vc)
-             ~c:(expr "&%a" pp_var p.pc) ())
-          p.pty
-      in
-      fmt "%a" Fmt.(list ~sep:nop pp_conv_in) inputs;
+      let pp_conv_in fmt call = Fmt.pf fmt "@[%a@]@," pp_calli (call, []) in
+      fmt "%a"
+        Fmt.(list ~sep:nop pp_conv_in)
+        (List.filter_map (fun p -> p.pml2c) params);
       (* initialize variables that are not input *)
-      let pp_init_out fmt p =
-        if (not p.input) && Option.is_some p.pty.init then
-          Fmt.pf fmt "@[%a@]@,"
-            (init ~binds:p.binds ~c:(expr "&%a" pp_var p.pc) ())
-            p.pty
-      in
-      fmt "%a" Fmt.(list ~sep:nop pp_init_out) params;
+      fmt "%a"
+        Fmt.(list ~sep:nop pp_scall)
+        (List.filter_map (fun p -> p.pinit) params);
       (* function call *)
       let pp_result fmt = function
         | None -> ()
         | Some r -> Fmt.pf fmt "%a = " pp_var r.rc
       in
       fmt "@[%a%a;@]@," pp_result result pp_call
-        (fid, List.map (fun v -> (v, e_var v)) vars_used_in_calls);
-      (* create return value *)
-      let pp_conv_out fmt (p : param) =
-        Fmt.pf fmt "@[%a@]@,"
-          (c2ml ~binds:p.binds
-             ~v:(expr "&%a" pp_var return_var)
-             ~c:(expr "&%a" pp_var p.pc) ())
-          p.pty
-      in
-      (match results with
+        ( fid,
+          List.filter_map
+            (fun p -> Option.map (fun c -> (p.pc, c)) p.pused_in_call)
+            params );
+      (* convert output variable *)
+      fmt "%a"
+        Fmt.(list ~sep:nop pp_scall)
+        (List.filter_map (fun p -> p.pc2ml) all);
+      (match List.filter_map (fun p -> p.poutput) all with
       | [] -> fmt "@[%a = Val_unit;@]@," pp_var return_var
-      | [ p ] ->
-          (* convert uniq output *)
-          fmt "%a" pp_conv_out p
+      | [ v ] -> fmt "@[%a = %a;@]@," pp_var return_var pp_var v
       | l ->
           let len = List.length l in
-          let li = List.mapi (fun i p -> (i, p)) l in
-          (* convert outputs *)
-          let pp_conv_out fmt (i, (p : param)) =
-            Fmt.pf fmt "@[%a@]"
-              (c2ml
-                 ~v:(expr "&%a[%i]" pp_var tuple_var i)
-                 ~c:(expr "&%a" pp_var p.pc) ~binds:p.binds ())
-              p.pty
-          in
-          fmt "%a@," Fmt.(list ~sep:Fmt.cut pp_conv_out) li;
+          let li = List.mapi (fun i v -> (i, v)) l in
           (* create output tuple *)
           fmt "@[%a = caml_alloc(%i,0);@]@," pp_var return_var len;
-          let pp_store fmt (i, _) =
-            Fmt.pf fmt "@[Store_field(%a, %i, %a[%i]);@]" pp_var return_var i
-              pp_var tuple_var i
+          let pp_store fmt (i, v) =
+            Fmt.pf fmt "@[Store_field(%a, %i, %a);@]" pp_var return_var i pp_var
+              v
           in
           fmt "%a@]@," Fmt.(list ~sep:Fmt.cut pp_store) li);
       (* free allocated memory *)
-      let pp_init_out fmt (p : param) =
-        if Option.is_some p.pty.free then
-          Fmt.pf fmt "@[%a@]@,"
-            (free ~binds:p.binds ~c:(expr "&%a" pp_var p.pc) ())
-            p.pty
-      in
-      fmt "%a" Fmt.(list ~sep:nop pp_init_out) params;
+      fmt "%a"
+        Fmt.(list ~sep:nop pp_scall)
+        (List.filter_map (fun p -> p.pfree) params);
       (* return *)
       fmt "@[CAMLreturn(%a);@]" pp_var return_var;
       fmt "@]@,@[};@]@]@.")
 
 let print_ml_fun ~params ?result ~mlname fid =
   let code_c = code_c_fun ~params ~result fid in
-  let results = results params result in
-  let inputs = List.filter (fun p -> p.input) params in
-  let pp_result fmt p = pp_def fmt p.pty.mlty in
-  let pp_param fmt p = Fmt.pf fmt "@[%a ->@]@ " pp_def p.pty.mlty in
+  let all = add_result params result in
+  let inputs = List.filter (fun p -> Option.is_some p.pinput) all in
+  let results = List.filter (fun p -> Option.is_some p.poutput) all in
+  let pp_result fmt p = pp_def fmt p.pmlty in
+  let pp_param fmt p = Fmt.pf fmt "@[%a ->@]@ " pp_def p.pmlty in
   expr "@[<hv 2>external %s:@ %a@[<hv>%a@]@ = \"%a\"@]" mlname
     Fmt.(list_or_empty ~empty:(any "unit -> ") ~sep:nop pp_param)
     inputs

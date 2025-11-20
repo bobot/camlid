@@ -15,11 +15,12 @@ static void camlid_c2ml1(value * v, camlid_int * c){ *v = Val_long(*c); };
 static void camlid_c2ml(value * v, camlid_ref * c){ camlid_c2ml1(v, *c); };
 extern value camlid_stub_f_nat(value p){
   CAMLparam1(p);
-  CAMLlocal1(ret);
+  CAMLlocal2(ret, p_r);
   camlid_ref p1 = &(((struct { camlid_int a; }) { ((camlid_int) { }) }).a);
   camlid_ml2c(&p, &p1);
   f_nat(p1);
-  camlid_c2ml(&ret, &p1);
+  camlid_c2ml(&p_r, &p1);
+  ret = p_r;
   CAMLreturn(ret);
 };
 typedef int camlid_int1;
@@ -30,11 +31,12 @@ static void camlid_c2ml3(value * v, camlid_int1 * c){ *v = Val_int(*c); };
 static void camlid_c2ml2(value * v, camlid_ref1 * c){ camlid_c2ml3(v, *c); };
 extern value camlid_stub_f_int(value p){
   CAMLparam1(p);
-  CAMLlocal1(ret);
+  CAMLlocal2(ret, p_r);
   camlid_ref1 p1 = &(((struct { camlid_int1 a; }) { ((camlid_int1) { }) }).a);
   camlid_ml2c2(&p, &p1);
   f_int(p1);
-  camlid_c2ml2(&ret, &p1);
+  camlid_c2ml2(&p_r, &p1);
+  ret = p_r;
   CAMLreturn(ret);
 };
 typedef double camlid_float;
@@ -49,11 +51,12 @@ static void camlid_c2ml5(value * v, camlid_float * c){
 static void camlid_c2ml4(value * v, camlid_ref2 * c){ camlid_c2ml5(v, *c); };
 extern value camlid_stub_f_double(value p){
   CAMLparam1(p);
-  CAMLlocal1(ret);
+  CAMLlocal2(ret, p_r);
   camlid_ref2 p1 = &(((struct { camlid_float a; }) { ((camlid_float) { }) }).a);
   camlid_ml2c4(&p, &p1);
   f_double(p1);
-  camlid_c2ml4(&ret, &p1);
+  camlid_c2ml4(&p_r, &p1);
+  ret = p_r;
   CAMLreturn(ret);
 };
 typedef int32_t camlid_int32;
@@ -66,11 +69,12 @@ static void camlid_c2ml7(value * v, camlid_int32 * c){
 static void camlid_c2ml6(value * v, camlid_ref3 * c){ camlid_c2ml7(v, *c); };
 extern value camlid_stub_f_int32(value p){
   CAMLparam1(p);
-  CAMLlocal1(ret);
+  CAMLlocal2(ret, p_r);
   camlid_ref3 p1 = &(((struct { camlid_int32 a; }) { ((camlid_int32) { }) }).a);
   camlid_ml2c6(&p, &p1);
   f_int32(p1);
-  camlid_c2ml6(&ret, &p1);
+  camlid_c2ml6(&p_r, &p1);
+  ret = p_r;
   CAMLreturn(ret);
 };
 typedef int64_t camlid_int64;
@@ -83,11 +87,12 @@ static void camlid_c2ml9(value * v, camlid_int64 * c){
 static void camlid_c2ml8(value * v, camlid_ref4 * c){ camlid_c2ml9(v, *c); };
 extern value camlid_stub_f_int64(value p){
   CAMLparam1(p);
-  CAMLlocal1(ret);
+  CAMLlocal2(ret, p_r);
   camlid_ref4 p1 = &(((struct { camlid_int64 a; }) { ((camlid_int64) { }) }).a);
   camlid_ml2c8(&p, &p1);
   f_int64(p1);
-  camlid_c2ml8(&ret, &p1);
+  camlid_c2ml8(&p_r, &p1);
+  ret = p_r;
   CAMLreturn(ret);
 };
 typedef intptr_t camlid_nativeint;
@@ -106,10 +111,11 @@ static void camlid_c2ml10(value * v, camlid_ref5 * c){
   };
 extern value camlid_stub_f_nat1(value p){
   CAMLparam1(p);
-  CAMLlocal1(ret);
+  CAMLlocal2(ret, p_r);
   camlid_ref5 p1 = &(((struct { camlid_nativeint a; }) { ((camlid_nativeint) { }) }).a);
   camlid_ml2c10(&p, &p1);
   f_nat(p1);
-  camlid_c2ml10(&ret, &p1);
+  camlid_c2ml10(&p_r, &p1);
+  ret = p_r;
   CAMLreturn(ret);
 };

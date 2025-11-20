@@ -17,6 +17,8 @@ and id = { id : int; name : string; args : id list; keep_name : bool }
 and var = { id : int; name : string; args : var list; ty : expr }
 
 let expr p = Format.kdprintf (fun k -> { expr = (fun fmt () -> k fmt) }) p
+let pp_expr fmt e = e.expr fmt ()
+let binds binds def = Binds { def; binds }
 
 module ID = struct
   type t = id
@@ -114,6 +116,7 @@ and code_dep fmt = function
 let e_def code = { expr = Fmt.const pp_def code }
 let pp_var fmt c = open_close_stag fmt (PrintVar c)
 let e_var var = { expr = Fmt.const pp_var var }
+let e_addr v = expr "&%a" pp_var v
 
 let pp_call fmt (code, binds) =
   let rec aux binds = function

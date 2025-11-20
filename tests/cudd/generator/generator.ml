@@ -62,7 +62,7 @@ let () =
       f_man "Cudd_bddAnd" "bdd_and" [ bdd; bdd ] bdd;
       f_man "Cudd_bddOr" "bdd_or" [ bdd; bdd ] bdd;
       func "Cudd_Not" ~ml:"bdd_not"
-        [ { mani with used_in_call = false }; input bdd ]
+        [ { mani with pused_in_call = None }; input bdd ]
         ~result:bdd;
       func "equal_bdd" ~ml:"bdd_is_equal" [ input bdd; input bdd ] ~result:bool;
       f_man "Cudd_bddLeq" "bdd_leq" [ bdd; bdd ] bool;

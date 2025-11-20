@@ -17,19 +17,24 @@ type typedef = {
 }
 
 type param = {
-  input : bool; (* appears in ML parameters and converted before call *)
-  output : bool; (* appears in ML results and converted after call *)
-  used_in_call : bool; (* appears in the stubbed C call parameters *)
-  pty : typedef;
-  pc : var;
-  binds : (Var.t * expr) list;
+  pinput : var option;
+  poutput : var option;
+  pused_in_call : expr option;
+  pc2ml : code option;
+  pml2c : code option;
+  pinit : code option;
+  pinit_expr : expr;
+  pfree : code option;
+  pc : var; (* c variable *)
+  pmlty : defined;
 }
 
 type result = {
-  routput : bool; (* appears in ML results and converted after call *)
-  rty : typedef;
+  routput : var option; (* appears in ML results *)
+  rc2ml : code option;
+  rfree : code option;
   rc : var;
-  binds : (Var.t * expr) list;
+  rmlty : defined;
 }
 
 type conf = Expr.expr list

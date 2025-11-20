@@ -32,10 +32,11 @@ static void camlid_c2ml(value * v, camlid_ref * c){ camlid_c2ml1(v, *c); };
 static void camlid_free1(camlid_ref * c){ camlid_free(*c); };
 extern value camlid_stub_f_out(){
   CAMLparam0();
-  CAMLlocal1(ret);
+  CAMLlocal2(ret, p_r);
   camlid_ref p = &(((struct { camlid_string_nt a; }) { ((camlid_string_nt) { }) }).a);
   f_out(p);
-  camlid_c2ml(&ret, &p);
+  camlid_c2ml(&p_r, &p);
+  ret = p_r;
   camlid_free1(&p);
   CAMLreturn(ret);
 };
@@ -53,13 +54,14 @@ camlid_string_fs * c){
 static void camlid_free2(camlid_string_fs * c){ free(*c); };
 extern value camlid_stub_f_in3(value string_len){
   CAMLparam1(string_len);
-  CAMLlocal1(ret);
+  CAMLlocal2(ret, string_r);
   camlid_string_fs string = ((camlid_string_fs) { });
   camlid_int string_len1 = ((camlid_int) { });
   camlid_ml2c1(&string_len, &string_len1);
   camlid_init(string_len1, &string);
   f_in3(string);
-  camlid_c2ml2(string_len1, &ret, &string);
+  camlid_c2ml2(string_len1, &string_r, &string);
+  ret = string_r;
   camlid_free2(&string);
   CAMLreturn(ret);
 };
