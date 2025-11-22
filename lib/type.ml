@@ -1,39 +1,75 @@
 open Expr
 
+(* untagging is considered as a kind of unboxing *)
+type unbox_attribute = Unboxed | Untagged
+
+type conv =
+  | Boxed of { c2ml : code; ml2c : code }
+  | Unboxable of {
+      unbox_attribute : unbox_attribute;
+      ucty : defined;
+      ml2u : code;
+      u2ml : code;
+      u2c : code;
+      c2u : code;
+      u : var;
+      c2ml : code;
+      ml2c : code;
+    }
+
 type typedef = {
   mlname : string option;  (** ml name *)
   cty : defined;  (** print the c type *)
   mlty : defined;  (** print the ocaml type *)
-  c2ml : code;  (** convert C values of this type to ML value *)
-  ml2c : code;  (** ml2c *)
+  conv : conv;  (** convert C values of this type to ML value *)
   init : code option;
       (** Initialize values of this type before giving them to stub function *)
-  init_expr : expr;  (** expression initialization *)
+  init_expr : expr;  (** expression initialization of the c version *)
   free : code option;
       (** Free the C memory allocated during the call (not accessible in output
           OCaml value) *)
-  v : var; (* variable for the ml version *)
-  c : var; (* variable for the c version *)
+  v : var; (* variable for the addresse of ml version *)
+  c : var; (* variable for the addresse of c version *)
 }
 
+type pinput =
+  | PINone
+  | PIBoxed of { ml : var; ml2c : code; pmlty : defined }
+  | PIUnboxable of {
+      unbox_attribute : unbox_attribute;
+      ml2u : code;
+      u2c : code;
+      u : var;
+      ml : var;
+      pmlty : defined;
+    }
+
+type poutput =
+  | PONone
+  | POBoxed of { ml : var; c2ml : code; pmlty : defined }
+  | POUnboxable of {
+      unbox_attribute : unbox_attribute;
+      u2ml : code;
+      c2u : code;
+      u : var;
+      ml : var;
+      c2ml : code; (* used when more than one result*)
+      pmlty : defined;
+    }
+
 type param = {
-  pinput : var option;
-  poutput : var option;
+  pinput : pinput;
+  poutput : poutput;
   pused_in_call : (var * expr) option;
-  pc2ml : code option;
-  pml2c : code option;
   pinit : code option;
   pinit_expr : (var * expr option) list;
   pfree : code option;
-  pmlty : defined;
 }
 
 type result = {
-  routput : var option; (* appears in ML results *)
-  rc2ml : code option;
+  routput : poutput; (* appears in ML results *)
   rfree : code option;
   rc : var;
-  rmlty : defined;
 }
 
 type conf = Expr.expr list
@@ -84,20 +120,7 @@ let codeo ?kind ?params ?keep_name ?locals ?ovars ?ret ?doc name p =
              (fun { fmt } -> fmt "%t" k)))
     p
 
-let c2ml ?(binds = []) ~v ~c () fmt ty =
-  pp_calli fmt (ty.c2ml, [ (ty.v, v); (ty.c, c) ] @ binds)
-
-let ml2c ?(binds = []) ~v ~c () fmt ty =
-  pp_calli fmt (ty.ml2c, [ (ty.v, v); (ty.c, c) ] @ binds)
-
-let init ?(binds = []) ~c () fmt ty =
-  match ty.init with
-  | None -> ()
-  | Some f -> pp_calli fmt (f, [ (ty.c, c) ] @ binds)
-
-let free ?(binds = []) ~c () fmt ty =
-  match ty.free with
-  | None -> ()
-  | Some f -> pp_calli fmt (f, [ (ty.c, c) ] @ binds)
-
-let init_expr fmt ty = Fmt.pf fmt "%a" ty.init_expr.expr ()
+let ty_binds ?(binds = []) ?v ?c ty =
+  let bv = match v with None -> [] | Some v -> [ (ty.v, v) ] in
+  let bc = match c with None -> [] | Some c -> [ (ty.c, c) ] in
+  bv @ bc @ binds

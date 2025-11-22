@@ -11,10 +11,9 @@ typedef intptr_t camlid_int;
 static void camlid_c2ml(value * v, camlid_int * c){ *v = Val_long(*c); };
 extern value camlid_stub_f(){
   CAMLparam0();
-  CAMLlocal2(ret, vres);
+  CAMLlocal1(vres);
   camlid_int res;
   res = f();
   camlid_c2ml(&vres, &res);
-  ret = vres;
-  CAMLreturn(ret);
+  CAMLreturnT(value,vres);
 };

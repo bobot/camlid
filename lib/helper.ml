@@ -62,27 +62,46 @@ let func_id ~ml ?result ?ignored_result fid params =
       let bind' code =
         Expr.binds [ (rty.c, e_addr rc); (rty.v, e_addr rv') ] code
       in
+      let routput =
+        match rty.conv with
+        | Boxed { c2ml; ml2c = _ } ->
+            POBoxed { ml = rv'; c2ml = bind' c2ml; pmlty = rty.mlty }
+        | Unboxable
+            {
+              unbox_attribute;
+              ucty;
+              ml2u = _;
+              u2ml;
+              u2c = _;
+              c2u;
+              u;
+              ml2c = _;
+              c2ml;
+            } ->
+            let ru = Var.mk "ures" (e_def ucty) in
+            let bind' code =
+              Expr.binds
+                [ (u, e_addr ru); (rty.c, e_addr rc); (rty.v, e_addr rv') ]
+                code
+            in
+            POUnboxable
+              {
+                unbox_attribute;
+                ml = rv';
+                u = ru;
+                c2u = bind' c2u;
+                u2ml = bind' u2ml;
+                c2ml = bind' c2ml;
+                pmlty = rty.mlty;
+              }
+      in
       print_ml_fun fid ~mlname:ml ~params
-        ~result:
-          {
-            rmlty = rty.mlty;
-            routput = Some rv';
-            rc;
-            rfree = Option.map bind' rty.free;
-            rc2ml = Some (bind' rty.c2ml);
-          }
+        ~result:{ routput; rc; rfree = Option.map bind' rty.free }
   | None, Some rty ->
       let rc = Var.mk "res" (e_def rty.cty) in
       let bind' code = Expr.binds [ (rty.c, e_addr rc) ] code in
       print_ml_fun fid ~mlname:ml ~params
-        ~result:
-          {
-            rmlty = rty.mlty;
-            routput = None;
-            rc;
-            rfree = Option.map bind' rty.free;
-            rc2ml = None;
-          }
+        ~result:{ routput = PONone; rc; rfree = Option.map bind' rty.free }
   | None, None -> print_ml_fun fid ~mlname:ml ~params
 
 let func ?(declare = false) ?ml ?result ?ignored_result fname params =

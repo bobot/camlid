@@ -31,13 +31,12 @@ static void camlid_c2ml(camlid_int * c, value * v, camlid_ref data){
   };
 extern value camlid_stub_f(value p){
   CAMLparam1(p);
-  CAMLlocal2(ret, vres);
+  CAMLlocal1(vres);
   camlid_int res;
   camlid_int p1 = ((camlid_int) { });
   camlid_ref data = &(((struct { camlid_int a; }) { ((camlid_int) { }) }).a);
   camlid_ml2c(&p, &p1);
   res = f(p1, data);
   camlid_c2ml(&res, &vres, data);
-  ret = vres;
-  CAMLreturn(ret);
+  CAMLreturnT(value,vres);
 };
