@@ -739,8 +739,14 @@ let code_c_fun ~params ~result fid =
   let id = ID.mk ("stub_" ^ (def_of_def (def_of_code fid)).id.name) in
   fp ~kind:C ~params:inputs id (fun { fmt } ->
       (* Formals *)
-      let pp_formal fmt pv = Fmt.pf fmt "value %a" pp_var pv in
-      fmt "@[<hv>@[<hv 2>@[extern value %a@](%a)@[{@]@," pp_id id
+      let pp_formal fmt pv = Fmt.pf fmt "%a %a" pp_expr pv.ty pp_var pv in
+      let pp_result fmt = function
+        | UnitResult -> Fmt.pf fmt "value"
+        | OneResult v -> Fmt.pf fmt "%a" pp_expr v.ty
+        | MultipleValues -> Fmt.pf fmt "value"
+      in
+      fmt "@[<hv>@[<hv 2>@[extern %a %a@](%a)@[{@]@," pp_result kind_of_result
+        pp_id id
         Fmt.(list ~sep:comma pp_formal)
         inputs;
       (* Local ML values *)
@@ -819,6 +825,91 @@ let code_c_fun ~params ~result fid =
       | MultipleValues -> fmt "@[CAMLreturn(%a);@]" pp_var return_var);
       fmt "@]@,@[};@]@]@.")
 
+let code_c_fun_bytecode ~params ~result fid_native =
+  let pp_scall proj { fmt } l =
+    let pp fmt call = Fmt.pf fmt "@[%a@]@," pp_calli (call, []) in
+    fmt "%a" Fmt.(list ~sep:nop pp) (List.filter_map proj l)
+  in
+  let params = add_result params result in
+  let var_pinput p =
+    match p.pinput with
+    | PINone -> None
+    | PIBoxed { ml; _ } -> Some ml
+    | PIUnboxable { ml; _ } -> Some ml
+  in
+  let unboxed_pinput p =
+    match p.pinput with
+    | PINone -> None
+    | PIBoxed _ -> None
+    | PIUnboxable { u; _ } -> Some u
+  in
+  let ml2u_pinput p =
+    match p.pinput with
+    | PINone -> None
+    | PIBoxed _ -> None
+    | PIUnboxable { ml2u; _ } -> Some ml2u
+  in
+  let inputs = List.filter_map var_pinput params in
+  let kind_of_result =
+    let l =
+      List.filter_map
+        (fun p ->
+          match p.poutput with
+          | PONone -> None
+          | POBoxed { ml; _ } -> Some ml
+          | POUnboxable { u; _ } -> Some u)
+        params
+    in
+    match l with [] -> UnitResult | [ v ] -> OneResult v | _ -> MultipleValues
+  in
+  let u2ml_poutput p =
+    match p.poutput with
+    | PONone -> None
+    | POBoxed _ -> None
+    | POUnboxable { u2ml; _ } -> Some u2ml
+  in
+  (* local C variable declaration *)
+  let id = ID.mk ((def_of_def (def_of_code fid_native)).id.name ^ "_byte") in
+  fp ~kind:C ~params:inputs id (fun { fmt } ->
+      (* Formals *)
+      if List.length inputs <= 5 then
+        let pp_formal fmt pv = Fmt.pf fmt "%a %a" pp_expr pv.ty pp_var pv in
+        fmt "@[<hv>@[<hv 2>@[extern value %a@](%a)@[{@]@," pp_id id
+          Fmt.(list ~sep:comma pp_formal)
+          inputs
+      else (
+        fmt "@[<hv>@[<hv 2>@[extern value %a@](value * argv, int argn)@[{@]@,"
+          pp_id id;
+        List.iteri
+          (fun i v -> fmt "@[value %a = argv[%i];@]@ " pp_var v i)
+          inputs);
+      (match kind_of_result with
+      | UnitResult -> ()
+      | OneResult v -> fmt "@[%a %a;]" pp_expr v.ty pp_var v
+      | MultipleValues -> ());
+      (* C Locals *)
+      let pp_local fmt pc = Fmt.pf fmt "@[%a %a;@]@," pp_expr pc.ty pp_var pc in
+      fmt "%a"
+        Fmt.(list ~sep:nop pp_local)
+        (List.filter_map unboxed_pinput params);
+      (* convert input variables *)
+      pp_scall ml2u_pinput { fmt } params;
+      (* function call *)
+      let pp_result fmt = function
+        | UnitResult -> Fmt.pf fmt "return "
+        | OneResult v -> Fmt.pf fmt "%a =" pp_var v
+        | MultipleValues -> Fmt.pf fmt "return "
+      in
+      fmt "@[%a%a;@]@," pp_result kind_of_result pp_call
+        (fid_native, List.filter_map (fun p -> p.pused_in_call) params);
+      (* convert output variable *)
+      pp_scall u2ml_poutput { fmt } params;
+      (match kind_of_result with
+      | UnitResult -> ()
+      | OneResult v -> fmt "@[return %a;@]" pp_var v
+      | MultipleValues -> ());
+      fmt "@]@,@[};@]@]@.")
+
 let print_ml_fun ~params ?result ~mlname fid =
   let code_c = code_c_fun ~params ~result fid in
   let all = add_result params result in
@@ -842,6 +933,20 @@ let print_ml_fun ~params ?result ~mlname fid =
             Some (pmlty, Some unbox_attribute))
       all
   in
+  let byte_needed =
+    List.length inputs > 5
+    || List.exists
+         (function
+           | { pinput = PINone | PIBoxed _; _ } -> false
+           | { pinput = PIUnboxable _; _ } -> true)
+         all
+    || List.length results = 1
+       && List.exists
+            (function
+              | { pinput = PINone | PIBoxed _; _ } -> false
+              | { pinput = PIUnboxable _; _ } -> true)
+            all
+  in
   let pp_attribute fmt = function
     | mlty, None -> Fmt.pf fmt "%a" pp_def mlty
     | mlty, Some Untagged -> Fmt.pf fmt "(%a [@untagged])" pp_def mlty
@@ -852,11 +957,16 @@ let print_ml_fun ~params ?result ~mlname fid =
     if one_result then pp_attribute fmt p else pp_def fmt pmlty
   in
   let pp_param fmt p = Fmt.pf fmt "@[%a ->@]@ " pp_attribute p in
-  expr "@[<hv 2>external %s:@ %a@[<hv>%a@]@ = \"%a\"@]" mlname
+  let pp_byte fmt () =
+    if byte_needed then
+      let code_c_byte = code_c_fun_bytecode ~params ~result code_c in
+      Fmt.pf fmt "\"%a\"" pp_def (def_of_code code_c_byte)
+  in
+  expr "@[<hv 2>external %s:@ %a@[<hv>%a@]@ = %a\"%a\"@]" mlname
     Fmt.(list_or_empty ~empty:(any "unit -> ") ~sep:nop pp_param)
     inputs
     Fmt.(list_or_empty ~empty:(any "unit") ~sep:(any "@ *@ ") pp_result)
-    results pp_def (def_of_code code_c)
+    results pp_byte () pp_def (def_of_code code_c)
 
 let declare_struct name fields =
   let id = ID.mk name in
