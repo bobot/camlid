@@ -30,19 +30,32 @@ let get_boxing = function
   | Unboxable { c2ml; ml2c; _ } -> (ml2c, c2ml)
 
 (** Native integer, the last bit is lost during translation *)
-let builtin_mltypes ~ml_type ~c_type ~c2ml ~ml2c =
+let builtin_mltypes ~unbox_attribute ?u_type ~c_type ~c2ml ~ml2c ?(u2c = "")
+    ?(c2u = "") ?(ml2u = ml2c) ?(u2ml = c2ml) ml_type =
   let cty = typedef ml_type "%s" c_type in
+  let uty =
+    match u_type with None -> cty | Some u_type -> typedef ml_type "%s" u_type
+  in
   let v = Var.mk "v" (expr "value *") in
   let c = Var.mk "c" (expr "%a *" pp_def cty) in
+  let u = Var.mk "c" (expr "%a *" pp_def uty) in
+  let mk name map x y = code name "*%a = %s(*%a);" pp_var x map pp_var y in
   {
     cty;
     mlty = mlalias ml_type "%s" ml_type;
     mlname = None;
     conv =
-      Boxed
+      Unboxable
         {
-          c2ml = code "c2ml" "*%a = %s(*%a);" pp_var v c2ml pp_var c;
-          ml2c = code "ml2c" "*%a = %s(*%a);" pp_var c ml2c pp_var v;
+          unbox_attribute;
+          uty;
+          u;
+          ml2u = mk "ml2u" ml2u u v;
+          u2ml = mk "u2ml" u2ml v u;
+          c2u = mk "c2u" c2u u c;
+          u2c = mk "u2c" u2c c u;
+          ml2c = mk "ml2c" ml2c c v;
+          c2ml = mk "c2ml" c2ml v c;
         };
     init = None;
     init_expr = expr "((%a) { })" pp_def cty;
@@ -150,12 +163,11 @@ let ptr_ref (ty : typedef) =
     match ty.conv with
     | Boxed { ml2c; c2ml } ->
         Boxed { ml2c = add_addr "ml2c" ml2c; c2ml = add_addr "c2ml" c2ml }
-    | Unboxable { unbox_attribute; ucty; ml2u; u2ml; u2c; c2u; u; ml2c; c2ml }
-      ->
+    | Unboxable { unbox_attribute; uty; ml2u; u2ml; u2c; c2u; u; ml2c; c2ml } ->
         Unboxable
           {
             unbox_attribute;
-            ucty;
+            uty;
             ml2u;
             u2ml;
             u2c = add_addr "u2c" u2c;
@@ -602,8 +614,9 @@ let simple_param ?(binds = []) ?(input = false) ?(output = false)
         in
         (pinput, pinit, poutput)
     | Unboxable
-        { unbox_attribute; ucty; ml2u; u2ml; u2c; c2u; u; ml2c = _; c2ml } ->
-        let pu = Var.mk name (e_def ucty) in
+        { unbox_attribute; uty; ml2u; u2ml; u2c; c2u; u; ml2c = _; c2ml } ->
+        let pu = Var.mk name (e_def uty) in
+        let pu' = Var.mk name (e_def uty) in
         let bind code =
           Expr.binds
             ((u, e_addr pu) :: (pty.c, e_addr pc) :: (pty.v, e_addr pv) :: binds)
@@ -611,7 +624,7 @@ let simple_param ?(binds = []) ?(input = false) ?(output = false)
         in
         let bind' code =
           Expr.binds
-            ((u, e_addr pu)
+            ((u, e_addr pu')
             :: (pty.c, e_addr pc)
             :: (pty.v, e_addr pv')
             :: binds)
@@ -637,7 +650,7 @@ let simple_param ?(binds = []) ?(input = false) ?(output = false)
               {
                 unbox_attribute;
                 ml = pv';
-                u = pu;
+                u = pu';
                 c2u = bind' c2u;
                 u2ml = bind' u2ml;
                 c2ml = bind' c2ml;
@@ -672,7 +685,11 @@ let add_result params result =
 
 let return_var = Var.mk "ret" (expr "value")
 
-type kind_of_result = UnitResult | MultipleValues | OneResult of var
+type kind_of_result =
+  | UnitResult
+  | MultipleValues
+  | OneResultValue of var
+  | OneResultUnboxed of { u : var; ml : var }
 
 let code_c_fun ~params ~result fid =
   let pp_scall proj { fmt } l =
@@ -705,13 +722,14 @@ let code_c_fun ~params ~result fid =
         (fun p ->
           match p.poutput with
           | PONone -> None
-          | POBoxed { ml; _ } -> Some ml
-          | POUnboxable { u; _ } -> Some u)
+          | POBoxed { ml; _ } -> Some (ml, None)
+          | POUnboxable { u; ml; _ } -> Some (ml, Some u))
         params
     in
     match l with
     | [] -> (UnitResult, false)
-    | [ v ] -> (OneResult v, true)
+    | [ (v, None) ] -> (OneResultValue v, true)
+    | [ (ml, Some u) ] -> (OneResultUnboxed { ml; u }, true)
     | _ -> (MultipleValues, false)
   in
   let var_poutput p =
@@ -728,6 +746,13 @@ let code_c_fun ~params ~result fid =
     | POUnboxable _ when unboxable_result -> None
     | POUnboxable { ml; _ } -> Some ml
   in
+  let unboxed_poutput p =
+    match p.poutput with
+    | PONone -> None
+    | POBoxed _ -> None
+    | POUnboxable { u; _ } when unboxable_result -> Some u
+    | POUnboxable _ -> None
+  in
   let c2a_poutput p =
     match p.poutput with
     | PONone -> None
@@ -742,7 +767,8 @@ let code_c_fun ~params ~result fid =
       let pp_formal fmt pv = Fmt.pf fmt "%a %a" pp_expr pv.ty pp_var pv in
       let pp_result fmt = function
         | UnitResult -> Fmt.pf fmt "value"
-        | OneResult v -> Fmt.pf fmt "%a" pp_expr v.ty
+        | OneResultValue v | OneResultUnboxed { u = v; _ } ->
+            Fmt.pf fmt "%a" pp_expr v.ty
         | MultipleValues -> Fmt.pf fmt "value"
       in
       fmt "@[<hv>@[<hv 2>@[extern %a %a@](%a)@[{@]@," pp_result kind_of_result
@@ -773,9 +799,12 @@ let code_c_fun ~params ~result fid =
       camlParam ~is_param:true ~first:true (List.filter_map boxed_pinput params);
       (match kind_of_result with
       | UnitResult -> ()
-      | OneResult _ ->
+      | OneResultValue _ ->
           camlParam ~is_param:false ~first:false
             (List.filter_map boxed_poutput params)
+      | OneResultUnboxed _ ->
+          let pp_local pc = fmt "@[%a %a;@]@," pp_expr pc.ty pp_var pc in
+          List.iter pp_local (List.filter_map unboxed_poutput params)
       | MultipleValues ->
           camlParam ~is_param:false ~first:false
             (return_var :: List.filter_map boxed_poutput params));
@@ -804,7 +833,7 @@ let code_c_fun ~params ~result fid =
       pp_scall c2a_poutput { fmt } params;
       (match kind_of_result with
       | UnitResult -> ()
-      | OneResult _ -> ()
+      | OneResultValue _ | OneResultUnboxed _ -> ()
       | MultipleValues ->
           let l = List.filter_map var_poutput params in
           let len = List.length l in
@@ -821,7 +850,9 @@ let code_c_fun ~params ~result fid =
       (* return *)
       (match kind_of_result with
       | UnitResult -> fmt "@[CAMLreturn(Val_unit);@]"
-      | OneResult v -> fmt "@[CAMLreturnT(%a,%a);@]" pp_expr v.ty pp_var v
+      | OneResultValue v -> fmt "@[CAMLreturn(%a);@]" pp_var v
+      | OneResultUnboxed { u; _ } ->
+          fmt "@[CAMLreturnT(%a,%a);@]" pp_expr u.ty pp_var u
       | MultipleValues -> fmt "@[CAMLreturn(%a);@]" pp_var return_var);
       fmt "@]@,@[};@]@]@.")
 
@@ -856,11 +887,15 @@ let code_c_fun_bytecode ~params ~result fid_native =
         (fun p ->
           match p.poutput with
           | PONone -> None
-          | POBoxed { ml; _ } -> Some ml
-          | POUnboxable { u; _ } -> Some u)
+          | POBoxed { ml; _ } -> Some (ml, None)
+          | POUnboxable { u; ml; _ } -> Some (ml, Some u))
         params
     in
-    match l with [] -> UnitResult | [ v ] -> OneResult v | _ -> MultipleValues
+    match l with
+    | [] -> UnitResult
+    | [ (ml, Some u) ] -> OneResultUnboxed { ml; u }
+    | [ (ml, None) ] -> OneResultValue ml
+    | _ -> MultipleValues
   in
   let u2ml_poutput p =
     match p.poutput with
@@ -885,7 +920,10 @@ let code_c_fun_bytecode ~params ~result fid_native =
           inputs);
       (match kind_of_result with
       | UnitResult -> ()
-      | OneResult v -> fmt "@[%a %a;]" pp_expr v.ty pp_var v
+      | OneResultValue _ -> ()
+      | OneResultUnboxed { u; ml } ->
+          fmt "@[%a %a;@]@ " pp_expr u.ty pp_var u;
+          fmt "@[%a %a;@]@ " pp_expr ml.ty pp_var ml
       | MultipleValues -> ());
       (* C Locals *)
       let pp_local fmt pc = Fmt.pf fmt "@[%a %a;@]@," pp_expr pc.ty pp_var pc in
@@ -897,7 +935,8 @@ let code_c_fun_bytecode ~params ~result fid_native =
       (* function call *)
       let pp_result fmt = function
         | UnitResult -> Fmt.pf fmt "return "
-        | OneResult v -> Fmt.pf fmt "%a =" pp_var v
+        | OneResultValue _ -> Fmt.pf fmt "return "
+        | OneResultUnboxed { u; _ } -> Fmt.pf fmt "%a = " pp_var u
         | MultipleValues -> Fmt.pf fmt "return "
       in
       fmt "@[%a%a;@]@," pp_result kind_of_result pp_call
@@ -906,7 +945,8 @@ let code_c_fun_bytecode ~params ~result fid_native =
       pp_scall u2ml_poutput { fmt } params;
       (match kind_of_result with
       | UnitResult -> ()
-      | OneResult v -> fmt "@[return %a;@]" pp_var v
+      | OneResultValue _ -> ()
+      | OneResultUnboxed { ml; _ } -> fmt "@[return %a;@]" pp_var ml
       | MultipleValues -> ());
       fmt "@]@,@[};@]@]@.")
 
@@ -933,6 +973,7 @@ let print_ml_fun ~params ?result ~mlname fid =
             Some (pmlty, Some unbox_attribute))
       all
   in
+  let one_result = List.length results = 1 in
   let byte_needed =
     List.length inputs > 5
     || List.exists
@@ -940,11 +981,11 @@ let print_ml_fun ~params ?result ~mlname fid =
            | { pinput = PINone | PIBoxed _; _ } -> false
            | { pinput = PIUnboxable _; _ } -> true)
          all
-    || List.length results = 1
+    || one_result
        && List.exists
             (function
-              | { pinput = PINone | PIBoxed _; _ } -> false
-              | { pinput = PIUnboxable _; _ } -> true)
+              | { poutput = PONone | POBoxed _; _ } -> false
+              | { poutput = POUnboxable _; _ } -> true)
             all
   in
   let pp_attribute fmt = function
@@ -952,7 +993,6 @@ let print_ml_fun ~params ?result ~mlname fid =
     | mlty, Some Untagged -> Fmt.pf fmt "(%a [@untagged])" pp_def mlty
     | mlty, Some Unboxed -> Fmt.pf fmt "(%a [@unboxed])" pp_def mlty
   in
-  let one_result = List.length results = 1 in
   let pp_result fmt ((pmlty, _) as p) =
     if one_result then pp_attribute fmt p else pp_def fmt pmlty
   in
@@ -960,7 +1000,7 @@ let print_ml_fun ~params ?result ~mlname fid =
   let pp_byte fmt () =
     if byte_needed then
       let code_c_byte = code_c_fun_bytecode ~params ~result code_c in
-      Fmt.pf fmt "\"%a\"" pp_def (def_of_code code_c_byte)
+      Fmt.pf fmt "\"%a\" " pp_def (def_of_code code_c_byte)
   in
   expr "@[<hv 2>external %s:@ %a@[<hv>%a@]@ = %a\"%a\"@]" mlname
     Fmt.(list_or_empty ~empty:(any "unit -> ") ~sep:nop pp_param)
@@ -1017,12 +1057,11 @@ let convert ?a_to_b ?b_to_a ~(a : typedef) ~(b : typedef) () =
     match a.conv with
     | Boxed { ml2c = a_ml2c; c2ml = a_c2ml } ->
         Boxed { ml2c = mk_ml2c a_ml2c; c2ml = mk_c2ml a_c2ml }
-    | Unboxable { unbox_attribute; ucty; ml2u; u2ml; u2c; c2u; u; ml2c; c2ml }
-      ->
+    | Unboxable { unbox_attribute; uty; ml2u; u2ml; u2c; c2u; u; ml2c; c2ml } ->
         Unboxable
           {
             unbox_attribute;
-            ucty;
+            uty;
             ml2u;
             u2ml;
             u2c =

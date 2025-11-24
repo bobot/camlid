@@ -7,7 +7,7 @@ type conv =
   | Boxed of { c2ml : code; ml2c : code }
   | Unboxable of {
       unbox_attribute : unbox_attribute;
-      ucty : defined;
+      uty : defined;
       ml2u : code;
       u2ml : code;
       u2c : code;

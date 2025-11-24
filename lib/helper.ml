@@ -22,31 +22,32 @@ let ignored ?used_in_call ?binds =
   simple_param ?used_in_call ?binds ~input:false ~output:false
 
 let int : typedef =
-  builtin_mltypes ~ml_type:"int" ~c_type:"intptr_t" ~c2ml:"Val_long"
-    ~ml2c:"Long_val"
+  builtin_mltypes "int" ~c_type:"intptr_t" ~c2ml:"Val_long" ~ml2c:"Long_val"
+    ~unbox_attribute:Untagged
 
 let int_trunc : typedef =
-  builtin_mltypes ~ml_type:"int" ~c_type:"int" ~c2ml:"Val_int" ~ml2c:"Int_val"
+  builtin_mltypes "int" ~u_type:"intptr_t" ~c_type:"int" ~c2ml:"Val_int"
+    ~ml2c:"Int_val" ~u2c:"(int)" ~c2u:"(intptr_t)" ~unbox_attribute:Untagged
 
 let double : typedef =
-  builtin_mltypes ~ml_type:"float" ~c_type:"double" ~c2ml:"caml_copy_double"
-    ~ml2c:"Double_val"
+  builtin_mltypes "float" ~c_type:"double" ~c2ml:"caml_copy_double"
+    ~ml2c:"Double_val" ~unbox_attribute:Unboxed
 
 let int32 : typedef =
-  builtin_mltypes ~ml_type:"int32" ~c_type:"int32_t" ~c2ml:"caml_copy_int32"
-    ~ml2c:"Int32_val"
+  builtin_mltypes "int32" ~c_type:"int32_t" ~c2ml:"caml_copy_int32"
+    ~ml2c:"Int32_val" ~unbox_attribute:Unboxed
 
 let int64 : typedef =
-  builtin_mltypes ~ml_type:"int64" ~c_type:"int64_t" ~c2ml:"caml_copy_int64"
-    ~ml2c:"Int64_val"
+  builtin_mltypes "int64" ~c_type:"int64_t" ~c2ml:"caml_copy_int64"
+    ~ml2c:"Int64_val" ~unbox_attribute:Unboxed
 
 let nativeint : typedef =
-  builtin_mltypes ~ml_type:"nativeint" ~c_type:"intptr_t"
-    ~c2ml:"caml_copy_nativeint" ~ml2c:"Nativeint_val"
+  builtin_mltypes "nativeint" ~c_type:"intptr_t" ~c2ml:"caml_copy_nativeint"
+    ~ml2c:"Nativeint_val" ~unbox_attribute:Unboxed
 
 let bool : typedef =
-  builtin_mltypes ~ml_type:"bool" ~c_type:"int" ~c2ml:"Val_bool"
-    ~ml2c:"Bool_val"
+  builtin_mltypes "bool" ~c_type:"int" ~c2ml:"Val_bool" ~ml2c:"Bool_val"
+    ~unbox_attribute:Untagged
 
 let string_nt = Expert.string_nt
 let ptr_ref = ptr_ref
@@ -69,7 +70,7 @@ let func_id ~ml ?result ?ignored_result fid params =
         | Unboxable
             {
               unbox_attribute;
-              ucty;
+              uty;
               ml2u = _;
               u2ml;
               u2c = _;
@@ -78,7 +79,7 @@ let func_id ~ml ?result ?ignored_result fid params =
               ml2c = _;
               c2ml;
             } ->
-            let ru = Var.mk "ures" (e_def ucty) in
+            let ru = Var.mk "ures" (e_def uty) in
             let bind' code =
               Expr.binds
                 [ (u, e_addr ru); (rty.c, e_addr rc); (rty.v, e_addr rv') ]

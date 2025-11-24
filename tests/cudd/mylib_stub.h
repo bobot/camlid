@@ -8,9 +8,10 @@ typedef DdManager* caml_cudd_custom;
 typedef DdNode* caml_cudd_bdd_t;
 struct caml_cudd_bdd_wrapper1 {caml_cudd_bdd_t ptr;DdManager* manager;};
 typedef struct caml_cudd_bdd_wrapper1 caml_cudd_bdd_wrapper;
-typedef int caml_cudd_int;
+typedef intptr_t caml_cudd_int;
+typedef int caml_cudd_int1;
 typedef int caml_cudd_bool;
-typedef intptr_t caml_cudd_int1;
+typedef intptr_t caml_cudd_int2;
 typedef struct {
   enum {
     caml_cudd_result_False,
@@ -20,7 +21,7 @@ typedef struct {
     
     
     struct {
-      caml_cudd_int1 cond;
+      caml_cudd_int2 cond;
       caml_cudd_bdd_t then_;
       caml_cudd_bdd_t else_;
       } Ifte;} u; } caml_cudd_result;
@@ -41,7 +42,7 @@ static void caml_cudd_mk_result_True(caml_cudd_result* dst){
 // @param else_ reference is assigned to the constructor field
 
 static void caml_cudd_mk_result_Ifte(caml_cudd_result* dst,
-caml_cudd_int1* cond, caml_cudd_bdd_t* then_, caml_cudd_bdd_t* else_){
+caml_cudd_int2* cond, caml_cudd_bdd_t* then_, caml_cudd_bdd_t* else_){
   dst->tag=caml_cudd_result_Ifte;
   dst->u.Ifte.cond = *cond;
   dst->u.Ifte.then_ = *then_;

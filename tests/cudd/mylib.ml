@@ -20,9 +20,9 @@ external bdd_false:
   = "caml_cudd_stub_Cudd_ReadLogicZero"
 external bdd_var:
   caml_cudd_man ->
-  caml_cudd_int ->
+  (caml_cudd_int [@untagged]) ->
   caml_cudd_bdd
-  = "caml_cudd_stub_Cudd_bddIthVar"
+  = "caml_cudd_stub_Cudd_bddIthVar_byte" "caml_cudd_stub_Cudd_bddIthVar"
 external bdd_newvar:
   caml_cudd_man ->
   caml_cudd_bdd
@@ -47,14 +47,14 @@ external bdd_not:
 external bdd_is_equal:
   caml_cudd_bdd ->
   caml_cudd_bdd ->
-  caml_cudd_bool
-  = "caml_cudd_stub_equal_bdd"
+  (caml_cudd_bool [@untagged])
+  = "caml_cudd_stub_equal_bdd_byte" "caml_cudd_stub_equal_bdd"
 external bdd_leq:
   caml_cudd_man ->
   caml_cudd_bdd ->
   caml_cudd_bdd ->
-  caml_cudd_bool
-  = "caml_cudd_stub_Cudd_bddLeq"
+  (caml_cudd_bool [@untagged])
+  = "caml_cudd_stub_Cudd_bddLeq_byte" "caml_cudd_stub_Cudd_bddLeq"
 external print:
   caml_cudd_man ->
   caml_cudd_bdd ->
