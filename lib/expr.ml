@@ -13,12 +13,14 @@ and code =
 
 and expr = { expr : unit Fmt.t }
 and kind = C | ML | H
-and id = { id : int; name : string; args : id list; keep_name : bool }
-and var = { id : int; name : string; args : var list; ty : expr }
+and id = { id : int; name : string; keep_name : bool }
+and var = { id : int; name : string; ty : expr }
 
 let expr p = Format.kdprintf (fun k -> { expr = (fun fmt () -> k fmt) }) p
 let pp_expr fmt e = e.expr fmt ()
 let binds binds def = Binds { def; binds }
+let dimplicit defined others = DImplicit (defined, others)
+let implicit defined others = Implicit (defined, others)
 
 module ID = struct
   type t = id
@@ -28,9 +30,9 @@ module ID = struct
   let compare (t1 : t) (t2 : t) = Int.compare t1.id t2.id
   let c = ref (-1)
 
-  let mk ?(keep_name = false) ?(args = []) name : t =
+  let mk ?(keep_name = false) name : t =
     incr c;
-    { id = !c; name; args; keep_name }
+    { id = !c; name; keep_name }
 
   module H = Hashtbl.Make (struct
     type nonrec t = t
@@ -54,9 +56,9 @@ module Var = struct
   let compare (t1 : t) (t2 : t) = Int.compare t1.id t2.id
   let c = ref (-1)
 
-  let mk ?(args = []) name ty : var =
+  let mk name ty : var =
     incr c;
-    { id = !c; name; args; ty }
+    { id = !c; name; ty }
 
   module H = Hashtbl.Make (struct
     type nonrec t = t
@@ -81,6 +83,8 @@ let rec def_of_code = function
 let rec def_of_def = function
   | Def def -> def
   | DImplicit (def, _) -> def_of_def def
+
+let name_of_def x = (def_of_def x).id.name
 
 let open_close_stag fmt t =
   Format.pp_open_stag fmt t;
@@ -156,8 +160,6 @@ type fp = { fmt : 'a. ('a, Format.formatter, unit) format -> 'a }
 
 let fp ?kind ?params id pp =
   mk ?kind ?params id (fun fmt () -> pp { fmt = (fun p -> Fmt.pf fmt p) })
-
-let dpr = Format.dprintf
 
 let dfp ?kind ?params id =
   Format.kdprintf (fun k -> mk ?kind ?params id (fun fmt () -> k fmt))
@@ -336,3 +338,49 @@ let final_print ~prefix ~ml ~c ~h kind expr =
     | Some Printed -> ()
   in
   aux kind expr
+
+let codef ?(kind = C) ?params ?keep_name ?(locals = []) ?(ovars = [])
+    ?(ret = expr "void") ?(doc = Fmt.nop) name pp =
+  let p = fun fmt -> pp { fmt = (fun p -> Fmt.pf fmt p) } in
+  let id = ID.mk ?keep_name name in
+  let params =
+    match params with
+    | None ->
+        let params = params_of_expr p in
+        let params = List.sort_uniq Var.compare (ovars @ params) in
+        let local = Var.S.of_list locals in
+        let params = List.filter (fun v -> not (Var.S.mem v local)) params in
+        params
+    | Some params -> params
+  in
+  let pp_args fmt (var : var) = Fmt.pf fmt "%a %a" pp_expr var.ty pp_var var in
+  let c =
+    mk ~kind ~params id (fun fmt () ->
+        Fmt.pf fmt "%a@[<hv 2>@[static %a %a(%a){@]@ %t@ @[}@]@]@." doc ()
+          pp_expr ret pp_id id
+          Fmt.(list ~sep:comma pp_args)
+          params p)
+  in
+  c
+
+let codefo ?kind ?params ?keep_name ?locals ?ovars ?ret ?doc name pp =
+  let k = fun fmt -> pp { fmt = (fun p -> Fmt.pf fmt p) } in
+  if expr_is_empty k then None
+  else Some (codef ?kind ?params ?keep_name ?locals ?ovars ?ret ?doc name pp)
+
+let code ?kind ?params ?keep_name ?locals ?ovars ?ret ?doc name p =
+  Format.kdprintf
+    (fun k ->
+      codef ?kind ?params ?keep_name ?locals ?ovars ?ret ?doc name
+        (fun { fmt } -> fmt "%t" k))
+    p
+
+let codeo ?kind ?params ?keep_name ?locals ?ovars ?ret ?doc name p =
+  Format.kdprintf
+    (fun k ->
+      if expr_is_empty k then None
+      else
+        Some
+          (codef ?kind ?params ?keep_name ?locals ?ovars ?ret ?doc name
+             (fun { fmt } -> fmt "%t" k)))
+    p

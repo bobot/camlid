@@ -40,9 +40,8 @@ let to_file ?(in_header = false) ?(prefix = "camlid_") ?(headers = [])
     definitions;
   let cout_ml = open_out (basename ^ ".ml") in
   header_ml cout_ml;
-  let decl fmt f = f.expr fmt () in
   final_print ~prefix ~ml:cout_ml ~c:cout_c ~h:cout_h ML
-    (expr "%a" Fmt.(list ~sep:Fmt.cut decl) l);
+    (expr "%a" Fmt.(list ~sep:Fmt.cut pp_expr) l);
   if in_header then (
     output_string cout_h (Printf.sprintf "#endif");
     close_out cout_h);

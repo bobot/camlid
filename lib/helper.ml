@@ -219,4 +219,4 @@ let custom ?initialize ?finalize ?finalize_ptr ?hash ?compare ?get ?set
 let algdata ml_type l =
   let t = AlgData.algdata ml_type l in
   let others = List.map (fun c -> c.AlgData.smart_constructor) t.constrs in
-  { t.ty with cty = DImplicit (t.ty.cty, others) }
+  { t.ty with cty = Expr.dimplicit t.ty.cty others }

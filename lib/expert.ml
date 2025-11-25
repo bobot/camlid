@@ -15,8 +15,8 @@ let mlabstract ?keep_name name =
 
 let declare_existing ?(result = expr "void") f params =
   let id = ID.mk ~keep_name:true f in
-  let pp_ty fmt (var : var) = var.ty.expr fmt () in
-  dfp ~params id "@[<hv 2>@[%a %s(@]%a@[);@]@]@." result.expr () f
+  let pp_ty fmt (var : var) = pp_expr fmt var.ty in
+  dfp ~params id "@[<hv 2>@[%a %s(@]%a@[);@]@]@." pp_expr result f
     Fmt.(list ~sep:(any ",@ ") pp_ty)
     params
 
@@ -457,7 +457,7 @@ let custom ?initialize ?finalize ?finalize_ptr ?hash ?compare ?get ?set ~ml
             finalize_op =
               code "finalize_op" "%a" pp_calli
                 ( finalize.finalize,
-                  [ (finalize.i, expr "*%a" (data_custom_val icty v).expr ()) ]
+                  [ (finalize.i, expr "*%a" pp_expr (data_custom_val icty v)) ]
                 );
             v;
           }
@@ -526,8 +526,8 @@ let custom ?initialize ?finalize ?finalize_ptr ?hash ?compare ?get ?set ~ml
           ml2c =
             (match get with
             | None ->
-                code "ml2c" "*%a = *(%a);" pp_var c
-                  (data_custom_val' icty v).expr ()
+                code "ml2c" "*%a = *(%a);" pp_var c pp_expr
+                  (data_custom_val' icty v)
             | Some f ->
                 code "ml2c" "@[%a;@]" pp_call
                   (f.get, [ (f.i, data_custom_val' icty v); (f.c, e_var c) ]));
@@ -537,7 +537,7 @@ let custom ?initialize ?finalize ?finalize_ptr ?hash ?compare ?get ?set ~ml
                   pp_var v pp_def custom_op pp_def icty;
                 match set with
                 | None ->
-                    fmt "@[*(%a) = *%a;@]" (data_custom_val' icty v).expr ()
+                    fmt "@[*(%a) = *%a;@]" pp_expr (data_custom_val' icty v)
                       pp_var c
                 | Some f ->
                     fmt "@[%a;@]" pp_call
@@ -759,7 +759,7 @@ let code_c_fun ~params ~result fid =
     | POUnboxable { c2ml; _ } -> Some c2ml
   in
   (* local C variable declaration *)
-  let id = ID.mk ("stub_" ^ (def_of_def (def_of_code fid)).id.name) in
+  let id = ID.mk ("stub_" ^ name_of_def (def_of_code fid)) in
   fp ~kind:C ~params:inputs id (fun { fmt } ->
       (* Formals *)
       let pp_formal fmt pv = Fmt.pf fmt "%a %a" pp_expr pv.ty pp_var pv in
@@ -902,7 +902,7 @@ let code_c_fun_bytecode ~params ~result fid_native =
     | POUnboxable { u2ml; _ } -> Some u2ml
   in
   (* local C variable declaration *)
-  let id = ID.mk ((def_of_def (def_of_code fid_native)).id.name ^ "_byte") in
+  let id = ID.mk (name_of_def (def_of_code fid_native) ^ "_byte") in
   fp ~kind:C ~params:inputs id (fun { fmt } ->
       (* Formals *)
       if List.length inputs <= 5 then
@@ -1008,7 +1008,7 @@ let print_ml_fun ~params ?result ~mlname fid =
 
 let declare_struct name fields =
   let id = ID.mk name in
-  let pp_field fmt (name, ty) = Fmt.pf fmt "%a %s;" ty.expr () name in
+  let pp_field fmt (name, ty) = Fmt.pf fmt "%a %s;" pp_expr ty name in
   toplevel ~kind:H id "@[<hv 2>struct %a {@,%a@,};@]@." pp_id id
     Fmt.(list ~sep:cut pp_field)
     fields
@@ -1016,11 +1016,11 @@ let declare_struct name fields =
 let if_ ?else_ cond ~then_ =
   match else_ with
   | Some else_ ->
-      expr "@[<hv 2>if(%a){@ %a@ } else {@ %a@ };@]" cond.expr () then_.expr ()
-        else_.expr ()
-  | None -> expr "@[<hv 2>if(%a){@ %a@ };@]" cond.expr () then_.expr ()
+      expr "@[<hv 2>if(%a){@ %a@ } else {@ %a@ };@]" pp_expr cond pp_expr then_
+        pp_expr else_
+  | None -> expr "@[<hv 2>if(%a){@ %a@ };@]" pp_expr cond pp_expr then_
 
-let seq l = expr "%a" Fmt.(list ~sep:cut (fun fmt e -> e.expr fmt ())) l
+let seq l = expr "%a" Fmt.(list ~sep:cut pp_expr) l
 
 type convert = { convert : code; src : Var.t; dst : Var.t }
 
@@ -1222,7 +1222,7 @@ module AlgData = struct
               ml_type;
             Fmt.pf fmt "@[// @param dst structure to fill@]"
           in
-          Type.code ~kind:H ~params:[ dst ]
+          Expr.code ~kind:H ~params:[ dst ]
             ~doc:Fmt.(vbox pp_doc ++ cut)
             fun_name "%a->tag=%a;" pp_var dst pp_id id
       | KNonConst (_, fields) ->
