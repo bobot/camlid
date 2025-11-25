@@ -2,4 +2,4 @@
 
 int g = 0;
 
-int f() { return g++; };
+int f() { return g++; }

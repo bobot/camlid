@@ -12,10 +12,10 @@ typedef int camlid_int1;
 typedef camlid_int1 * camlid_ref;
 static void camlid_c2u1(camlid_int1 * c, camlid_int * c1){
   *c1 = (intptr_t)(*c);
-  };
+  }
 static void camlid_c2u(camlid_int * c, camlid_ref * c1){
   camlid_c2u1(*c1, c);
-  };
+  }
 extern camlid_int camlid_stub_f(){
   CAMLparam0();
   camlid_int p;
@@ -23,20 +23,20 @@ extern camlid_int camlid_stub_f(){
   f(p1);
   camlid_c2u(&p, &p1);
   CAMLreturnT(camlid_int,p);
-};
-static void camlid_u2ml(value * v, camlid_int * c){ *v = Val_int(*c); };
+}
+static void camlid_u2ml(value * v, camlid_int * c){ *v = Val_int(*c); }
 extern value camlid_stub_f_byte(){
   camlid_int p;
   value p_r;
   p = camlid_stub_f();
   camlid_u2ml(&p_r, &p);
   return p_r;
-};
+}
 typedef camlid_int1 * camlid_ref1;
 typedef camlid_int1 * camlid_ref2;
-static void camlid_c2ml2(value * v, camlid_int1 * c){ *v = Val_int(*c); };
-static void camlid_c2ml(value * v, camlid_ref1 * c){ camlid_c2ml2(v, *c); };
-static void camlid_c2ml1(value * v, camlid_ref2 * c){ camlid_c2ml2(v, *c); };
+static void camlid_c2ml2(value * v, camlid_int1 * c){ *v = Val_int(*c); }
+static void camlid_c2ml(value * v, camlid_ref1 * c){ camlid_c2ml2(v, *c); }
+static void camlid_c2ml1(value * v, camlid_ref2 * c){ camlid_c2ml2(v, *c); }
 extern value camlid_stub_f2(){
   CAMLparam0();
   CAMLlocal3(ret, p_r, p_r1);
@@ -49,4 +49,4 @@ extern value camlid_stub_f2(){
   Store_field(ret, 0, p_r);
   Store_field(ret, 1, p_r1);
 CAMLreturn(ret);
-};
+}

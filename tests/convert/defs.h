@@ -9,4 +9,4 @@ static void combine_data_or_status(camlid_result *dst, camlid_int *status, camli
     else {
         camlid_mk_result_Data(dst, data);
     };
-};
+}

@@ -6,10 +6,10 @@
 #include <caml/custom.h>
 #include <string.h>
 #include "defs.h"
-static void camlid_ml2u(value * v, camlid_int * c){ *c = Long_val(*v); };
-static void camlid_u2c(camlid_int * c, camlid_int * c1){ *c = (*c1); };
+static void camlid_ml2u(value * v, camlid_int * c){ *c = Long_val(*v); }
+static void camlid_u2c(camlid_int * c, camlid_int * c1){ *c = (*c1); }
 camlid_int f(camlid_int, camlid_ref);
-static void camlid_c2ml2(value * v, camlid_int * c){ *v = Val_long(*c); };
+static void camlid_c2ml2(value * v, camlid_int * c){ *v = Val_long(*c); }
 static void camlid_c2ml1(value * v, camlid_result * c){
   CAMLparam0();
   CAMLlocal1(tmp);
@@ -25,11 +25,11 @@ static void camlid_c2ml1(value * v, camlid_result * c){
     Store_field(*v,0,tmp);
     break;};
   CAMLreturn0;
-  };
+  }
 static void camlid_c2ml(camlid_int * c, value * v, camlid_ref data){
   camlid_result tmp; combine_data_or_status(&tmp, c, data);
   camlid_c2ml1(v, &tmp);
-  };
+  }
 extern value camlid_stub_f(camlid_int p){
   CAMLparam0();
   CAMLlocal1(vres);
@@ -40,10 +40,10 @@ extern value camlid_stub_f(camlid_int p){
   res = f(p1, data);
   camlid_c2ml(&res, &vres, data);
   CAMLreturn(vres);
-};
+}
 extern value camlid_stub_f_byte(value p){
   camlid_int p1;
   camlid_ml2u(&p, &p1);
   return camlid_stub_f(p1);
   
-};
+}

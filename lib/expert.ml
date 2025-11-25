@@ -9,8 +9,8 @@ let mlalias name =
   let id = ID.mk name in
   Format.kdprintf (fun k -> ddef ~kind:ML id "type %a = %t@." pp_id id k)
 
-let mlabstract name =
-  let id = ID.mk name in
+let mlabstract ?keep_name name =
+  let id = ID.mk ?keep_name name in
   ddef ~kind:ML id "type %a@." pp_id id
 
 let declare_existing ?(result = expr "void") f params =
@@ -327,7 +327,7 @@ let map_param_in_call ?(name = "arg") map param =
       let pcall2 = Var.mk name ty in
       { param with pused_in_call = Some (pcall2, arg) }
 
-let use_ptr_of_param_in_call param =
+let deref_in_call param =
   map_param_in_call ~name:"ptr"
     (fun ty e -> (expr "%a *" pp_expr ty, expr "&(%a)" pp_expr e))
     param
@@ -346,15 +346,13 @@ let use_new_param_only_in_call param =
         pfree = None;
       }
 
-let array_of_array_length ty param =
+let get_field ty field_name param =
   map_param_in_call ~name:"ptr"
-    (fun _ e -> (expr "%a*" pp_def ty.cty, expr "%a.t" pp_expr e))
+    (fun _ e -> (ty, expr "%a.%s" pp_expr e field_name))
     param
 
-let length_of_array_length param =
-  map_param_in_call ~name:"ptr"
-    (fun _ e -> (expr "size_t", expr "%a.len" pp_expr e))
-    param
+let t_field ty param = get_field (expr "%a*" pp_def ty.cty) "t" param
+let len_field param = get_field (expr "size_t") "len" param
 
 type get = {
   get : code;
@@ -378,7 +376,7 @@ let abstract ?initialize ?get ?set ~icty ~ml ~cty () =
     cty;
     v;
     c;
-    mlty = mlabstract ml;
+    mlty = mlabstract ~keep_name:true ml;
     mlname = Some ml;
     conv =
       Boxed
@@ -520,7 +518,7 @@ let custom ?initialize ?finalize ?finalize_ptr ?hash ?compare ?get ?set ~ml
   in
   {
     cty;
-    mlty = mlabstract ml;
+    mlty = mlabstract ~keep_name:true ml;
     mlname = Some ml;
     conv =
       Boxed
@@ -854,7 +852,7 @@ let code_c_fun ~params ~result fid =
       | OneResultUnboxed { u; _ } ->
           fmt "@[CAMLreturnT(%a,%a);@]" pp_expr u.ty pp_var u
       | MultipleValues -> fmt "@[CAMLreturn(%a);@]" pp_var return_var);
-      fmt "@]@,@[};@]@]@.")
+      fmt "@]@,@[}@]@]@.")
 
 let code_c_fun_bytecode ~params ~result fid_native =
   let pp_scall proj { fmt } l =
@@ -948,7 +946,7 @@ let code_c_fun_bytecode ~params ~result fid_native =
       | OneResultValue _ -> ()
       | OneResultUnboxed { ml; _ } -> fmt "@[return %a;@]" pp_var ml
       | MultipleValues -> ());
-      fmt "@]@,@[};@]@]@.")
+      fmt "@]@,@[}@]@]@.")
 
 let print_ml_fun ~params ?result ~mlname fid =
   let code_c = code_c_fun ~params ~result fid in

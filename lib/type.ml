@@ -91,7 +91,7 @@ let codef ?(kind = C) ?params ?keep_name ?(locals = []) ?(ovars = [])
   let pp_args fmt (var : var) = Fmt.pf fmt "%a %a" var.ty.expr () pp_var var in
   let c =
     mk ~kind ~params id (fun fmt () ->
-        Fmt.pf fmt "%a@[<hv 2>@[static %a %a(%a){@]@ %t@ @[};@]@]@." doc ()
+        Fmt.pf fmt "%a@[<hv 2>@[static %a %a(%a){@]@ %t@ @[}@]@]@." doc ()
           ret.expr () pp_id id
           Fmt.(list ~sep:comma pp_args)
           params p)

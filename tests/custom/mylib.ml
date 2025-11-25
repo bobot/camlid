@@ -1,11 +1,11 @@
 (* generated using generator.exe and camlid *)
 type camlid_int = int
-type camlid_myptr
+type myptr
 external of_int:
   (camlid_int [@untagged]) ->
-  camlid_myptr
+  myptr
   = "camlid_stub_of_int_byte" "camlid_stub_of_int"
 external to_int:
-  camlid_myptr ->
+  myptr ->
   (camlid_int [@untagged])
   = "camlid_stub_to_int_byte" "camlid_stub_to_int"

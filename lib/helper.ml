@@ -122,23 +122,17 @@ let func ?(declare = false) ?ml ?result ?ignored_result fname params =
 let func_in ?ml ?result fname inputs =
   func ?ml ?result fname (List.map (fun ty -> input ty ~name:"v") inputs)
 
-let output_array ?owned ?(input = false) ?(name = "array") ty =
+let input_array ?owned ?(output = false) ?(input = true) ?(name = "array") ty =
   let a_len = array_length ?owned ty in
-  let io_a_len, _ = Expert.simple_param ~input ~output:true a_len ~name in
-  let a = array_of_array_length ty io_a_len |> use_ptr_of_param_in_call in
-  let len_ptr =
-    length_of_array_length io_a_len
-    |> use_ptr_of_param_in_call |> use_new_param_only_in_call
-  in
+  let io_a_len, _ = Expert.simple_param ~input ~output a_len ~name in
+
+  let a = t_field ty io_a_len in
+  let len_ptr = len_field io_a_len |> use_new_param_only_in_call in
   (a, len_ptr)
 
-let input_array ?owned ?(output = false) ?(name = "array") ty =
-  let a_len = array_length ?owned ty in
-  let io_a_len, _ = Expert.simple_param ~input:true ~output a_len ~name in
-
-  let a = array_of_array_length ty io_a_len in
-  let len_ptr = length_of_array_length io_a_len |> use_new_param_only_in_call in
-  (a, len_ptr)
+let output_array ?owned ?(output = true) ?(input = false) ?name ty =
+  let a, len_ptr = input_array ?owned ~output ~input ?name ty in
+  (deref_in_call a, deref_in_call len_ptr)
 
 let fixed_length_array ?init ?owned ?(input = false) ?(output = true)
     ?(len_used_in_call = false) ?(name = "array") ty =
@@ -150,6 +144,17 @@ let fixed_length_array ?init ?owned ?(input = false) ?(output = true)
     simple_param ~input ~output (array ?init ?owned ~len:len_pc ty) ~name
   in
   (a_len, len)
+
+let input_string ?owned ?(output = false) ?(name = "string") () =
+  let a_len = string_length ?owned () in
+  let io_a_len, _ = Expert.simple_param ~input:true ~output a_len ~name in
+  let a = get_field (expr "char *") "t" io_a_len in
+  let len_ptr = len_field io_a_len |> use_new_param_only_in_call in
+  (deref_in_call a, deref_in_call len_ptr)
+
+let output_string ?owned ?(output = false) ?name () =
+  let a, len_ptr = input_string ?owned ~output ?name () in
+  (a, len_ptr)
 
 let fixed_length_string ?init ?owned ?(input = false) ?(output = true)
     ?(len_used_in_call = false) ?(name = "string") () =

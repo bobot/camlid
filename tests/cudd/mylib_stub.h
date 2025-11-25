@@ -29,12 +29,12 @@ typedef struct {
 // @param dst structure to fill
 static void caml_cudd_mk_result_False(caml_cudd_result* dst){
   dst->tag=caml_cudd_result_False;
-  };
+  }
 // @brief Fill [dst] with the constant case True of result
 // @param dst structure to fill
 static void caml_cudd_mk_result_True(caml_cudd_result* dst){
   dst->tag=caml_cudd_result_True;
-  };
+  }
 // @brief Fill [dst] with the constructor Ifte of result
 // @param dst structure to fill
 // @param cond reference is assigned to the constructor field
@@ -47,6 +47,6 @@ caml_cudd_int2* cond, caml_cudd_bdd_t* then_, caml_cudd_bdd_t* else_){
   dst->u.Ifte.cond = *cond;
   dst->u.Ifte.then_ = *then_;
   dst->u.Ifte.else_ = *else_;
-  };
+  }
 typedef caml_cudd_result * caml_cudd_ref;
 #endif
