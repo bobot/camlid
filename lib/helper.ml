@@ -258,3 +258,6 @@ let algdata ml_type l =
   let cty = typedef "algdata" "%a" pp_expr t.ty.cty in
   let cty = Expr.dimplicit cty others in
   { t.ty with cty = e_def cty }
+
+let module_ name l =
+  expr "@[<hv 3>module %s = struct@ %a@ end@]" name Fmt.(list ~sep:sp pp_expr) l

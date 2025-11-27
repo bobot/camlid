@@ -210,3 +210,4 @@ val algdata :
 val string_as_FILE_ptr : Type.typedef
 val input_value : string -> Type.param
 val output_value : string -> Type.param
+val module_ : string -> Expr.expr list -> Expr.expr
