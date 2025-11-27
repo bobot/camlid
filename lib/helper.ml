@@ -194,6 +194,9 @@ let string_as_FILE_ptr =
     c;
   }
 
+let input_value ml = input (value ml)
+let output_value ml = output (value ml) |> deref_in_call
+
 let abstract ?initialize ?get ?set ?internal ~ml ~c () : typedef =
   let cty = typedef "abstract" "%s" c in
   let icty =

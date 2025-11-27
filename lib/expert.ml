@@ -903,6 +903,13 @@ let code_c_fun ~params ~result fid =
         Fmt.(
           list ~sep:nop (using (fun p -> p.pinit_expr) (list ~sep:nop pp_local)))
         params;
+      camlParam ~is_param:true ~first:false
+        (List.concat_map
+           (fun p ->
+             List.filter_map
+               (fun (c, _) -> if c.ty == e_value then Some c else None)
+               p.pinit_expr)
+           params);
       (* convert input variables *)
       pp_scall a2c_pinput { fmt } params;
       (* initialize variables *)
@@ -1351,3 +1358,29 @@ module AlgData = struct
     in
     { ty; constrs; dst_smart_constructors }
 end
+
+let value =
+  let cty = e_value in
+  let v = Var.mk "v" (expr "value *") in
+  let c = Var.mk "c" (expr "%a *" pp_expr cty) in
+  let conv =
+    Boxed
+      {
+        ml2c = code "ml2c" "*%a = *%a;" pp_var c pp_var v;
+        c2ml = code "c2ml" "*%a = *%a;" pp_var v pp_var c;
+      }
+  in
+  let init_expr = expr "Val_unit" in
+  fun ml ->
+    {
+      cty;
+      mlty = expr "%s" ml;
+      mlname = None;
+      conv;
+      init = None;
+      init_expr;
+      free = None;
+      in_call = None;
+      v;
+      c;
+    }

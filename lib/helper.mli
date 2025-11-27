@@ -208,3 +208,5 @@ val algdata :
   string -> (string * (string * Type.typedef) list) list -> Type.typedef
 
 val string_as_FILE_ptr : Type.typedef
+val input_value : string -> Type.param
+val output_value : string -> Type.param

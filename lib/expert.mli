@@ -87,6 +87,7 @@ val custom_ptr :
   Type.typedef
 
 val e_value : Expr.expr
+val value : string -> Type.typedef
 val mk_get : icty:Expr.defined -> cty:Expr.defined -> string -> get
 val mk_set : icty:Expr.defined -> cty:Expr.defined -> string -> set
 val mk_finalize : icty:Expr.defined -> string -> finalize
