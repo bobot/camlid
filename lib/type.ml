@@ -19,8 +19,8 @@ type conv =
 
 type typedef = {
   mlname : string option;  (** ml name *)
-  cty : defined;  (** print the c type *)
-  mlty : defined;  (** print the ocaml type *)
+  cty : expr;  (** print the c type *)
+  mlty : expr;  (** print the ocaml type *)
   conv : conv;  (** convert C values of this type to ML value *)
   init : code option;
       (** Initialize values of this type before giving them to stub function *)
@@ -35,19 +35,19 @@ type typedef = {
 
 type pinput =
   | PINone
-  | PIBoxed of { ml : var; ml2c : code; pmlty : defined }
+  | PIBoxed of { ml : var; ml2c : code; pmlty : expr }
   | PIUnboxable of {
       unbox_attribute : unbox_attribute;
       ml2u : code;
       u2c : code;
       u : var;
       ml : var;
-      pmlty : defined;
+      pmlty : expr;
     }
 
 type poutput =
   | PONone
-  | POBoxed of { ml : var; c2ml : code; pmlty : defined }
+  | POBoxed of { ml : var; c2ml : code; pmlty : expr }
   | POUnboxable of {
       unbox_attribute : unbox_attribute;
       u2ml : code;
@@ -55,7 +55,7 @@ type poutput =
       u : var;
       ml : var;
       c2ml : code; (* used when more than one result*)
-      pmlty : defined;
+      pmlty : expr;
     }
 
 type param = {

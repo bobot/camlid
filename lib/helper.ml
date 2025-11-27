@@ -51,7 +51,7 @@ let func_id ~ml ?result ?ignored_result fid params =
   | Some _, Some _ ->
       failwith "Camlid.Helper.func: can't set both result and ignored_result"
   | Some rty, None ->
-      let rc = Var.mk "res" (e_def rty.cty) in
+      let rc = Var.mk "res" rty.cty in
       let rv' = Var.mk "vres" e_value in
       let bind' code =
         Expr.binds [ (rty.c, e_addr rc); (rty.v, e_addr rv') ] code
@@ -92,7 +92,7 @@ let func_id ~ml ?result ?ignored_result fid params =
       print_ml_fun fid ~mlname:ml ~params
         ~result:{ routput; rc; rfree = Option.map bind' rty.free }
   | None, Some rty ->
-      let rc = Var.mk "res" (e_def rty.cty) in
+      let rc = Var.mk "res" rty.cty in
       let bind' code = Expr.binds [ (rty.c, e_addr rc) ] code in
       print_ml_fun fid ~mlname:ml ~params
         ~result:{ routput = PONone; rc; rfree = Option.map bind' rty.free }
@@ -166,8 +166,8 @@ let string_as_FILE_ptr =
       pp_var c
   in
   {
-    cty;
-    mlty = mlalias "_FILE" "string";
+    cty = e_def cty;
+    mlty = expr "string";
     mlname = None;
     conv =
       Boxed
@@ -252,4 +252,6 @@ let custom_ptr ?initialize ?finalize ?hash ?compare ?malloc ~ml ~c () =
 let algdata ml_type l =
   let t = AlgData.algdata ml_type l in
   let others = List.map (fun c -> c.AlgData.smart_constructor) t.constrs in
-  { t.ty with cty = Expr.dimplicit t.ty.cty others }
+  let cty = typedef "algdata" "%a" pp_expr t.ty.cty in
+  let cty = Expr.dimplicit cty others in
+  { t.ty with cty = e_def cty }

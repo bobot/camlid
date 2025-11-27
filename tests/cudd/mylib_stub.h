@@ -49,5 +49,6 @@ caml_cudd_int2* cond, caml_cudd_bdd_t* then_, caml_cudd_bdd_t* else_){
   dst->u.Ifte.then_ = *then_;
   dst->u.Ifte.else_ = *else_;
   }
-typedef caml_cudd_result * caml_cudd_ref;
+typedef caml_cudd_result caml_cudd_algdata;
+typedef caml_cudd_algdata * caml_cudd_ref;
 #endif

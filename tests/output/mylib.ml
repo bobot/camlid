@@ -1,9 +1,3 @@
 (* generated using generator.exe and camlid *)
-type camlid_int = int
-type camlid_ptr_ref = camlid_int
-type camlid_ptr_ref1 = camlid_int
-type camlid_ptr_ref2 = camlid_int
-external f:
-  unit -> (camlid_ptr_ref [@untagged])
-  = "camlid_stub_f_byte" "camlid_stub_f"
-external f2: unit -> camlid_ptr_ref1 * camlid_ptr_ref2 = "camlid_stub_f2"
+external f: unit -> (int [@untagged]) = "camlid_stub_f_byte" "camlid_stub_f"
+external f2: unit -> int * int = "camlid_stub_f2"

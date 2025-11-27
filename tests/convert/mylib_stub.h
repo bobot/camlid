@@ -27,4 +27,5 @@ static void camlid_mk_result_Error(camlid_result* dst, camlid_int* error){
   dst->tag=camlid_result_Error;
   dst->u.Error.error = *error;
   }
+typedef camlid_result camlid_algdata;
 #endif

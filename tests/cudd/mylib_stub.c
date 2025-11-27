@@ -260,7 +260,7 @@ extern value caml_cudd_stub_bdd_inspect(value man,
   CAMLparam2(man, p);
   CAMLlocal1(p_r);
   caml_cudd_custom_ptr man1 = ((caml_cudd_custom_ptr) { 0 });
-  caml_cudd_ref p1 = &(((struct { caml_cudd_result a; }) { ((caml_cudd_result) { 0 }) }).a);
+  caml_cudd_ref p1 = &(((struct { caml_cudd_algdata a; }) { ((caml_cudd_result) { 0 }) }).a);
   caml_cudd_bdd_t p2 = ((caml_cudd_bdd_t) { 0 });
   caml_cudd_ml2c(&man, &man1);
   caml_cudd_ml2c1(&p, &p2);
