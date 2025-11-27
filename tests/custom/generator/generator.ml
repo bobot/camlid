@@ -8,6 +8,6 @@ let pointer =
 let () =
   Generate.to_file "mylib" ~headers:[ "lib.h" ]
     [
-      func "of_int" [ input int; output pointer ];
-      func "to_int" [ input pointer ] ~result:int;
+      func "of_int" [ input int_trunc; output pointer ];
+      func "to_int" [ input pointer ] ~result:int_trunc;
     ]

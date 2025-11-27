@@ -5,6 +5,7 @@
 #include <caml/memory.h>
 #include <caml/alloc.h>
 #include <caml/custom.h>
+#include <stdio.h>
 #include <string.h>
 #include "lib.h"
 typedef intptr_t camlid_int;
@@ -21,7 +22,7 @@ static void camlid_c2u(camlid_int * c, camlid_ref * c1){
 extern camlid_int camlid_stub_f_nat(camlid_int p){
   CAMLparam0();
   camlid_int p1;
-  camlid_ref p2 = &(((struct { camlid_int a; }) { ((camlid_int) { }) }).a);
+  camlid_ref p2 = &(((struct { camlid_int a; }) { ((camlid_int) { 0 }) }).a);
   camlid_u2c(&p, &p2);
   f_nat(p2);
   camlid_c2u(&p1, &p2);
@@ -56,7 +57,7 @@ static void camlid_c2u2(camlid_int1 * c, camlid_ref1 * c1){
 extern camlid_int1 camlid_stub_f_int(camlid_int1 p){
   CAMLparam0();
   camlid_int1 p1;
-  camlid_ref1 p2 = &(((struct { camlid_int2 a; }) { ((camlid_int2) { }) }).a);
+  camlid_ref1 p2 = &(((struct { camlid_int2 a; }) { ((camlid_int2) { 0 }) }).a);
   camlid_u2c2(&p, &p2);
   f_int(p2);
   camlid_c2u2(&p1, &p2);
@@ -86,7 +87,7 @@ static void camlid_c2u4(camlid_float * c, camlid_ref2 * c1){
 extern camlid_float camlid_stub_f_double(camlid_float p){
   CAMLparam0();
   camlid_float p1;
-  camlid_ref2 p2 = &(((struct { camlid_float a; }) { ((camlid_float) { }) }).a);
+  camlid_ref2 p2 = &(((struct { camlid_float a; }) { ((camlid_float) { 0 }) }).a);
   camlid_u2c4(&p, &p2);
   f_double(p2);
   camlid_c2u4(&p1, &p2);
@@ -118,7 +119,7 @@ static void camlid_c2u6(camlid_int32 * c, camlid_ref3 * c1){
 extern camlid_int32 camlid_stub_f_int32(camlid_int32 p){
   CAMLparam0();
   camlid_int32 p1;
-  camlid_ref3 p2 = &(((struct { camlid_int32 a; }) { ((camlid_int32) { }) }).a);
+  camlid_ref3 p2 = &(((struct { camlid_int32 a; }) { ((camlid_int32) { 0 }) }).a);
   camlid_u2c6(&p, &p2);
   f_int32(p2);
   camlid_c2u6(&p1, &p2);
@@ -150,7 +151,7 @@ static void camlid_c2u8(camlid_int64 * c, camlid_ref4 * c1){
 extern camlid_int64 camlid_stub_f_int64(camlid_int64 p){
   CAMLparam0();
   camlid_int64 p1;
-  camlid_ref4 p2 = &(((struct { camlid_int64 a; }) { ((camlid_int64) { }) }).a);
+  camlid_ref4 p2 = &(((struct { camlid_int64 a; }) { ((camlid_int64) { 0 }) }).a);
   camlid_u2c8(&p, &p2);
   f_int64(p2);
   camlid_c2u8(&p1, &p2);
@@ -188,7 +189,7 @@ static void camlid_c2u10(camlid_nativeint * c, camlid_ref5 * c1){
 extern camlid_nativeint camlid_stub_f_nat1(camlid_nativeint p){
   CAMLparam0();
   camlid_nativeint p1;
-  camlid_ref5 p2 = &(((struct { camlid_nativeint a; }) { ((camlid_nativeint) { }) }).a);
+  camlid_ref5 p2 = &(((struct { camlid_nativeint a; }) { ((camlid_nativeint) { 0 }) }).a);
   camlid_u2c10(&p, &p2);
   f_nat(p2);
   camlid_c2u10(&p1, &p2);

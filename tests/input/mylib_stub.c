@@ -5,6 +5,7 @@
 #include <caml/memory.h>
 #include <caml/alloc.h>
 #include <caml/custom.h>
+#include <stdio.h>
 #include <string.h>
 #include "./lib.h"
 typedef intptr_t camlid_int;
@@ -13,7 +14,7 @@ typedef int camlid_int1;
 static void camlid_u2c(camlid_int1 * c, camlid_int * c1){ *c = (int)(*c1); }
 extern value camlid_stub_f(camlid_int p){
   CAMLparam0();
-  camlid_int1 p1 = ((camlid_int1) { });
+  camlid_int1 p1 = ((camlid_int1) { 0 });
   camlid_u2c(&p1, &p);
   f(p1);
   CAMLreturn(Val_unit);
@@ -32,13 +33,13 @@ extern value camlid_stub_f7(camlid_int p,
   camlid_int p5,
   camlid_int p6){
   CAMLparam0();
-  camlid_int1 p7 = ((camlid_int1) { });
-  camlid_int1 p8 = ((camlid_int1) { });
-  camlid_int1 p9 = ((camlid_int1) { });
-  camlid_int1 p10 = ((camlid_int1) { });
-  camlid_int1 p11 = ((camlid_int1) { });
-  camlid_int1 p12 = ((camlid_int1) { });
-  camlid_int1 p13 = ((camlid_int1) { });
+  camlid_int1 p7 = ((camlid_int1) { 0 });
+  camlid_int1 p8 = ((camlid_int1) { 0 });
+  camlid_int1 p9 = ((camlid_int1) { 0 });
+  camlid_int1 p10 = ((camlid_int1) { 0 });
+  camlid_int1 p11 = ((camlid_int1) { 0 });
+  camlid_int1 p12 = ((camlid_int1) { 0 });
+  camlid_int1 p13 = ((camlid_int1) { 0 });
   camlid_u2c(&p7, &p);
   camlid_u2c(&p8, &p1);
   camlid_u2c(&p9, &p2);

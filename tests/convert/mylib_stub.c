@@ -4,11 +4,11 @@
 #include <caml/memory.h>
 #include <caml/alloc.h>
 #include <caml/custom.h>
+#include <stdio.h>
 #include <string.h>
 #include "defs.h"
 static void camlid_ml2u(value * v, camlid_int * c){ *c = Long_val(*v); }
 static void camlid_u2c(camlid_int * c, camlid_int * c1){ *c = (*c1); }
-camlid_int f(camlid_int, camlid_ref);
 static void camlid_c2ml2(value * v, camlid_int * c){ *v = Val_long(*c); }
 static void camlid_c2ml1(value * v, camlid_result * c){
   CAMLparam0();
@@ -34,8 +34,8 @@ extern value camlid_stub_f(camlid_int p){
   CAMLparam0();
   CAMLlocal1(vres);
   camlid_int res;
-  camlid_int p1 = ((camlid_int) { });
-  camlid_ref data = &(((struct { camlid_int a; }) { ((camlid_int) { }) }).a);
+  camlid_int p1 = ((camlid_int) { 0 });
+  camlid_ref data = &(((struct { camlid_int a; }) { ((camlid_int) { 0 }) }).a);
   camlid_u2c(&p1, &p);
   res = f(p1, data);
   camlid_c2ml(&res, &vres, data);

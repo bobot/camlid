@@ -2,28 +2,21 @@ open Expr
 open Type
 open Expert
 
-type code = Expr.code
-type expr = Expr.expr
+let simple_param ?input ?output ?name pty =
+  fst (simple_param ~binds:[] ?input ?output ~used_in_call:true ?name pty)
 
-let expr = expr
-let pp_def = pp_def
-let typedef = typedef
-
-let simple_param ?binds ?input ?output ?used_in_call ?name pty =
-  fst (simple_param ?binds ?input ?output ?used_in_call ?name pty)
-
-let input ?used_in_call ?binds = simple_param ?used_in_call ?binds ~input:true
-let output ?used_in_call ?binds = simple_param ?used_in_call ?binds ~output:true
-
-let inout ?used_in_call ?binds =
-  simple_param ?used_in_call ?binds ~input:true ~output:true
-
-let ignored ?used_in_call ?binds =
-  simple_param ?used_in_call ?binds ~input:false ~output:false
+let input = simple_param ~input:true ~output:false
+let output = simple_param ~output:true ~input:false
+let inout = simple_param ~input:true ~output:true
+let ignored = simple_param ~input:false ~output:false
 
 let int : typedef =
   builtin_mltypes "int" ~c_type:"intptr_t" ~c2ml:"Val_long" ~ml2c:"Long_val"
     ~unbox_attribute:Untagged
+
+let size_t : typedef =
+  builtin_mltypes "int" ~c_type:"size_t" ~c2ml:"Val_long"
+    ~ml2c:"(size_t)Long_val" ~unbox_attribute:Untagged
 
 let int_trunc : typedef =
   builtin_mltypes "int" ~u_type:"intptr_t" ~c_type:"int" ~c2ml:"Val_int"
@@ -59,7 +52,7 @@ let func_id ~ml ?result ?ignored_result fid params =
       failwith "Camlid.Helper.func: can't set both result and ignored_result"
   | Some rty, None ->
       let rc = Var.mk "res" (e_def rty.cty) in
-      let rv' = Var.mk "vres" (expr "value") in
+      let rv' = Var.mk "vres" e_value in
       let bind' code =
         Expr.binds [ (rty.c, e_addr rc); (rty.v, e_addr rv') ] code
       in
@@ -105,22 +98,15 @@ let func_id ~ml ?result ?ignored_result fid params =
         ~result:{ routput = PONone; rc; rfree = Option.map bind' rty.free }
   | None, None -> print_ml_fun fid ~mlname:ml ~params
 
-let func ?(declare = false) ?ml ?result ?ignored_result fname params =
+let func ?ml ?result ?ignored_result fname params =
   let ml = Option.value ~default:fname ml in
   let fid =
     let vars_used_in_calls =
       List.filter_map (fun p -> Option.map fst p.pused_in_call) params
     in
-    if declare then
-      declare_existing
-        ?result:(Option.map (fun rty -> e_def rty.cty) result)
-        fname vars_used_in_calls
-    else existing fname vars_used_in_calls
+    existing fname vars_used_in_calls
   in
   func_id ~ml ?result ?ignored_result fid params
-
-let func_in ?ml ?result fname inputs =
-  func ?ml ?result fname (List.map (fun ty -> input ty ~name:"v") inputs)
 
 let input_array ?owned ?(output = false) ?(input = true) ?(name = "array") ty =
   let a_len = array_length ?owned ty in
@@ -137,7 +123,7 @@ let output_array ?owned ?(output = true) ?(input = false) ?name ty =
 let fixed_length_array ?init ?owned ?(input = false) ?(output = true)
     ?(len_used_in_call = false) ?(name = "array") ty =
   let len, len_pc =
-    Expert.simple_param ~input:true ~used_in_call:len_used_in_call int
+    Expert.simple_param ~input:true ~used_in_call:len_used_in_call size_t
       ~name:(name ^ "_len")
   in
   let a_len =
@@ -159,13 +145,54 @@ let output_string ?owned ?(output = false) ?name () =
 let fixed_length_string ?init ?owned ?(input = false) ?(output = true)
     ?(len_used_in_call = false) ?(name = "string") () =
   let len, len_pc =
-    Expert.simple_param ~input:true ~used_in_call:len_used_in_call int
+    Expert.simple_param ~input:true ~used_in_call:len_used_in_call size_t
       ~name:(name ^ "_len")
   in
   let a_len =
     simple_param ~input ~output (string_fixed_length ?init ?owned len_pc) ~name
   in
   (a_len, len)
+
+let file_struct =
+  let id = ID.mk "file_s" in
+  toplevel id "struct %a { char* t; size_t len; FILE *file;};@." pp_id id
+
+let string_as_FILE_ptr =
+  let cty = typedef "file" "struct %a" pp_def file_struct in
+  let v = Var.mk "v" (expr "value *") in
+  let c = Var.mk "c" (expr "%a *" pp_def cty) in
+  let malloc { fmt } =
+    fmt "%a->file = open_memstream(&(%a->t),&(%a->len));" pp_var c pp_var c
+      pp_var c
+  in
+  {
+    cty;
+    mlty = mlalias "_FILE" "string";
+    mlname = None;
+    conv =
+      Boxed
+        {
+          ml2c =
+            codef "ml2c" (fun { fmt } ->
+                malloc { fmt };
+                fmt "fwrite(String_val(*%a),caml_string_length(*%a),1,%a->file)"
+                  pp_var v pp_var v pp_var c);
+          c2ml =
+            codef "c2ml" (fun { fmt } ->
+                fmt "fflush(%a->file);@ " pp_var c;
+                fmt "fflush(stdout);@ ";
+                fmt "*%a = caml_alloc_string(%a->len);@ " pp_var v pp_var c;
+                fmt "memcpy(&Byte(*%a,0),%a->t,%a->len);" pp_var v pp_var c
+                  pp_var c);
+        };
+    init = Some (codef "init" malloc);
+    init_expr = expr "((%a) { 0 })" pp_def cty;
+    free = Some (code "free" "fclose(%a->file);" pp_var c);
+    in_call =
+      Some (code "in_call" ~ret:(expr "FILE *") "return %a->file;" pp_var c);
+    v;
+    c;
+  }
 
 let abstract ?initialize ?get ?set ?internal ~ml ~c () : typedef =
   let cty = typedef "abstract" "%s" c in
@@ -200,8 +227,7 @@ let abstract ?initialize ?get ?set ?internal ~ml ~c () : typedef =
   Expert.abstract ?initialize ?set ?get ~icty ~cty ~ml ()
 
 (** Encapsulate a c type into an custom ml type *)
-let custom ?initialize ?finalize ?finalize_ptr ?hash ?compare ?get ?set
-    ?internal ~ml ~c () =
+let custom ?initialize ?finalize ?hash ?compare ?get ?set ?internal ~ml ~c () =
   let cty = typedef "custom" "%s" c in
   let icty =
     match internal with None -> cty | Some c -> typedef "custom_intern" "%s" c
@@ -209,12 +235,19 @@ let custom ?initialize ?finalize ?finalize_ptr ?hash ?compare ?get ?set
   let get = Option.map (mk_get ~icty ~cty) get in
   let set = Option.map (mk_set ~icty ~cty) set in
   let finalize = Option.map (mk_finalize ~icty) finalize in
-  let finalize_ptr = Option.map (mk_finalize_ptr ~icty) finalize_ptr in
   let hash = Option.map (mk_hash ~icty) hash in
   let compare = Option.map (mk_compare ~icty) compare in
   let initialize = Option.map (mk_initialize ~cty) initialize in
-  custom ?initialize ?finalize ?finalize_ptr ?hash ?compare ?get ?set ~ml ~icty
-    ~cty ()
+  custom ?initialize ?finalize ?hash ?compare ?get ?set ~ml ~icty ~cty ()
+
+let custom_ptr ?initialize ?finalize ?hash ?compare ?malloc ~ml ~c () =
+  let cty = typedef "custom" "%s" c in
+  let icty = cty in
+  let finalize = Option.map (mk_finalize ~icty) finalize in
+  let hash = Option.map (mk_hash ~icty) hash in
+  let compare = Option.map (mk_compare ~icty) compare in
+  let initialize = Option.map (mk_initialize ~cty) initialize in
+  custom_ptr ?initialize ?finalize ?hash ?compare ?malloc ~ml ~cty ()
 
 let algdata ml_type l =
   let t = AlgData.algdata ml_type l in

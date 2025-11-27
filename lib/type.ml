@@ -28,6 +28,7 @@ type typedef = {
   free : code option;
       (** Free the C memory allocated during the call (not accessible in output
           OCaml value) *)
+  in_call : code option; (* default: variable c*)
   v : var; (* variable for the addresse of ml version *)
   c : var; (* variable for the addresse of c version *)
 }

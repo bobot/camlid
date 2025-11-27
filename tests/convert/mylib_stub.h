@@ -3,6 +3,7 @@
 #define mylib
 #include <stddef.h>
 #include <inttypes.h>
+#include "lib.h"
 typedef intptr_t camlid_int;
 typedef camlid_int * camlid_ref;
 typedef struct {

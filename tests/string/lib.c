@@ -1,3 +1,5 @@
+#define _GNU_SOURCE
+
 #include "lib.h"
 #include <stdio.h>
 #include <string.h>

@@ -1,3 +1,3 @@
-#include <stdio.h>
+#include <inttypes.h>
 
-int f(int,int *);
+intptr_t f(intptr_t,intptr_t *);

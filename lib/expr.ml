@@ -121,6 +121,7 @@ let e_def code = { expr = Fmt.const pp_def code }
 let pp_var fmt c = open_close_stag fmt (PrintVar c)
 let e_var var = { expr = Fmt.const pp_var var }
 let e_addr v = expr "&%a" pp_var v
+let e_deref v = expr "*%a" pp_var v
 
 let pp_call fmt (code, binds) =
   let rec aux binds = function

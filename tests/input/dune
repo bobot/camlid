@@ -1,6 +1,6 @@
 (rule (targets mylib_stub.c mylib.ml) (action (run %{exe:generator/generator.exe})) (mode promote))
 
-(test (name app) (foreign_stubs (language c) (names mylib_stub lib) (flags -Wall -Wconversion --pedantic-errors -std=c23))
+(test (name app) (foreign_stubs (language c) (names mylib_stub lib) (flags -Wall -Werror -Wconversion --pedantic-errors -std=c17))
 (modes byte_complete exe))
 
 (rule

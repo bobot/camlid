@@ -65,7 +65,6 @@ type compare_op = { compare_op : Expr.code; v1 : Expr.var; v2 : Expr.var }
 val custom :
   ?initialize:initialize ->
   ?finalize:finalize ->
-  ?finalize_ptr:finalize ->
   ?hash:hash ->
   ?compare:compare ->
   ?get:get ->
@@ -76,6 +75,18 @@ val custom :
   unit ->
   Type.typedef
 
+val custom_ptr :
+  ?initialize:initialize ->
+  ?finalize:finalize ->
+  ?hash:hash ->
+  ?compare:compare ->
+  ?malloc:bool ->
+  ml:string ->
+  cty:Expr.defined ->
+  unit ->
+  Type.typedef
+
+val e_value : Expr.expr
 val mk_get : icty:Expr.defined -> cty:Expr.defined -> string -> get
 val mk_set : icty:Expr.defined -> cty:Expr.defined -> string -> set
 val mk_finalize : icty:Expr.defined -> string -> finalize

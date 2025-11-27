@@ -5,6 +5,7 @@
 #include <caml/memory.h>
 #include <caml/alloc.h>
 #include <caml/custom.h>
+#include <stdio.h>
 #include <string.h>
 #include "lib.h"
 typedef intptr_t camlid_int;
@@ -19,7 +20,7 @@ static void camlid_c2u(camlid_int * c, camlid_ref * c1){
 extern camlid_int camlid_stub_f(){
   CAMLparam0();
   camlid_int p;
-  camlid_ref p1 = &(((struct { camlid_int1 a; }) { ((camlid_int1) { }) }).a);
+  camlid_ref p1 = &(((struct { camlid_int1 a; }) { ((camlid_int1) { 0 }) }).a);
   f(p1);
   camlid_c2u(&p, &p1);
   CAMLreturnT(camlid_int,p);
@@ -40,8 +41,8 @@ static void camlid_c2ml1(value * v, camlid_ref2 * c){ camlid_c2ml2(v, *c); }
 extern value camlid_stub_f2(){
   CAMLparam0();
   CAMLlocal3(ret, p_r, p_r1);
-  camlid_ref1 p = &(((struct { camlid_int1 a; }) { ((camlid_int1) { }) }).a);
-  camlid_ref2 p1 = &(((struct { camlid_int1 a; }) { ((camlid_int1) { }) }).a);
+  camlid_ref1 p = &(((struct { camlid_int1 a; }) { ((camlid_int1) { 0 }) }).a);
+  camlid_ref2 p1 = &(((struct { camlid_int1 a; }) { ((camlid_int1) { 0 }) }).a);
   f2(p, p1);
   camlid_c2ml(&p_r, &p);
   camlid_c2ml1(&p_r1, &p1);

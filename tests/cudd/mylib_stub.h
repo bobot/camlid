@@ -4,7 +4,8 @@
 #include <stddef.h>
 #include <inttypes.h>
 #include "./cudd.h"
-typedef DdManager* caml_cudd_custom;
+typedef DdManager caml_cudd_custom;
+typedef caml_cudd_custom* caml_cudd_custom_ptr;
 typedef DdNode* caml_cudd_bdd_t;
 struct caml_cudd_bdd_wrapper1 {caml_cudd_bdd_t ptr;DdManager* manager;};
 typedef struct caml_cudd_bdd_wrapper1 caml_cudd_bdd_wrapper;

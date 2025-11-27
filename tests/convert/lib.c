@@ -2,7 +2,7 @@
 
 static int trigger = 0;
 
-int f(int i, int *data)
+intptr_t f(intptr_t i, intptr_t *data)
 {
     *data = i;
     trigger++;

@@ -43,6 +43,7 @@ val e_def : defined -> expr
 val pp_var : Format.formatter -> Var.t -> unit
 val e_var : Var.t -> expr
 val e_addr : Var.t -> expr
+val e_deref : Var.t -> expr
 val pp_call : Format.formatter -> code * (Var.t * expr) list -> unit
 val pp_calli : Format.formatter -> code * (Var.t * expr) list -> unit
 val pp_call_ret : Format.formatter -> expr * code * (Var.t * expr) list -> unit

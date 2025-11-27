@@ -1,6 +1,6 @@
 ## camlid
 
- camlid is currently a POC of a C binding generator for OCaml.
+ Camlid is a C binding generator for OCaml. Its interface is not yet stable.
  
  The description is similar to the extension of IDL found in CamlIDL, but it is a DSL in OCaml and it removes the interface language part of IDL. Moreover it tries to keep a core simple and generic and uses predefined helpers for common types and patterns.
 

@@ -3,18 +3,19 @@ open Helper
 
 (** todo add reference counting on cudd manager *)
 
-let man = custom ~finalize_ptr:"Cudd_Quit" ~ml:"man" ~c:"DdManager*" ()
+let man = custom_ptr ~finalize:"Cudd_Quit" ~ml:"man" ~c:"DdManager" ()
 let mani, mani_pc = Expert.simple_param ~input:true man ~name:"man"
-let bdd_t = typedef "bdd_t" "DdNode*"
+let bdd_t = Expert.typedef "bdd_t" "DdNode*"
 
 let bdd_wrapper_s =
   Expert.declare_struct "bdd_wrapper"
-    [ ("ptr", Expr.e_def bdd_t); ("manager", expr "DdManager*") ]
+    [ ("ptr", Expr.e_def bdd_t); ("manager", Expr.expr "DdManager*") ]
 
-let bdd_wrapper = typedef "bdd_wrapper" "struct %a" pp_def bdd_wrapper_s
+let bdd_wrapper =
+  Expert.typedef "bdd_wrapper" "struct %a" Expr.pp_def bdd_wrapper_s
 
 let bdd_finalize =
-  let i = Expr.Var.mk "i" (Expr.expr "%a*" pp_def bdd_wrapper) in
+  let i = Expr.Var.mk "i" (Expr.expr "%a*" Expr.pp_def bdd_wrapper) in
   {
     Expert.finalize =
       Expr.code "bdd_finalize" "Cudd_RecursiveDeref(%a->manager,%a->ptr);"
@@ -23,8 +24,8 @@ let bdd_finalize =
   }
 
 let bdd_set =
-  let i = Expr.Var.mk "i" (Expr.expr "%a*" pp_def bdd_wrapper) in
-  let c = Expr.Var.mk "c" (Expr.expr "%a*" pp_def bdd_t) in
+  let i = Expr.Var.mk "i" (Expr.expr "%a*" Expr.pp_def bdd_wrapper) in
+  let c = Expr.Var.mk "c" (Expr.expr "%a*" Expr.pp_def bdd_t) in
   {
     Expert.set =
       Expr.code "bdd_set" "Cudd_Ref(*%a);@ %a->manager=%a;@ %a->ptr=*%a;"
@@ -35,8 +36,8 @@ let bdd_set =
   }
 
 let bdd_get =
-  let i = Expr.Var.mk "i" (Expr.expr "%a*" pp_def bdd_wrapper) in
-  let c = Expr.Var.mk "c" (Expr.expr "%a*" pp_def bdd_t) in
+  let i = Expr.Var.mk "i" (Expr.expr "%a*" Expr.pp_def bdd_wrapper) in
+  let c = Expr.Var.mk "c" (Expr.expr "%a*" Expr.pp_def bdd_t) in
   {
     Expert.get = Expr.code "bdd_get" "*%a=%a->ptr;" Expr.pp_var c Expr.pp_var i;
     i;
