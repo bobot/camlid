@@ -34,16 +34,14 @@ let get_boxing = function
 (** Native integer, the last bit is lost during translation *)
 let builtin_mltypes ~unbox_attribute ?u_type ~c_type ~c2ml ~ml2c ?(u2c = "")
     ?(c2u = "") ?(ml2u = ml2c) ?(u2ml = c2ml) ml_type =
-  let cty = typedef ml_type "%s" c_type in
-  let uty =
-    match u_type with None -> cty | Some u_type -> typedef ml_type "%s" u_type
-  in
+  let cty = expr "%s" c_type in
+  let uty = match u_type with None -> cty | Some u_type -> expr "%s" u_type in
   let v = Var.mk "v" (expr "value *") in
-  let c = Var.mk "c" (expr "%a *" pp_def cty) in
-  let u = Var.mk "c" (expr "%a *" pp_def uty) in
+  let c = Var.mk "c" (expr "%a *" pp_expr cty) in
+  let u = Var.mk "c" (expr "%a *" pp_expr uty) in
   let mk name map x y = code name "*%a = %s(*%a);" pp_var x map pp_var y in
   {
-    cty = e_def cty;
+    cty;
     mlty = expr "%s" ml_type;
     mlname = None;
     conv =
@@ -60,7 +58,7 @@ let builtin_mltypes ~unbox_attribute ?u_type ~c_type ~c2ml ~ml2c ?(u2c = "")
           c2ml = mk "c2ml" c2ml v c;
         };
     init = None;
-    init_expr = expr "((%a) { 0 })" pp_def cty;
+    init_expr = expr "((%a) { 0 })" pp_expr cty;
     free = None;
     in_call = None;
     v;
@@ -796,8 +794,8 @@ let simple_param ?input_label ?(binds = []) ?(input = false) ?(output = false)
         (pinput, pinit, poutput)
     | Unboxable
         { unbox_attribute; uty; ml2u; u2ml; u2c; c2u; u; ml2c = _; c2ml } ->
-        let pu = Var.mk name (e_def uty) in
-        let pu' = Var.mk name (e_def uty) in
+        let pu = Var.mk name uty in
+        let pu' = Var.mk name uty in
         let bind code =
           Expr.binds
             ((u, e_addr pu) :: (pty.c, e_addr pc) :: (pty.v, e_addr pv) :: binds)
@@ -1424,7 +1422,7 @@ module AlgData = struct
               ml_type;
             Fmt.pf fmt "@[// @param dst structure to fill@]"
           in
-          Expr.code ~kind:H ~params:[ dst ]
+          Expr.code ~inline:true ~kind:H ~params:[ dst ]
             ~doc:Fmt.(vbox pp_doc ++ cut)
             fun_name "%a->tag=%a;" pp_var dst pp_id id
       | KNonConst (_, fields) ->
@@ -1442,7 +1440,7 @@ module AlgData = struct
                   fname)
               fields
           in
-          codef ~kind:H fun_name ~params:(dst :: params)
+          codef ~inline:true ~kind:H fun_name ~params:(dst :: params)
             ~doc:Fmt.(vbox pp_doc ++ cut)
             (fun { fmt } ->
               fmt "%a->tag=%a;@," pp_var dst pp_id id;
@@ -1533,7 +1531,7 @@ let simple_result rty =
           ml2c = _;
           c2ml;
         } ->
-        let ru = Var.mk "ures" (e_def uty) in
+        let ru = Var.mk "ures" uty in
         let bind' code =
           Expr.binds
             [ (u, e_addr ru); (rty.c, e_addr rc); (rty.v, e_addr rv') ]

@@ -8,38 +8,36 @@
 #include <stdio.h>
 #include <string.h>
 #include "./lib.h"
-typedef intptr_t camlid_int;
-static void camlid_ml2u(value * v, camlid_int * c){ *c = Int_val(*v); }
-typedef int camlid_int1;
-static void camlid_u2c(camlid_int1 * c, camlid_int * c1){ *c = (int)(*c1); }
-extern value camlid_stub_f(camlid_int p){
+static void camlid_ml2u(value * v, intptr_t * c){ *c = Int_val(*v); }
+static void camlid_u2c(int * c, intptr_t * c1){ *c = (int)(*c1); }
+extern value camlid_stub_f(intptr_t p){
   CAMLparam0();
-  camlid_int1 p1 = ((camlid_int1) { 0 });
+  int p1 = ((int) { 0 });
   camlid_u2c(&p1, &p);
   f(p1);
   CAMLreturn(Val_unit);
 }
 extern value camlid_stub_f_byte(value p){
-  camlid_int p1;
+  intptr_t p1;
   camlid_ml2u(&p, &p1);
   return camlid_stub_f(p1);
   
 }
-extern value camlid_stub_f7(camlid_int p,
-  camlid_int p1,
-  camlid_int p2,
-  camlid_int p3,
-  camlid_int p4,
-  camlid_int p5,
-  camlid_int p6){
+extern value camlid_stub_f7(intptr_t p,
+  intptr_t p1,
+  intptr_t p2,
+  intptr_t p3,
+  intptr_t p4,
+  intptr_t p5,
+  intptr_t p6){
   CAMLparam0();
-  camlid_int1 p7 = ((camlid_int1) { 0 });
-  camlid_int1 p8 = ((camlid_int1) { 0 });
-  camlid_int1 p9 = ((camlid_int1) { 0 });
-  camlid_int1 p10 = ((camlid_int1) { 0 });
-  camlid_int1 p11 = ((camlid_int1) { 0 });
-  camlid_int1 p12 = ((camlid_int1) { 0 });
-  camlid_int1 p13 = ((camlid_int1) { 0 });
+  int p7 = ((int) { 0 });
+  int p8 = ((int) { 0 });
+  int p9 = ((int) { 0 });
+  int p10 = ((int) { 0 });
+  int p11 = ((int) { 0 });
+  int p12 = ((int) { 0 });
+  int p13 = ((int) { 0 });
   camlid_u2c(&p7, &p);
   camlid_u2c(&p8, &p1);
   camlid_u2c(&p9, &p2);
@@ -58,13 +56,13 @@ extern value camlid_stub_f7_byte(value * argv, int argn){
   value p4 = argv[4];
   value p5 = argv[5];
   value p6 = argv[6];
-  camlid_int p7;
-  camlid_int p8;
-  camlid_int p9;
-  camlid_int p10;
-  camlid_int p11;
-  camlid_int p12;
-  camlid_int p13;
+  intptr_t p7;
+  intptr_t p8;
+  intptr_t p9;
+  intptr_t p10;
+  intptr_t p11;
+  intptr_t p12;
+  intptr_t p13;
   camlid_ml2u(&p, &p7);
   camlid_ml2u(&p1, &p8);
   camlid_ml2u(&p2, &p9);

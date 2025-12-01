@@ -340,8 +340,8 @@ let final_print ~prefix ~ml ~c ~h kind expr =
   in
   aux kind expr
 
-let codef ?(kind = C) ?params ?keep_name ?(locals = []) ?(ovars = [])
-    ?(ret = expr "void") ?(doc = Fmt.nop) name pp =
+let codef ?(inline = false) ?(kind = C) ?params ?keep_name ?(locals = [])
+    ?(ovars = []) ?(ret = expr "void") ?(doc = Fmt.nop) name pp =
   let p = fun fmt -> pp { fmt = (fun p -> Fmt.pf fmt p) } in
   let id = ID.mk ?keep_name name in
   let params =
@@ -354,11 +354,12 @@ let codef ?(kind = C) ?params ?keep_name ?(locals = []) ?(ovars = [])
         params
     | Some params -> params
   in
+  let pp_inline fmt b = if b then Fmt.pf fmt "inline " in
   let pp_args fmt (var : var) = Fmt.pf fmt "%a %a" pp_expr var.ty pp_var var in
   let c =
     mk ~kind ~params id (fun fmt () ->
-        Fmt.pf fmt "%a@[<hv 2>@[static %a %a(%a){@]@ %t@ @[}@]@]@." doc ()
-          pp_expr ret pp_id id
+        Fmt.pf fmt "%a@[<hv 2>@[static %a%a %a(%a){@]@ %t@ @[}@]@]@." doc ()
+          pp_inline inline pp_expr ret pp_id id
           Fmt.(list ~sep:comma pp_args)
           params p)
   in
@@ -369,10 +370,10 @@ let codefo ?kind ?params ?keep_name ?locals ?ovars ?ret ?doc name pp =
   if expr_is_empty k then None
   else Some (codef ?kind ?params ?keep_name ?locals ?ovars ?ret ?doc name pp)
 
-let code ?kind ?params ?keep_name ?locals ?ovars ?ret ?doc name p =
+let code ?inline ?kind ?params ?keep_name ?locals ?ovars ?ret ?doc name p =
   Format.kdprintf
     (fun k ->
-      codef ?kind ?params ?keep_name ?locals ?ovars ?ret ?doc name
+      codef ?inline ?kind ?params ?keep_name ?locals ?ovars ?ret ?doc name
         (fun { fmt } -> fmt "%t" k))
     p
 

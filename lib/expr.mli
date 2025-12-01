@@ -83,6 +83,7 @@ val final_print :
   unit
 
 val codef :
+  ?inline:bool ->
   ?kind:kind ->
   ?params:Var.S.elt list ->
   ?keep_name:bool ->
@@ -107,6 +108,7 @@ val codefo :
   code option
 
 val code :
+  ?inline:bool ->
   ?kind:kind ->
   ?params:Var.S.elt list ->
   ?keep_name:bool ->
