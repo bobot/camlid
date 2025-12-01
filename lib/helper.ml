@@ -53,10 +53,10 @@ let func_id ~ml ?result ?ignored_result fid params =
   | Some rty, None ->
       print_ml_fun fid ~mlname:ml ~params ~result:(Expert.simple_result rty)
   | None, Some rty ->
-      let rc = Var.mk "res" rty.cty in
-      let bind' code = Expr.binds [ (rty.c, e_addr rc) ] code in
+      let rc = Var.mk "res" rty.cty.cty in
+      let bind' code = Expr.binds [ (rty.cty.c, e_addr rc) ] code in
       print_ml_fun fid ~mlname:ml ~params
-        ~result:{ routput = PONone; rc; rfree = Option.map bind' rty.free }
+        ~result:{ routput = PONone; rc; rfree = Option.map bind' rty.cty.free }
   | None, None -> print_ml_fun fid ~mlname:ml ~params
 
 let func ?ml ?result ?ignored_result fname params =
@@ -127,7 +127,6 @@ let string_as_FILE_ptr =
       pp_var c
   in
   {
-    cty = e_def cty;
     mlty = expr "string";
     mlname = None;
     conv =
@@ -146,13 +145,17 @@ let string_as_FILE_ptr =
                 fmt "memcpy(&Byte(*%a,0),%a->t,%a->len);" pp_var v pp_var c
                   pp_var c);
         };
-    init = Some (codef "init" malloc);
-    init_expr = expr "((%a) { 0 })" pp_def cty;
-    free = Some (code "free" "fclose(%a->file);" pp_var c);
-    in_call =
-      Some (code "in_call" ~ret:(expr "FILE *") "return %a->file;" pp_var c);
+    cty =
+      {
+        cty = e_def cty;
+        init = Some (codef "init" malloc);
+        init_expr = expr "((%a) { 0 })" pp_def cty;
+        free = Some (code "free" "fclose(%a->file);" pp_var c);
+        in_call =
+          Some (code "in_call" ~ret:(expr "FILE *") "return %a->file;" pp_var c);
+        c;
+      };
     v;
-    c;
   }
 
 let input_value ml = input (value ml)
@@ -214,9 +217,9 @@ let custom_ptr ?initialize ?finalize ?hash ?compare ?malloc ~ml ~c () =
 let algdata ml_type l =
   let t = AlgData.algdata ml_type l in
   let others = List.map (fun c -> c.AlgData.smart_constructor) t.constrs in
-  let cty = typedef "algdata" "%a" pp_expr t.ty.cty in
+  let cty = typedef "algdata" "%a" pp_expr t.ty.cty.cty in
   let cty = Expr.dimplicit cty others in
-  { t.ty with cty = e_def cty }
+  { t.ty with cty = { t.ty.cty with cty = e_def cty } }
 
 let module_ name l =
   expr "@[<hv 3>module %s = struct@ %a@ end@]" name Fmt.(list ~sep:sp pp_expr) l
@@ -224,7 +227,7 @@ let module_ name l =
 let ml_alias name typedef = expr "@[type %s = %a@]" name pp_expr typedef.mlty
 
 let copy typedef ?vars ?exprs string =
-  Expert.copy ~copy:(mk_copy ~cty:typedef.cty ?exprs ?vars string) typedef
+  Expert.copy ~copy:(mk_copy ~cty:typedef.cty.cty ?exprs ?vars string) typedef
 
 let ret_option_if typedef =
   let status, v_status = Expert.simple_param bool in

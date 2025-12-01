@@ -17,11 +17,8 @@ type conv =
       ml2c : code;
     }
 
-type typedef = {
-  mlname : string option;  (** ml name *)
+type c = {
   cty : expr;  (** print the c type *)
-  mlty : expr;  (** print the ocaml type *)
-  conv : conv;  (** convert C values of this type to ML value *)
   init : code option;
       (** Initialize values of this type before giving them to stub function *)
   init_expr : expr;  (** expression initialization of the c version *)
@@ -29,8 +26,15 @@ type typedef = {
       (** Free the C memory allocated during the call (not accessible in output
           OCaml value) *)
   in_call : code option; (* default: variable c*)
-  v : var; (* variable for the addresse of ml version *)
   c : var; (* variable for the addresse of c version *)
+}
+
+type typedef = {
+  mlname : string option;  (** ml name *)
+  mlty : expr;  (** print the ocaml type *)
+  conv : conv;  (** convert C values of this type to ML value *)
+  cty : c;
+  v : var; (* variable for the addresse of ml version *)
 }
 
 type pinput =
@@ -78,5 +82,5 @@ type conf = Expr.expr list
 
 let ty_binds ?(binds = []) ?v ?c ty =
   let bv = match v with None -> [] | Some v -> [ (ty.v, v) ] in
-  let bc = match c with None -> [] | Some c -> [ (ty.c, c) ] in
+  let bc = match c with None -> [] | Some c -> [ (ty.cty.c, c) ] in
   bv @ bc @ binds
