@@ -82,6 +82,10 @@ val int : Type.typedef
 (** It is {!int} in OCaml, and [intptr_t] in C. The highest bit is lost when
     going from C to OCaml *)
 
+val size_t : Type.typedef
+(** It is {!int} in OCaml, and [size_t] in C. The highest bit is lost when going
+    from C to OCaml. Unsigned version of {!int} *)
+
 val int_trunc : Type.typedef
 (** It is {!int} in OCaml, and [int] in C. On 64bit, half of the highest bit are
     lost (63 bit long in OCaml and 32 bit long in C). *)
@@ -211,3 +215,28 @@ val string_as_FILE_ptr : Type.typedef
 val input_value : string -> Type.param
 val output_value : string -> Type.param
 val module_ : string -> Expr.expr list -> Expr.expr
+val ml_alias : string -> Type.typedef -> Expr.expr
+
+val copy :
+  Type.typedef ->
+  ?vars:(c_to:Expr.Var.t -> c_from:Expr.Var.t -> Expr.Var.t list) ->
+  ?exprs:(c_to:Expr.Var.t -> c_from:Expr.Var.t -> Expr.expr list) ->
+  string ->
+  Type.typedef
+
+val ret_option_if : Type.typedef -> Type.param * Type.typedef
+val get_expression : name:string -> Type.typedef -> string -> Expr.expr
+
+val map_param_in_call :
+  ?name:string ->
+  ty:string ->
+  Type.param ->
+  (('a -> Expr.expr -> 'b) -> Expr.expr -> 'c, 'a, 'b, 'd, 'd, 'c) format6 ->
+  Type.param
+
+val do_nothing :
+  ?result:Type.typedef ->
+  ?ignored_result:Type.typedef ->
+  string ->
+  Type.param list ->
+  Expr.expr

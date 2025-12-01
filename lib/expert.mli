@@ -24,6 +24,17 @@ val string_length_struct : Expr.defined
 val string_length : ?owned:bool -> unit -> Type.typedef
 val ptr_ref : Type.typedef -> Type.typedef
 
+type copy = { copy : Expr.code; c_from : Expr.Var.t; c_to : Expr.Var.t }
+
+val mk_copy :
+  cty:Expr.expr ->
+  ?vars:(c_to:Expr.Var.t -> c_from:Expr.Var.t -> Expr.Var.t list) ->
+  ?exprs:(c_to:Expr.Var.t -> c_from:Expr.Var.t -> Expr.expr list) ->
+  string ->
+  copy
+
+val copy : copy:copy -> Type.typedef -> Type.typedef
+
 val array :
   ?init:bool -> ?owned:bool -> len:Expr.var -> Type.typedef -> Type.typedef
 
@@ -70,8 +81,8 @@ val custom :
   ?get:get ->
   ?set:set ->
   ml:string ->
-  icty:Expr.defined ->
-  cty:Expr.defined ->
+  icty:Expr.expr ->
+  cty:Expr.expr ->
   unit ->
   Type.typedef
 
@@ -82,21 +93,61 @@ val custom_ptr :
   ?compare:compare ->
   ?malloc:bool ->
   ml:string ->
-  cty:Expr.defined ->
+  cty:Expr.expr ->
   unit ->
   Type.typedef
 
 val e_value : Expr.expr
 val value : string -> Type.typedef
-val mk_get : icty:Expr.defined -> cty:Expr.defined -> string -> get
-val mk_set : icty:Expr.defined -> cty:Expr.defined -> string -> set
-val mk_finalize : icty:Expr.defined -> string -> finalize
-val mk_finalize_ptr : icty:Expr.defined -> string -> finalize
-val mk_hash : icty:Expr.defined -> string -> hash
-val mk_compare : icty:Expr.defined -> string -> compare
-val mk_initialize : cty:Expr.defined -> string -> initialize
+
+val mk_get :
+  icty:Expr.expr ->
+  cty:Expr.expr ->
+  ?vars:(c_to:Expr.Var.t -> c_from:Expr.Var.t -> Expr.Var.t list) ->
+  ?exprs:(c_to:Expr.Var.t -> c_from:Expr.Var.t -> Expr.expr list) ->
+  string ->
+  get
+
+val mk_set :
+  icty:Expr.expr ->
+  cty:Expr.expr ->
+  ?vars:(c_to:Expr.Var.t -> c_from:Expr.Var.t -> Expr.Var.t list) ->
+  ?exprs:(c_to:Expr.Var.t -> c_from:Expr.Var.t -> Expr.expr list) ->
+  string ->
+  set
+
+val mk_finalize :
+  icty:Expr.expr ->
+  ?vars:(Expr.Var.t -> Expr.Var.t list) ->
+  ?exprs:(Expr.Var.t -> Expr.expr list) ->
+  string ->
+  finalize
+
+val mk_finalize_ptr :
+  icty:Expr.expr ->
+  ?vars:(Expr.Var.t -> Expr.Var.t list) ->
+  ?exprs:(Expr.Var.t -> Expr.expr list) ->
+  string ->
+  finalize
+
+val mk_hash :
+  icty:Expr.expr ->
+  ?vars:(Expr.Var.t -> Expr.Var.t list) ->
+  ?exprs:(Expr.Var.t -> Expr.expr list) ->
+  string ->
+  hash
+
+val mk_compare : icty:Expr.expr -> string -> compare
+
+val mk_initialize :
+  cty:Expr.expr ->
+  ?vars:(Expr.Var.t -> Expr.Var.t list) ->
+  ?exprs:(Expr.Var.t -> Expr.expr list) ->
+  string ->
+  initialize
 
 val simple_param :
+  ?input_label:string ->
   ?binds:(Expr.var * Expr.expr) list ->
   ?input:bool ->
   ?output:bool ->
@@ -104,6 +155,8 @@ val simple_param :
   ?name:string ->
   Type.typedef ->
   Type.param * Expr.var
+
+val simple_result : Type.typedef -> Type.result
 
 val list_or_empty :
   empty:(Format.formatter -> unit -> unit) ->
@@ -167,3 +220,6 @@ module AlgData : sig
 
   val algdata : string -> (string * (string * Type.typedef) list) list -> t
 end
+
+val ret_option_if : Expr.expr -> Type.typedef -> Type.typedef
+val get_expression : mlname:string -> Type.typedef -> Expr.expr -> Expr.expr

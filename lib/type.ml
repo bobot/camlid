@@ -35,8 +35,9 @@ type typedef = {
 
 type pinput =
   | PINone
-  | PIBoxed of { ml : var; ml2c : code; pmlty : expr }
+  | PIBoxed of { label : string option; ml : var; ml2c : code; pmlty : expr }
   | PIUnboxable of {
+      label : string option;
       unbox_attribute : unbox_attribute;
       ml2u : code;
       u2c : code;

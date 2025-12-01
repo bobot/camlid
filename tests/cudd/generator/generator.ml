@@ -46,7 +46,7 @@ let bdd_get =
 
 let bdd =
   Expert.custom ~finalize:bdd_finalize ~set:bdd_set ~get:bdd_get ~ml:"bdd"
-    ~icty:bdd_wrapper ~cty:bdd_t ()
+    ~icty:(Expr.e_def bdd_wrapper) ~cty:(Expr.e_def bdd_t) ()
 
 let f_man fname mlname inputs result =
   func fname ~ml:mlname (mani :: List.map (fun ty -> input ty) inputs) ~result
