@@ -186,8 +186,8 @@ val seq : Expr.expr list -> Expr.expr
 type convert = { convert : Expr.code; src : Expr.var; dst : Expr.var }
 
 val mk_converter :
-  src:Type.typedef ->
-  dst:Type.typedef ->
+  src:Type.c ->
+  dst:Type.c ->
   string ->
   (src:Expr.var -> dst:Expr.var -> Expr.var list) ->
   convert
@@ -196,7 +196,7 @@ val convert :
   ?a_to_b:convert ->
   ?b_to_a:convert ->
   a:Type.typedef ->
-  b:Type.typedef ->
+  b:Type.c ->
   unit ->
   Type.typedef
 
