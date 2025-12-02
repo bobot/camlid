@@ -28,8 +28,8 @@ type copy = { copy : Expr.code; c_from : Expr.Var.t; c_to : Expr.Var.t }
 
 val mk_copy :
   cty:Expr.expr ->
-  ?vars:(c_to:Expr.Var.t -> c_from:Expr.Var.t -> Expr.Var.t list) ->
-  ?exprs:(c_to:Expr.Var.t -> c_from:Expr.Var.t -> Expr.expr list) ->
+  ?vars:(dst:Expr.Var.t -> src:Expr.Var.t -> Expr.Var.t list) ->
+  ?exprs:(dst:Expr.Var.t -> src:Expr.Var.t -> Expr.expr list) ->
   string ->
   copy
 
@@ -103,16 +103,16 @@ val value : string -> Type.typedef
 val mk_get :
   icty:Expr.expr ->
   cty:Expr.expr ->
-  ?vars:(c_to:Expr.Var.t -> c_from:Expr.Var.t -> Expr.Var.t list) ->
-  ?exprs:(c_to:Expr.Var.t -> c_from:Expr.Var.t -> Expr.expr list) ->
+  ?vars:(dst:Expr.Var.t -> src:Expr.Var.t -> Expr.Var.t list) ->
+  ?exprs:(dst:Expr.Var.t -> src:Expr.Var.t -> Expr.expr list) ->
   string ->
   get
 
 val mk_set :
   icty:Expr.expr ->
   cty:Expr.expr ->
-  ?vars:(c_to:Expr.Var.t -> c_from:Expr.Var.t -> Expr.Var.t list) ->
-  ?exprs:(c_to:Expr.Var.t -> c_from:Expr.Var.t -> Expr.expr list) ->
+  ?vars:(dst:Expr.Var.t -> src:Expr.Var.t -> Expr.Var.t list) ->
+  ?exprs:(dst:Expr.Var.t -> src:Expr.Var.t -> Expr.expr list) ->
   string ->
   set
 
@@ -188,15 +188,16 @@ type convert = { convert : Expr.code; src : Expr.var; dst : Expr.var }
 val mk_converter :
   src:Type.c ->
   dst:Type.c ->
+  ?vars:(dst:Expr.var -> src:Expr.var -> Expr.var list) ->
+  ?exprs:(dst:Expr.var -> src:Expr.var -> Expr.expr list) ->
   string ->
-  (src:Expr.var -> dst:Expr.var -> Expr.var list) ->
   convert
 
 val convert :
-  ?a_to_b:convert ->
-  ?b_to_a:convert ->
-  a:Type.typedef ->
-  b:Type.c ->
+  ?mlc_to_c:convert ->
+  ?c_to_mlc:convert ->
+  mlc:Type.typedef ->
+  c:Type.c ->
   unit ->
   Type.typedef
 

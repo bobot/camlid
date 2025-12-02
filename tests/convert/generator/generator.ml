@@ -1,19 +1,18 @@
 open Camlid
 open Helper
 
-module Result = struct
-  let ty =
-    algdata "result"
-      [ ("Data", [ ("data", int) ]); ("Error", [ ("error", int) ]) ]
-end
+let result =
+  algdata "result"
+    [ ("Data", [ ("data", int) ]); ("Error", [ ("error", int) ]) ]
 
 let data, data_or_status =
-  let data, data_pc = Expert.simple_param (ptr_ref int) ~name:"data" in
-  let conv =
-    Expert.mk_converter ~dst:Result.ty.cty ~src:int.cty "combine_data_or_status"
-      (fun ~src ~dst -> [ dst; src; data_pc ])
+  let data, data_pc =
+    Expert.simple_param ~input:false ~output:false (ptr_ref int) ~name:"data"
   in
-  let ty = Expert.convert ~b_to_a:conv ~b:int.cty ~a:Result.ty () in
+  let ty =
+    convert ~c_to_mlc:"combine_data_or_status" ~c:int.cty ~mlc:result
+      ~using:[ data_pc ] ()
+  in
   (data, ty)
 
 let () =

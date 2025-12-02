@@ -245,3 +245,11 @@ let map_param_in_call ?(name = "arg") ~ty param fmt =
 let do_nothing ?result ?ignored_result ml =
   let id = code "nothing" "" in
   func_id ~ml ?result ?ignored_result id
+
+let convert ?c_to_mlc ?mlc_to_c ?(using = []) ~mlc ~c () =
+  let mk =
+    Option.map (fun name ->
+        Expert.mk_converter ~src:c ~dst:mlc.cty name ~vars:(fun ~dst ~src ->
+            [ dst; src ] @ using))
+  in
+  Expert.convert ?c_to_mlc:(mk c_to_mlc) ?mlc_to_c:(mk mlc_to_c) ~mlc ~c ()

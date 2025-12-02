@@ -219,8 +219,8 @@ val ml_alias : string -> Type.typedef -> Expr.expr
 
 val copy :
   Type.typedef ->
-  ?vars:(c_to:Expr.Var.t -> c_from:Expr.Var.t -> Expr.Var.t list) ->
-  ?exprs:(c_to:Expr.Var.t -> c_from:Expr.Var.t -> Expr.expr list) ->
+  ?vars:(dst:Expr.Var.t -> src:Expr.Var.t -> Expr.Var.t list) ->
+  ?exprs:(dst:Expr.Var.t -> src:Expr.Var.t -> Expr.expr list) ->
   string ->
   Type.typedef
 
@@ -240,3 +240,12 @@ val do_nothing :
   string ->
   Type.param list ->
   Expr.expr
+
+val convert :
+  ?c_to_mlc:string ->
+  ?mlc_to_c:string ->
+  ?using:Expr.Var.t list ->
+  mlc:Type.typedef ->
+  c:Type.c ->
+  unit ->
+  Type.typedef

@@ -251,18 +251,18 @@ struct
     | None, None -> existing name (App.none args)
 end
 
-module ToFrom = App (struct
-  type 'a t = c_to:Var.t -> c_from:Var.t -> 'a
+module DstSrc = App (struct
+  type 'a t = dst:Var.t -> src:Var.t -> 'a
   type args = Var.t * Var.t
 
-  let app (c_to, c_from) f = f ~c_to ~c_from
+  let app (dst, src) f = f ~dst ~src
   let none (a, b) = [ a; b ]
 end)
 
 let mk_copy ~cty ?vars ?exprs copy =
   let c_to = Var.mk "c_to" (expr "%a*" pp_expr cty) in
   let c_from = Var.mk "c_from" (expr "%a*" pp_expr cty) in
-  let copy = ToFrom.gen ~debug_name:"copy" vars exprs copy (c_to, c_from) in
+  let copy = DstSrc.gen ~debug_name:"copy" vars exprs copy (c_to, c_from) in
   { copy; c_to; c_from }
 
 let copy ~copy (ty : typedef) =
@@ -749,13 +749,13 @@ let custom_ptr ?initialize ?finalize ?hash ?compare ?(malloc = true) ~ml ~cty ()
 let mk_get ~icty ~cty ?vars ?exprs get =
   let c = Var.mk "c" (expr "%a *" pp_expr cty) in
   let i = Var.mk "i" (expr "%a *" pp_expr icty) in
-  let get = ToFrom.gen ~debug_name:"get" vars exprs get (c, i) in
+  let get = DstSrc.gen ~debug_name:"get" vars exprs get (c, i) in
   { get; c; i }
 
 let mk_set ~icty ~cty ?vars ?exprs set =
   let c = Var.mk "c" (expr "%a *" pp_expr cty) in
   let i = Var.mk "i" (expr "%a *" pp_expr icty) in
-  let set = ToFrom.gen ~debug_name:"set" vars exprs set (i, c) in
+  let set = DstSrc.gen ~debug_name:"set" vars exprs set (i, c) in
   { set; c; i }
 
 module Unary = App (struct
@@ -1257,35 +1257,35 @@ let seq l = expr "%a" Fmt.(list ~sep:cut pp_expr) l
 
 type convert = { convert : code; src : Var.t; dst : Var.t }
 
-let mk_converter ~(src : c) ~(dst : c) name params =
+let mk_converter ~(src : c) ~(dst : c) ?vars ?exprs name =
   let dst = Expr.Var.mk "dst" (expr "%a *" pp_expr dst.cty) in
   let src = Expr.Var.mk "src" (expr "%a *" pp_expr src.cty) in
-  let params = params ~src ~dst in
-  { dst; src; convert = mk ~params (ID.mk ~keep_name:true name) Fmt.nop }
+  let convert = DstSrc.gen ~debug_name:"convert" vars exprs name (dst, src) in
+  { dst; src; convert }
 
-let convert ?a_to_b ?b_to_a ~(a : typedef) ~(b : c) () =
+let convert ?mlc_to_c ?c_to_mlc ~(mlc : typedef) ~(c : c) () =
   let conv =
     let mk_ml2c a_ml2c =
-      match a_to_b with
+      match mlc_to_c with
       | None -> code "no_a_to_b_given" ""
-      | Some (a_to_b : convert) ->
-          code "c2ml" "%a tmp; %a@ %a;" pp_expr a.cty.cty pp_calli
-            (a_ml2c, ty_binds ~c:(expr "&tmp") a)
+      | Some (mlc_to_c : convert) ->
+          code "c2ml" "%a tmp; %a@ %a;" pp_expr mlc.cty.cty pp_calli
+            (a_ml2c, ty_binds ~c:(expr "&tmp") mlc)
             pp_call
-            ( a_to_b.convert,
-              [ (a_to_b.src, e_var b.c); (a_to_b.dst, expr "&tmp") ] )
+            ( mlc_to_c.convert,
+              [ (mlc_to_c.src, e_var c.c); (mlc_to_c.dst, expr "&tmp") ] )
     in
     let mk_c2ml a_c2ml =
-      match b_to_a with
+      match c_to_mlc with
       | None -> code "no_b_to_a_given" ""
-      | Some (b_to_a : convert) ->
-          code "c2ml" "%a tmp; %a;@ %a" pp_expr a.cty.cty pp_call
-            ( b_to_a.convert,
-              [ (b_to_a.src, e_var b.c); (b_to_a.dst, expr "&tmp") ] )
+      | Some (c_to_mlc : convert) ->
+          code "c2ml" "%a tmp; %a;@ %a" pp_expr mlc.cty.cty pp_call
+            ( c_to_mlc.convert,
+              [ (c_to_mlc.src, e_var c.c); (c_to_mlc.dst, expr "&tmp") ] )
             pp_calli
-            (a_c2ml, ty_binds ~c:(expr "&tmp") a)
+            (a_c2ml, ty_binds ~c:(expr "&tmp") mlc)
     in
-    match a.conv with
+    match mlc.conv with
     | Boxed { ml2c = a_ml2c; c2ml = a_c2ml } ->
         Boxed { ml2c = mk_ml2c a_ml2c; c2ml = mk_c2ml a_c2ml }
     | Unboxable { unbox_attribute; uty; ml2u; u2ml; u2c; c2u; u; ml2c; c2ml } ->
@@ -1296,29 +1296,31 @@ let convert ?a_to_b ?b_to_a ~(a : typedef) ~(b : c) () =
             ml2u;
             u2ml;
             u2c =
-              (match a_to_b with
+              (match mlc_to_c with
               | None -> code "no_a_to_b_given" ""
-              | Some (a_to_b : convert) ->
-                  code "c2ml" "%a tmp; %a@ %a;" pp_expr a.cty.cty pp_calli
-                    (u2c, ty_binds ~c:(expr "&tmp") a)
+              | Some (mlc_to_c : convert) ->
+                  code "c2ml" "%a tmp; %a@ %a;" pp_expr mlc.cty.cty pp_calli
+                    (u2c, ty_binds ~c:(expr "&tmp") mlc)
                     pp_call
-                    ( a_to_b.convert,
-                      [ (a_to_b.src, e_var b.c); (a_to_b.dst, expr "&tmp") ] ));
+                    ( mlc_to_c.convert,
+                      [ (mlc_to_c.src, e_var c.c); (mlc_to_c.dst, expr "&tmp") ]
+                    ));
             c2u =
-              (match b_to_a with
+              (match c_to_mlc with
               | None -> code "no_b_to_a_given" ""
-              | Some (b_to_a : convert) ->
-                  code "c2ml" "%a tmp; %a;@ %a" pp_expr a.cty.cty pp_call
-                    ( b_to_a.convert,
-                      [ (b_to_a.src, e_var b.c); (b_to_a.dst, expr "&tmp") ] )
+              | Some (c_to_mlc : convert) ->
+                  code "c2ml" "%a tmp; %a;@ %a" pp_expr mlc.cty.cty pp_call
+                    ( c_to_mlc.convert,
+                      [ (c_to_mlc.src, e_var c.c); (c_to_mlc.dst, expr "&tmp") ]
+                    )
                     pp_calli
-                    (c2u, ty_binds ~c:(expr "&tmp") a));
+                    (c2u, ty_binds ~c:(expr "&tmp") mlc));
             u;
             ml2c = mk_ml2c ml2c;
             c2ml = mk_ml2c c2ml;
           }
   in
-  { mlty = a.mlty; mlname = a.mlname; conv; cty = b; v = a.v }
+  { mlty = mlc.mlty; mlname = mlc.mlname; conv; cty = c; v = mlc.v }
 
 module AlgData = struct
   type kind =
