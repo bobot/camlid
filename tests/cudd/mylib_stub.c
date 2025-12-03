@@ -31,9 +31,6 @@ extern value caml_cudd_stub_cudd_init(){
   caml_cudd_c2ml(&vres, &res);
   CAMLreturn(vres);
 }
-static void caml_cudd_ml2c(value * v, DdManager* * c){
-  *c = *((DdManager* *) Data_custom_val(*v));
-  }
 static void caml_cudd_bdd_finalize(caml_cudd_bdd_wrapper* i){
   Cudd_RecursiveDeref(i->manager,i->ptr);
   }
@@ -63,7 +60,7 @@ extern value caml_cudd_stub_Cudd_ReadOne(value man){
   CAMLlocal1(vres);
   caml_cudd_bdd_t res;
   DdManager* man1 = ((DdManager*) { 0 });
-  caml_cudd_ml2c(&man, &man1);
+  man1 = *((DdManager* *) Data_custom_val(man));
   res = Cudd_ReadOne(man1);
   caml_cudd_c2ml1(man1, &vres, &res);
   CAMLreturn(vres);
@@ -73,13 +70,11 @@ extern value caml_cudd_stub_Cudd_ReadLogicZero(value man){
   CAMLlocal1(vres);
   caml_cudd_bdd_t res;
   DdManager* man1 = ((DdManager*) { 0 });
-  caml_cudd_ml2c(&man, &man1);
+  man1 = *((DdManager* *) Data_custom_val(man));
   res = Cudd_ReadLogicZero(man1);
   caml_cudd_c2ml1(man1, &vres, &res);
   CAMLreturn(vres);
 }
-static void caml_cudd_ml2u(value * v, intptr_t * c){ *c = Int_val(*v); }
-static void caml_cudd_u2c(int * c, intptr_t * c1){ *c = (int)(*c1); }
 extern value caml_cudd_stub_Cudd_bddIthVar(value man,
   intptr_t p){
   CAMLparam1(man);
@@ -87,8 +82,8 @@ extern value caml_cudd_stub_Cudd_bddIthVar(value man,
   caml_cudd_bdd_t res;
   DdManager* man1 = ((DdManager*) { 0 });
   int p1 = ((int) { 0 });
-  caml_cudd_ml2c(&man, &man1);
-  caml_cudd_u2c(&p1, &p);
+  man1 = *((DdManager* *) Data_custom_val(man));
+  p1 = (int)(p);
   res = Cudd_bddIthVar(man1, p1);
   caml_cudd_c2ml1(man1, &vres, &res);
   CAMLreturn(vres);
@@ -96,7 +91,7 @@ extern value caml_cudd_stub_Cudd_bddIthVar(value man,
 extern value caml_cudd_stub_Cudd_bddIthVar_byte(value man,
   value p){
   intptr_t p1;
-  caml_cudd_ml2u(&p, &p1);
+  p1 = Int_val(p);
   return caml_cudd_stub_Cudd_bddIthVar(man, p1);
   
 }
@@ -105,16 +100,13 @@ extern value caml_cudd_stub_Cudd_bddNewVar(value man){
   CAMLlocal1(vres);
   caml_cudd_bdd_t res;
   DdManager* man1 = ((DdManager*) { 0 });
-  caml_cudd_ml2c(&man, &man1);
+  man1 = *((DdManager* *) Data_custom_val(man));
   res = Cudd_bddNewVar(man1);
   caml_cudd_c2ml1(man1, &vres, &res);
   CAMLreturn(vres);
 }
 static void caml_cudd_bdd_get(caml_cudd_bdd_wrapper* i, caml_cudd_bdd_t* c){
   *c=i->ptr;
-  }
-static void caml_cudd_ml2c1(value * v, caml_cudd_bdd_t * c){
-  caml_cudd_bdd_get((caml_cudd_bdd_wrapper *) Data_custom_val(*v), c);
   }
 extern value caml_cudd_stub_Cudd_bddAnd(value man,
   value p,
@@ -125,9 +117,9 @@ extern value caml_cudd_stub_Cudd_bddAnd(value man,
   DdManager* man1 = ((DdManager*) { 0 });
   caml_cudd_bdd_t p2 = ((caml_cudd_bdd_t) { 0 });
   caml_cudd_bdd_t p3 = ((caml_cudd_bdd_t) { 0 });
-  caml_cudd_ml2c(&man, &man1);
-  caml_cudd_ml2c1(&p, &p2);
-  caml_cudd_ml2c1(&p1, &p3);
+  man1 = *((DdManager* *) Data_custom_val(man));
+  caml_cudd_bdd_get((caml_cudd_bdd_wrapper *) Data_custom_val(p), &p2);
+  caml_cudd_bdd_get((caml_cudd_bdd_wrapper *) Data_custom_val(p1), &p3);
   res = Cudd_bddAnd(man1, p2, p3);
   caml_cudd_c2ml1(man1, &vres, &res);
   CAMLreturn(vres);
@@ -141,9 +133,9 @@ extern value caml_cudd_stub_Cudd_bddOr(value man,
   DdManager* man1 = ((DdManager*) { 0 });
   caml_cudd_bdd_t p2 = ((caml_cudd_bdd_t) { 0 });
   caml_cudd_bdd_t p3 = ((caml_cudd_bdd_t) { 0 });
-  caml_cudd_ml2c(&man, &man1);
-  caml_cudd_ml2c1(&p, &p2);
-  caml_cudd_ml2c1(&p1, &p3);
+  man1 = *((DdManager* *) Data_custom_val(man));
+  caml_cudd_bdd_get((caml_cudd_bdd_wrapper *) Data_custom_val(p), &p2);
+  caml_cudd_bdd_get((caml_cudd_bdd_wrapper *) Data_custom_val(p1), &p3);
   res = Cudd_bddOr(man1, p2, p3);
   caml_cudd_c2ml1(man1, &vres, &res);
   CAMLreturn(vres);
@@ -155,13 +147,12 @@ extern value caml_cudd_stub_Cudd_Not(value man,
   caml_cudd_bdd_t res;
   DdManager* man1 = ((DdManager*) { 0 });
   caml_cudd_bdd_t p1 = ((caml_cudd_bdd_t) { 0 });
-  caml_cudd_ml2c(&man, &man1);
-  caml_cudd_ml2c1(&p, &p1);
+  man1 = *((DdManager* *) Data_custom_val(man));
+  caml_cudd_bdd_get((caml_cudd_bdd_wrapper *) Data_custom_val(p), &p1);
   res = Cudd_Not(p1);
   caml_cudd_c2ml1(man1, &vres, &res);
   CAMLreturn(vres);
 }
-static void caml_cudd_c2u(int * c, int * c1){ *c1 = (*c); }
 extern int caml_cudd_stub_equal_bdd(value p,
   value p1){
   CAMLparam2(p, p1);
@@ -169,19 +160,18 @@ extern int caml_cudd_stub_equal_bdd(value p,
   int res;
   caml_cudd_bdd_t p2 = ((caml_cudd_bdd_t) { 0 });
   caml_cudd_bdd_t p3 = ((caml_cudd_bdd_t) { 0 });
-  caml_cudd_ml2c1(&p, &p2);
-  caml_cudd_ml2c1(&p1, &p3);
+  caml_cudd_bdd_get((caml_cudd_bdd_wrapper *) Data_custom_val(p), &p2);
+  caml_cudd_bdd_get((caml_cudd_bdd_wrapper *) Data_custom_val(p1), &p3);
   res = equal_bdd(p2, p3);
-  caml_cudd_c2u(&res, &ures);
+  ures = (res);
   CAMLreturnT(int,ures);
 }
-static void caml_cudd_u2ml(value * v, int * c){ *v = Val_bool(*c); }
 extern value caml_cudd_stub_equal_bdd_byte(value p,
   value p1){
   int ures;
   value vres;
   ures = caml_cudd_stub_equal_bdd(p, p1);
-  caml_cudd_u2ml(&vres, &ures);
+  vres = Val_bool(ures);
   return vres;
 }
 extern int caml_cudd_stub_Cudd_bddLeq(value man,
@@ -193,11 +183,11 @@ extern int caml_cudd_stub_Cudd_bddLeq(value man,
   DdManager* man1 = ((DdManager*) { 0 });
   caml_cudd_bdd_t p2 = ((caml_cudd_bdd_t) { 0 });
   caml_cudd_bdd_t p3 = ((caml_cudd_bdd_t) { 0 });
-  caml_cudd_ml2c(&man, &man1);
-  caml_cudd_ml2c1(&p, &p2);
-  caml_cudd_ml2c1(&p1, &p3);
+  man1 = *((DdManager* *) Data_custom_val(man));
+  caml_cudd_bdd_get((caml_cudd_bdd_wrapper *) Data_custom_val(p), &p2);
+  caml_cudd_bdd_get((caml_cudd_bdd_wrapper *) Data_custom_val(p1), &p3);
   res = Cudd_bddLeq(man1, p2, p3);
-  caml_cudd_c2u(&res, &ures);
+  ures = (res);
   CAMLreturnT(int,ures);
 }
 extern value caml_cudd_stub_Cudd_bddLeq_byte(value man,
@@ -206,7 +196,7 @@ extern value caml_cudd_stub_Cudd_bddLeq_byte(value man,
   int ures;
   value vres;
   ures = caml_cudd_stub_Cudd_bddLeq(man, p, p1);
-  caml_cudd_u2ml(&vres, &ures);
+  vres = Val_bool(ures);
   return vres;
 }
 extern value caml_cudd_stub_bdd_print(value man,
@@ -214,13 +204,12 @@ extern value caml_cudd_stub_bdd_print(value man,
   CAMLparam2(man, p);
   DdManager* man1 = ((DdManager*) { 0 });
   caml_cudd_bdd_t p1 = ((caml_cudd_bdd_t) { 0 });
-  caml_cudd_ml2c(&man, &man1);
-  caml_cudd_ml2c1(&p, &p1);
+  man1 = *((DdManager* *) Data_custom_val(man));
+  caml_cudd_bdd_get((caml_cudd_bdd_wrapper *) Data_custom_val(p), &p1);
   bdd_print(man1, p1);
   CAMLreturn(Val_unit);
 }
-static void caml_cudd_c2ml4(value * v, intptr_t * c){ *v = Val_long(*c); }
-static void caml_cudd_c2ml3(DdManager* man, value * v, caml_cudd_result * c){
+static void caml_cudd_c2ml2(DdManager* man, value * v, caml_cudd_result * c){
   CAMLparam0();
   CAMLlocal1(tmp);
   switch(c->tag){
@@ -228,7 +217,7 @@ static void caml_cudd_c2ml3(DdManager* man, value * v, caml_cudd_result * c){
   case caml_cudd_result_True: /* True */ *v = Val_int(1); break;
   case caml_cudd_result_Ifte: /* Ifte */
     *v=caml_alloc(3,0);
-    caml_cudd_c2ml4(&tmp, &c->u.Ifte.cond);
+    tmp = Val_long(c->u.Ifte.cond);
     Store_field(*v,0,tmp);
     
     caml_cudd_c2ml1(man, &tmp, &c->u.Ifte.then_);
@@ -239,9 +228,6 @@ static void caml_cudd_c2ml3(DdManager* man, value * v, caml_cudd_result * c){
     break;};
   CAMLreturn0;
   }
-static void caml_cudd_c2ml2(DdManager* man, value * v, caml_cudd_ref * c){
-  caml_cudd_c2ml3(man, v, *c);
-  }
 extern value caml_cudd_stub_bdd_inspect(value man,
   value p){
   CAMLparam2(man, p);
@@ -249,9 +235,9 @@ extern value caml_cudd_stub_bdd_inspect(value man,
   DdManager* man1 = ((DdManager*) { 0 });
   caml_cudd_ref p1 = &(((struct { caml_cudd_algdata a; }) { ((caml_cudd_result) { 0 }) }).a);
   caml_cudd_bdd_t p2 = ((caml_cudd_bdd_t) { 0 });
-  caml_cudd_ml2c(&man, &man1);
-  caml_cudd_ml2c1(&p, &p2);
+  man1 = *((DdManager* *) Data_custom_val(man));
+  caml_cudd_bdd_get((caml_cudd_bdd_wrapper *) Data_custom_val(p), &p2);
   bdd_inspect(man1, p1, p2);
-  caml_cudd_c2ml2(man1, &p_r, &p1);
+  caml_cudd_c2ml2(man1, &p_r, &*p1);
   CAMLreturn(p_r);
 }

@@ -3,7 +3,7 @@ val mlalias : string -> ('a, Format.formatter, unit, Expr.defined) format4 -> 'a
 val mlabstract : ?keep_name:bool -> string -> Expr.defined
 val declare_existing : ?result:Expr.expr -> string -> Expr.var list -> Expr.code
 val existing : string -> Expr.var list -> Expr.code
-val get_boxing : Type.conv -> Expr.code * Expr.code
+val get_boxing : Type.conv -> Expr.expr * Expr.expr
 
 val builtin_mltypes :
   unbox_attribute:Type.unbox_attribute ->

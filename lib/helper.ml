@@ -120,11 +120,13 @@ let file_struct =
 
 let string_as_FILE_ptr =
   let cty = typedef "file" "struct %a" pp_def file_struct in
-  let v = Var.mk "v" (expr "value *") in
-  let c = Var.mk "c" (expr "%a *" pp_def cty) in
+  let v = Var.mk "v" (expr "value") in
+  let c = Var.mk "c" (expr "%a" pp_def cty) in
+  let v' = Var.mk "v" (expr "value *") in
+  let c' = Var.mk "c" (expr "%a *" pp_def cty) in
   let malloc { fmt } =
-    fmt "%a->file = open_memstream(&(%a->t),&(%a->len));" pp_var c pp_var c
-      pp_var c
+    fmt "%a->file = open_memstream(&(%a->t),&(%a->len));" pp_var c' pp_var c'
+      pp_var c'
   in
   {
     mlty = expr "string";
@@ -133,26 +135,30 @@ let string_as_FILE_ptr =
       Boxed
         {
           ml2c =
-            codef "ml2c" (fun { fmt } ->
+            call_codef "ml2c"
+              [ (v', e_addr v); (c', e_addr c) ]
+              (fun { fmt } ->
                 malloc { fmt };
                 fmt "fwrite(String_val(*%a),caml_string_length(*%a),1,%a->file)"
-                  pp_var v pp_var v pp_var c);
+                  pp_var v' pp_var v' pp_var c');
           c2ml =
-            codef "c2ml" (fun { fmt } ->
-                fmt "fflush(%a->file);@ " pp_var c;
+            call_codef "c2ml"
+              [ (v', e_addr v); (c', e_addr c) ]
+              (fun { fmt } ->
+                fmt "fflush(%a->file);@ " pp_var c';
                 fmt "fflush(stdout);@ ";
-                fmt "*%a = caml_alloc_string(%a->len);@ " pp_var v pp_var c;
-                fmt "memcpy(&Byte(*%a,0),%a->t,%a->len);" pp_var v pp_var c
-                  pp_var c);
+                fmt "*%a = caml_alloc_string(%a->len);@ " pp_var v' pp_var c';
+                fmt "memcpy(&Byte(*%a,0),%a->t,%a->len);" pp_var v' pp_var c'
+                  pp_var c');
         };
     cty =
       {
         cty = e_def cty;
-        init = Some (codef "init" malloc);
+        init =
+          Some (call_codef "init" [ (v', e_addr v); (c', e_addr c) ] malloc);
         init_expr = expr "((%a) { 0 })" pp_def cty;
-        free = Some (code "free" "fclose(%a->file);" pp_var c);
-        in_call =
-          Some (code "in_call" ~ret:(expr "FILE *") "return %a->file;" pp_var c);
+        free = Some (expr "fclose(%a.file);" pp_var c);
+        in_call = Some (expr "%a.file" pp_var c);
         c;
       };
     v;

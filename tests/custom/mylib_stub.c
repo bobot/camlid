@@ -8,9 +8,6 @@
 #include <stdio.h>
 #include <string.h>
 #include "lib.h"
-static void camlid_ml2u(value * v, intptr_t * c){ *c = Int_val(*v); }
-static void camlid_u2c(int * c, intptr_t * c1){ *c = (int)(*c1); }
-static void camlid_init(int * * c){ initialize_ptr(c); }
 static void camlid_finalize_op(value v){
   finalize_ptr((int * *) Data_custom_val(v));
   }
@@ -40,37 +37,32 @@ extern value camlid_stub_of_int(intptr_t p){
   CAMLlocal1(p_r);
   int p1 = ((int) { 0 });
   int * p2 = ((int *) { 0 });
-  camlid_u2c(&p1, &p);
-  camlid_init(&p2);
+  p1 = (int)(p);
+  initialize_ptr(&p2);
   of_int(p1, p2);
   camlid_c2ml(&p_r, &p2);
   CAMLreturn(p_r);
 }
 extern value camlid_stub_of_int_byte(value p){
   intptr_t p1;
-  camlid_ml2u(&p, &p1);
+  p1 = Int_val(p);
   return camlid_stub_of_int(p1);
   
 }
-static void camlid_ml2c(value * v, int * * c){
-  *c = *((int * *) Data_custom_val(*v));
-  }
-static void camlid_c2u(int * c, intptr_t * c1){ *c1 = (intptr_t)(*c); }
 extern intptr_t camlid_stub_to_int(value p){
   CAMLparam1(p);
   intptr_t ures;
   int res;
   int * p1 = ((int *) { 0 });
-  camlid_ml2c(&p, &p1);
+  p1 = *((int * *) Data_custom_val(p));
   res = to_int(p1);
-  camlid_c2u(&res, &ures);
+  ures = (intptr_t)(res);
   CAMLreturnT(intptr_t,ures);
 }
-static void camlid_u2ml(value * v, intptr_t * c){ *v = Val_int(*c); }
 extern value camlid_stub_to_int_byte(value p){
   intptr_t ures;
   value vres;
   ures = camlid_stub_to_int(p);
-  camlid_u2ml(&vres, &ures);
+  vres = Val_int(ures);
   return vres;
 }

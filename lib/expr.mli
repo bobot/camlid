@@ -6,8 +6,10 @@ type id
 type var = private { id : int; name : string; ty : expr }
 
 val expr : ('a, Format.formatter, unit, expr) format4 -> 'a
+val expro : ('a, Format.formatter, unit, expr option) format4 -> 'a
 val pp_expr : Format.formatter -> expr -> unit
-val binds : (var * expr) list -> code -> code
+val pp_expr_binds : Format.formatter -> expr * (var * expr) list -> unit
+val binds : (var * expr) list -> expr -> expr
 val dimplicit : defined -> code list -> defined
 val implicit : code -> code list -> code
 
@@ -131,3 +133,6 @@ val codeo :
   string ->
   ('a, Format.formatter, unit, code option) format4 ->
   'a
+
+val call_codef :
+  ?locals:var list -> string -> (var * expr) list -> (fp -> unit) -> expr

@@ -4,28 +4,28 @@ open Expr
 type unbox_attribute = Unboxed | Untagged
 
 type conv =
-  | Boxed of { c2ml : code; ml2c : code }
+  | Boxed of { c2ml : expr; ml2c : expr }
   | Unboxable of {
       unbox_attribute : unbox_attribute;
       uty : expr;
-      ml2u : code;
-      u2ml : code;
-      u2c : code;
-      c2u : code;
+      ml2u : expr;
+      u2ml : expr;
+      u2c : expr;
+      c2u : expr;
       u : var;
-      c2ml : code;
-      ml2c : code;
+      c2ml : expr;
+      ml2c : expr;
     }
 
 type c = {
   cty : expr;  (** print the c type *)
-  init : code option;
+  init : expr option;
       (** Initialize values of this type before giving them to stub function *)
   init_expr : expr;  (** expression initialization of the c version *)
-  free : code option;
+  free : expr option;
       (** Free the C memory allocated during the call (not accessible in output
           OCaml value) *)
-  in_call : code option; (* default: variable c*)
+  in_call : expr option; (* default: variable c*)
   c : var; (* variable for the addresse of c version *)
 }
 
@@ -39,12 +39,12 @@ type typedef = {
 
 type pinput =
   | PINone
-  | PIBoxed of { label : string option; ml : var; ml2c : code; pmlty : expr }
+  | PIBoxed of { label : string option; ml : var; ml2c : expr; pmlty : expr }
   | PIUnboxable of {
       label : string option;
       unbox_attribute : unbox_attribute;
-      ml2u : code;
-      u2c : code;
+      ml2u : expr;
+      u2c : expr;
       u : var;
       ml : var;
       pmlty : expr;
@@ -52,14 +52,14 @@ type pinput =
 
 type poutput =
   | PONone
-  | POBoxed of { ml : var; c2ml : code; pmlty : expr }
+  | POBoxed of { ml : var; c2ml : expr; pmlty : expr }
   | POUnboxable of {
       unbox_attribute : unbox_attribute;
-      u2ml : code;
-      c2u : code;
+      u2ml : expr;
+      c2u : expr;
       u : var;
       ml : var;
-      c2ml : code; (* used when more than one result*)
+      c2ml : expr; (* used when more than one result*)
       pmlty : expr;
     }
 
@@ -67,14 +67,14 @@ type param = {
   pinput : pinput;
   poutput : poutput;
   pused_in_call : (var * expr) option;
-  pinit : code option;
+  pinit : expr option;
   pinit_expr : (var * expr option) list;
-  pfree : code option;
+  pfree : expr option;
 }
 
 type result = {
   routput : poutput; (* appears in ML results *)
-  rfree : code option;
+  rfree : expr option;
   rc : var;
 }
 

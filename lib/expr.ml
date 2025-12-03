@@ -8,7 +8,6 @@ and definition = { id : id; kind : kind; toplevel : expr }
 
 and code =
   | Defined of { defined : defined; params : var list }
-  | Binds of { def : code; binds : (var * expr) list }
   | Implicit of (code * code list)
 
 and expr = { expr : unit Fmt.t }
@@ -18,7 +17,6 @@ and var = { id : int; name : string; ty : expr }
 
 let expr p = Format.kdprintf (fun k -> { expr = (fun fmt () -> k fmt) }) p
 let pp_expr fmt e = e.expr fmt ()
-let binds binds def = Binds { def; binds }
 let dimplicit defined others = DImplicit (defined, others)
 let implicit defined others = Implicit (defined, others)
 
@@ -74,10 +72,25 @@ module Var = struct
   end)
 end
 
-type Format.stag += Dep of definition | PrintID of ID.t | PrintVar of Var.t
+type env_binding = (Var.t * expr) list
+
+type Format.stag +=
+  | Dep of definition
+  | PrintID of ID.t
+  | PrintVar of Var.t
+  | Bind of Var.t * expr
+  | InEnv of env_binding
+
+let bind_expr var ve e =
+  expr "%a%a%a" Format.pp_open_stag
+    (Bind (var, ve))
+    pp_expr e Format.pp_close_stag ()
+
+let binds l e = List.fold_left (fun acc (v, e) -> bind_expr v e acc) e l
+let pp_expr_binds fmt (e, bs) = pp_expr fmt (binds bs e)
 
 let rec def_of_code = function
-  | Binds { def; _ } | Implicit (def, _) -> def_of_code def
+  | Implicit (def, _) -> def_of_code def
   | Defined { defined; _ } -> defined
 
 let rec def_of_def = function
@@ -111,7 +124,6 @@ and def_dep fmt = function
       def_dep fmt def
 
 and code_dep fmt = function
-  | Binds { def; _ } -> code_dep fmt def
   | Defined { defined; _ } -> def_dep fmt defined
   | Implicit (def, others) ->
       code_dep fmt def;
@@ -125,7 +137,6 @@ let e_deref v = expr "*%a" pp_var v
 
 let pp_call fmt (code, binds) =
   let rec aux binds = function
-    | Binds { def; binds = binds' } -> aux (binds' @ binds) def
     | Defined { defined; params } ->
         let pp_arg fmt v =
           match List.assq_opt v binds with
@@ -174,7 +185,10 @@ type env = {
   string_ids_ml : int StringH.t;
   vars : string Var.H.t;
   string_vars : int StringH.t;
+  bindings : env_binding Stack.t;
 }
+
+let current_bindings env = Option.value ~default:[] (Stack.top_opt env.bindings)
 
 let create_env () =
   {
@@ -184,6 +198,7 @@ let create_env () =
     string_ids_ml = StringH.create 10;
     vars = Var.H.create 16;
     string_vars = StringH.create 10;
+    bindings = Stack.create ();
   }
 
 module PPGenID (H : Hashtbl.S) = struct
@@ -222,23 +237,15 @@ end
 module PPID = PPGenID (ID.H)
 module PPVar = PPGenID (Var.H)
 
-let run ~kind ~prefix env expr =
-  let b = Buffer.create 16 in
+let run_aux ~pp_id env e fmt =
   let q = Queue.create () in
-  let fmt = Format.formatter_of_buffer b in
-  let pp_id =
-    match kind with
-    | C | H ->
-        fun fmt id ->
-          Fmt.string fmt
-            (PPID.pp env.ids_c env.string_ids_c prefix id id.name id.keep_name)
-    | ML ->
-        fun fmt id ->
-          Fmt.string fmt
-            (PPID.pp env.ids_ml env.string_ids_ml prefix id id.name id.keep_name)
-  in
+  let free_vars = Var.H.create 10 in
   let pp_var fmt id =
-    Fmt.string fmt (PPVar.pp env.vars env.string_vars "" id id.name false)
+    match List.assq_opt id (current_bindings env) with
+    | None ->
+        if not (Var.H.mem free_vars id) then Var.H.add free_vars id ();
+        Fmt.string fmt (PPVar.pp env.vars env.string_vars "" id id.name false)
+    | Some expr -> pp_expr fmt expr
   in
   Format.pp_set_tags fmt true;
   Format.pp_set_print_tags fmt true;
@@ -251,32 +258,47 @@ let run ~kind ~prefix env expr =
         | Dep c -> Queue.push c q
         | PrintID id -> pp_id fmt id
         | PrintVar v -> pp_var fmt v
+        | InEnv binds -> Stack.push binds env.bindings
+        | Bind (var, e) ->
+            let binds = current_bindings env in
+            let e =
+              expr "%a%a%a" Format.pp_open_stag (InEnv binds) pp_expr e
+                Format.pp_close_stag ()
+            in
+            Stack.push ((var, e) :: binds) env.bindings
         | _ -> ());
-      print_close_stag = (fun _ -> ());
+      print_close_stag =
+        (function
+        | InEnv _ -> Stack.drop env.bindings
+        | Bind _ -> Stack.drop env.bindings
+        | _ -> ());
     };
-  expr.expr fmt ();
+  e fmt;
   Format.pp_print_flush fmt ();
+  (q, free_vars)
+
+let run ~kind ~prefix env e =
+  let b = Buffer.create 16 in
+  let fmt = Format.formatter_of_buffer b in
+  let pp_id =
+    match kind with
+    | C | H ->
+        fun fmt id ->
+          Fmt.string fmt
+            (PPID.pp env.ids_c env.string_ids_c prefix id id.name id.keep_name)
+    | ML ->
+        fun fmt id ->
+          Fmt.string fmt
+            (PPID.pp env.ids_ml env.string_ids_ml prefix id id.name id.keep_name)
+  in
+  let q, _ = run_aux ~pp_id env (fun fmt -> pp_expr fmt e) fmt in
   (b, q)
 
 let params_of_expr expr =
-  let h = Var.H.create 10 in
   let fmt = Format.make_formatter (fun _ _ _ -> ()) (fun () -> ()) in
-  Format.pp_set_tags fmt true;
-  Format.pp_set_print_tags fmt true;
-  Format.pp_set_formatter_stag_functions fmt
-    {
-      mark_open_stag = (fun _ -> "");
-      mark_close_stag = (fun _ -> "");
-      print_open_stag =
-        (function
-        | Dep _ -> ()
-        | PrintID _ -> ()
-        | PrintVar v -> if not (Var.H.mem h v) then Var.H.add h v ()
-        | _ -> ());
-      print_close_stag = (fun _ -> ());
-    };
-  expr fmt;
-  let l = List.sort Var.compare @@ List.of_seq @@ Var.H.to_seq_keys h in
+  let env = create_env () in
+  let _, free_vars = run_aux ~pp_id:(fun _ _ -> ()) env expr fmt in
+  let l = List.sort Var.compare @@ List.of_seq @@ Var.H.to_seq_keys free_vars in
   l
 
 exception Expr_is_not_empty
@@ -386,3 +408,14 @@ let codeo ?kind ?params ?keep_name ?locals ?ovars ?ret ?doc name p =
           (codef ?kind ?params ?keep_name ?locals ?ovars ?ret ?doc name
              (fun { fmt } -> fmt "%t" k)))
     p
+
+let call_codef ?locals name binds f =
+  let id = codef name ?locals f in
+  expr "%a" pp_calli (id, binds)
+
+let expro s =
+  Format.kdprintf
+    (fun k ->
+      if expr_is_empty k then None
+      else Some { expr = (fun fmt () -> Fmt.pf fmt "%t" k) })
+    s

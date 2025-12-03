@@ -8,18 +8,16 @@
 #include <stdio.h>
 #include <string.h>
 #include "./lib.h"
-static void camlid_ml2u(value * v, intptr_t * c){ *c = Int_val(*v); }
-static void camlid_u2c(int * c, intptr_t * c1){ *c = (int)(*c1); }
 extern value camlid_stub_f(intptr_t p){
   CAMLparam0();
   int p1 = ((int) { 0 });
-  camlid_u2c(&p1, &p);
+  p1 = (int)(p);
   f(p1);
   CAMLreturn(Val_unit);
 }
 extern value camlid_stub_f_byte(value p){
   intptr_t p1;
-  camlid_ml2u(&p, &p1);
+  p1 = Int_val(p);
   return camlid_stub_f(p1);
   
 }
@@ -38,13 +36,13 @@ extern value camlid_stub_f7(intptr_t p,
   int p11 = ((int) { 0 });
   int p12 = ((int) { 0 });
   int p13 = ((int) { 0 });
-  camlid_u2c(&p7, &p);
-  camlid_u2c(&p8, &p1);
-  camlid_u2c(&p9, &p2);
-  camlid_u2c(&p10, &p3);
-  camlid_u2c(&p11, &p4);
-  camlid_u2c(&p12, &p5);
-  camlid_u2c(&p13, &p6);
+  p7 = (int)(p);
+  p8 = (int)(p1);
+  p9 = (int)(p2);
+  p10 = (int)(p3);
+  p11 = (int)(p4);
+  p12 = (int)(p5);
+  p13 = (int)(p6);
   f7(p7, p8, p9, p10, p11, p12, p13);
   CAMLreturn(Val_unit);
 }
@@ -63,13 +61,13 @@ extern value camlid_stub_f7_byte(value * argv, int argn){
   intptr_t p11;
   intptr_t p12;
   intptr_t p13;
-  camlid_ml2u(&p, &p7);
-  camlid_ml2u(&p1, &p8);
-  camlid_ml2u(&p2, &p9);
-  camlid_ml2u(&p3, &p10);
-  camlid_ml2u(&p4, &p11);
-  camlid_ml2u(&p5, &p12);
-  camlid_ml2u(&p6, &p13);
+  p7 = Int_val(p);
+  p8 = Int_val(p1);
+  p9 = Int_val(p2);
+  p10 = Int_val(p3);
+  p11 = Int_val(p4);
+  p12 = Int_val(p5);
+  p13 = Int_val(p6);
   return camlid_stub_f7(p7, p8, p9, p10, p11, p12, p13);
   
 }
