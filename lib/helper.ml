@@ -15,8 +15,9 @@ let int : typedef =
     ~unbox_attribute:Untagged
 
 let size_t : typedef =
-  builtin_mltypes "int" ~c_type:"size_t" ~c2ml:"Val_long"
-    ~ml2c:"(size_t)Long_val" ~unbox_attribute:Untagged
+  builtin_mltypes "int" ~u_type:"intptr_t" ~c_type:"size_t" ~u2c:"(size_t)"
+    ~ml2u:"Long_val" ~c2ml:"Val_long" ~ml2c:"(size_t)Long_val" ~c2u:"(intptr_t)"
+    ~unbox_attribute:Untagged
 
 let int_trunc : typedef =
   builtin_mltypes "int" ~u_type:"intptr_t" ~c_type:"int" ~c2ml:"Val_int"

@@ -130,12 +130,12 @@ static void camlid_c2ml3(size_t array_len, value * v, intptr_t* * c){
     }
   CAMLreturn0;
   }
-extern value camlid_stub_f4(size_t array_len){
+extern value camlid_stub_f4(intptr_t array_len){
   CAMLparam0();
   CAMLlocal1(array_r);
   size_t array_len1 = ((size_t) { 0 });
   intptr_t* array = ((intptr_t*) { 0 });
-  array_len1 = (array_len);
+  array_len1 = (size_t)(array_len);
   camlid_init(array_len1, &array);
   f4(array);
   camlid_c2ml3(array_len1, &array_r, &array);
@@ -143,8 +143,8 @@ extern value camlid_stub_f4(size_t array_len){
   CAMLreturn(array_r);
 }
 extern value camlid_stub_f4_byte(value array_len){
-  size_t array_len1;
-  array_len1 = (size_t)Long_val(array_len);
+  intptr_t array_len1;
+  array_len1 = Long_val(array_len);
   return camlid_stub_f4(array_len1);
   
 }

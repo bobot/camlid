@@ -36,12 +36,12 @@ typedef char * camlid_string_fs;
 static void camlid_c2ml(size_t string_len, value* v, camlid_string_fs* c){
   *v = caml_alloc_string(string_len);memcpy(&Byte(*v,0),*c,string_len);
   }
-extern value camlid_stub_f_in3(size_t string_len){
+extern value camlid_stub_f_in3(intptr_t string_len){
   CAMLparam0();
   CAMLlocal1(string_r);
   camlid_string_fs string = ((camlid_string_fs) { 0 });
   size_t string_len1 = ((size_t) { 0 });
-  string_len1 = (string_len);
+  string_len1 = (size_t)(string_len);
   string = malloc(string_len1);
   f_in3(string);
   camlid_c2ml(string_len1, &string_r, &string);
@@ -49,8 +49,8 @@ extern value camlid_stub_f_in3(size_t string_len){
   CAMLreturn(string_r);
 }
 extern value camlid_stub_f_in3_byte(value string_len){
-  size_t string_len1;
-  string_len1 = (size_t)Long_val(string_len);
+  intptr_t string_len1;
+  string_len1 = Long_val(string_len);
   return camlid_stub_f_in3(string_len1);
   
 }
