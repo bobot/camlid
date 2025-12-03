@@ -178,7 +178,7 @@ let abstract ?initialize ?get ?set ?internal ~ml ~c () : typedef =
     Option.map
       (fun initialize ->
         let c = Var.mk "c" (expr "%a *" pp_def cty) in
-        { initialize = declare_existing initialize [ c ]; c })
+        { initialize = existing initialize [ c ]; c })
       initialize
   in
   let get =
@@ -186,7 +186,7 @@ let abstract ?initialize ?get ?set ?internal ~ml ~c () : typedef =
       (fun get ->
         let c = Var.mk "c" (expr "%a *" pp_def cty) in
         let i = Var.mk "i" (expr "%a *" pp_def icty) in
-        { get = declare_existing get [ c; i ]; c; i })
+        { get = existing get [ c; i ]; c; i })
       get
   in
   let set =
@@ -194,7 +194,7 @@ let abstract ?initialize ?get ?set ?internal ~ml ~c () : typedef =
       (fun set ->
         let c = Var.mk "c" (expr "%a *" pp_def cty) in
         let i = Var.mk "i" (expr "%a *" pp_def icty) in
-        { set = declare_existing set [ i; c ]; c; i })
+        { set = existing set [ i; c ]; c; i })
       set
   in
   Expert.abstract ?initialize ?set ?get ~icty ~cty ~ml ()
@@ -249,8 +249,7 @@ let map_param_in_call ?(name = "arg") ~ty param fmt =
     param
 
 let do_nothing ?result ?ignored_result ml =
-  let id = code "nothing" "" in
-  func_id ~ml ?result ?ignored_result id
+  func_id ~ml ?result ?ignored_result (expr "")
 
 let convert ?c_to_mlc ?mlc_to_c ?(using = []) ~mlc ~c () =
   let mk =

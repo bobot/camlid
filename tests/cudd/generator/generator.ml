@@ -18,8 +18,8 @@ let bdd_finalize =
   let i = Expr.Var.mk "i" (Expr.expr "%a*" Expr.pp_def bdd_wrapper) in
   {
     Expert.finalize =
-      Expr.code "bdd_finalize" "Cudd_RecursiveDeref(%a->manager,%a->ptr);"
-        Expr.pp_var i Expr.pp_var i;
+      Expr.expr "Cudd_RecursiveDeref(%a->manager,%a->ptr);" Expr.pp_var i
+        Expr.pp_var i;
     i;
   }
 
@@ -28,9 +28,8 @@ let bdd_set =
   let c = Expr.Var.mk "c" (Expr.expr "%a*" Expr.pp_def bdd_t) in
   {
     Expert.set =
-      Expr.code "bdd_set" "Cudd_Ref(*%a);@ %a->manager=%a;@ %a->ptr=*%a;"
-        Expr.pp_var c Expr.pp_var i Expr.pp_var mani_pc Expr.pp_var i
-        Expr.pp_var c;
+      Expr.expr "Cudd_Ref(*%a);@ %a->manager=%a;@ %a->ptr=*%a;" Expr.pp_var c
+        Expr.pp_var i Expr.pp_var mani_pc Expr.pp_var i Expr.pp_var c;
     i;
     c;
   }
@@ -38,11 +37,7 @@ let bdd_set =
 let bdd_get =
   let i = Expr.Var.mk "i" (Expr.expr "%a*" Expr.pp_def bdd_wrapper) in
   let c = Expr.Var.mk "c" (Expr.expr "%a*" Expr.pp_def bdd_t) in
-  {
-    Expert.get = Expr.code "bdd_get" "*%a=%a->ptr;" Expr.pp_var c Expr.pp_var i;
-    i;
-    c;
-  }
+  { Expert.get = Expr.expr "*%a=%a->ptr;" Expr.pp_var c Expr.pp_var i; i; c }
 
 let bdd =
   Expert.custom ~finalize:bdd_finalize ~set:bdd_set ~get:bdd_get ~ml:"bdd"

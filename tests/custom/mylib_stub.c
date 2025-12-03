@@ -9,16 +9,16 @@
 #include <string.h>
 #include "lib.h"
 static void camlid_finalize_op(value v){
-  finalize_ptr((int * *) Data_custom_val(v));
+  finalize_ptr(((int * *) Data_custom_val(v)));
   }
 static int camlid_compare_op(value v1, value v2){
   return compare_ptr(
-           (int * *) Data_custom_val(v1),
-           (int * *) Data_custom_val(v2)
+           ((int * *) Data_custom_val(v1)),
+           ((int * *) Data_custom_val(v2))
          );
   }
 static intptr_t camlid_hash_op(value v){
-  return hash_ptr((int * *) Data_custom_val(v));
+  return hash_ptr(((int * *) Data_custom_val(v)));
   }
 struct custom_operations camlid_cops = {
 NULL,
@@ -30,7 +30,7 @@ custom_deserialize_default
 };
 static void camlid_c2ml(value * v, int * * c){
   *v = caml_alloc_custom(&camlid_cops,sizeof(int *), 0, 1);
-  *((int * *) Data_custom_val(*v)) = *c;
+  *(((int * *) Data_custom_val(*v))) = *c;
   }
 extern value camlid_stub_of_int(intptr_t p){
   CAMLparam0();
@@ -54,7 +54,7 @@ extern intptr_t camlid_stub_to_int(value p){
   intptr_t ures;
   int res;
   int * p1 = ((int *) { 0 });
-  p1 = *((int * *) Data_custom_val(p));
+  p1 = *(((int * *) Data_custom_val(p)));
   res = to_int(p1);
   ures = (intptr_t)(res);
   CAMLreturnT(intptr_t,ures);

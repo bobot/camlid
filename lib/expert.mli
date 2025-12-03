@@ -1,8 +1,7 @@
 val typedef : string -> ('a, Format.formatter, unit, Expr.defined) format4 -> 'a
 val mlalias : string -> ('a, Format.formatter, unit, Expr.defined) format4 -> 'a
 val mlabstract : ?keep_name:bool -> string -> Expr.defined
-val declare_existing : ?result:Expr.expr -> string -> Expr.var list -> Expr.code
-val existing : string -> Expr.var list -> Expr.code
+val existing : string -> Expr.var list -> Expr.expr
 val get_boxing : Type.conv -> Expr.expr * Expr.expr
 
 val builtin_mltypes :
@@ -24,7 +23,7 @@ val string_length_struct : Expr.defined
 val string_length : ?owned:bool -> unit -> Type.typedef
 val ptr_ref : Type.typedef -> Type.typedef
 
-type copy = { copy : Expr.code; c_from : Expr.Var.t; c_to : Expr.Var.t }
+type copy = { copy : Expr.expr; c_from : Expr.Var.t; c_to : Expr.Var.t }
 
 val mk_copy :
   cty:Expr.expr ->
@@ -52,9 +51,9 @@ val get_field : Expr.expr -> string -> Type.param -> Type.param
 val t_field : Type.typedef -> Type.param -> Type.param
 val len_field : Type.param -> Type.param
 
-type get = { get : Expr.code; c : Expr.var; i : Expr.var }
-type set = { set : Expr.code; c : Expr.var; i : Expr.var }
-type initialize = { initialize : Expr.code; c : Expr.var }
+type get = { get : Expr.expr; c : Expr.var; i : Expr.var }
+type set = { set : Expr.expr; c : Expr.var; i : Expr.var }
+type initialize = { initialize : Expr.expr; c : Expr.var }
 
 val abstract :
   ?initialize:initialize ->
@@ -66,11 +65,11 @@ val abstract :
   unit ->
   Type.typedef
 
-type finalize = { finalize : Expr.code; i : Expr.var }
+type finalize = { finalize : Expr.expr; i : Expr.var }
 type finalize_op = { finalize_op : Expr.code; v : Expr.var }
-type hash = { hash : Expr.code; i : Expr.var }
+type hash = { hash : Expr.expr; i : Expr.var }
 type hash_op = { hash_op : Expr.code; v : Expr.var }
-type compare = { compare : Expr.code; i1 : Expr.var; i2 : Expr.var }
+type compare = { compare : Expr.expr; i1 : Expr.var; i2 : Expr.var }
 type compare_op = { compare_op : Expr.code; v1 : Expr.var; v2 : Expr.var }
 
 val custom :
@@ -167,7 +166,11 @@ val list_or_empty :
   unit
 
 val code_c_fun :
-  params:Type.param list -> result:Type.result option -> Expr.code -> Expr.code
+  params:Type.param list ->
+  result:Type.result option ->
+  name:string ->
+  Expr.expr ->
+  Expr.code
 
 val code_c_fun_bytecode :
   params:Type.param list -> result:Type.result option -> Expr.code -> Expr.code
@@ -176,14 +179,14 @@ val print_ml_fun :
   params:Type.param list ->
   ?result:Type.result ->
   mlname:string ->
-  Expr.code ->
+  Expr.expr ->
   Expr.expr
 
 val declare_struct : string -> (string * Expr.expr) list -> Expr.defined
 val if_ : ?else_:Expr.expr -> Expr.expr -> then_:Expr.expr -> Expr.expr
 val seq : Expr.expr list -> Expr.expr
 
-type convert = { convert : Expr.code; src : Expr.var; dst : Expr.var }
+type convert = { convert : Expr.expr; src : Expr.var; dst : Expr.var }
 
 val mk_converter :
   src:Type.c ->

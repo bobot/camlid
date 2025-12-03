@@ -22,4 +22,4 @@ external f_int64:
 external f_nativeint:
   (nativeint [@unboxed]) ->
   (nativeint [@unboxed])
-  = "camlid_stub_f_nat_byte1" "camlid_stub_f_nat1"
+  = "camlid_stub_f_nativeint_byte" "camlid_stub_f_nativeint"

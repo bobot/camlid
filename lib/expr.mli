@@ -1,6 +1,6 @@
 type defined
-type code
 type expr
+type code
 type kind = C | ML | H
 type id
 type var = private { id : int; name : string; ty : expr }
@@ -11,7 +11,6 @@ val pp_expr : Format.formatter -> expr -> unit
 val pp_expr_binds : Format.formatter -> expr * (var * expr) list -> unit
 val binds : (var * expr) list -> expr -> expr
 val dimplicit : defined -> code list -> defined
-val implicit : code -> code list -> code
 
 module ID : sig
   type t = id

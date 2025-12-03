@@ -104,7 +104,7 @@ extern value camlid_stub_f_int64_byte(value p){
   return p_r;
 }
 typedef intptr_t * camlid_ref5;
-extern intptr_t camlid_stub_f_nat1(intptr_t p){
+extern intptr_t camlid_stub_f_nativeint(intptr_t p){
   CAMLparam0();
   intptr_t p1;
   camlid_ref5 p2 = &(((struct { intptr_t a; }) { ((intptr_t) { 0 }) }).a);
@@ -113,12 +113,12 @@ extern intptr_t camlid_stub_f_nat1(intptr_t p){
   p1 = (*p2);
   CAMLreturnT(intptr_t,p1);
 }
-extern value camlid_stub_f_nat_byte1(value p){
+extern value camlid_stub_f_nativeint_byte(value p){
   intptr_t p1;
   value p_r;
   intptr_t p2;
   p2 = Nativeint_val(p);
-  p1 = camlid_stub_f_nat1(p2);
+  p1 = camlid_stub_f_nativeint(p2);
   p_r = caml_copy_nativeint(p1);
   return p_r;
 }

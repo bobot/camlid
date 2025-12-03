@@ -5,11 +5,7 @@ type defined =
   | DImplicit of (defined * code list)
 
 and definition = { id : id; kind : kind; toplevel : expr }
-
-and code =
-  | Defined of { defined : defined; params : var list }
-  | Implicit of (code * code list)
-
+and code = { defined : defined; params : var list }
 and expr = { expr : unit Fmt.t }
 and kind = C | ML | H
 and id = { id : int; name : string; keep_name : bool }
@@ -18,7 +14,6 @@ and var = { id : int; name : string; ty : expr }
 let expr p = Format.kdprintf (fun k -> { expr = (fun fmt () -> k fmt) }) p
 let pp_expr fmt e = e.expr fmt ()
 let dimplicit defined others = DImplicit (defined, others)
-let implicit defined others = Implicit (defined, others)
 
 module ID = struct
   type t = id
@@ -88,10 +83,7 @@ let bind_expr var ve e =
 
 let binds l e = List.fold_left (fun acc (v, e) -> bind_expr v e acc) e l
 let pp_expr_binds fmt (e, bs) = pp_expr fmt (binds bs e)
-
-let rec def_of_code = function
-  | Implicit (def, _) -> def_of_code def
-  | Defined { defined; _ } -> defined
+let def_of_code = fun { defined; _ } -> defined
 
 let rec def_of_def = function
   | Def def -> def
@@ -123,11 +115,7 @@ and def_dep fmt = function
       List.iter (code_dep fmt) others;
       def_dep fmt def
 
-and code_dep fmt = function
-  | Defined { defined; _ } -> def_dep fmt defined
-  | Implicit (def, others) ->
-      code_dep fmt def;
-      List.iter (code_dep fmt) others
+and code_dep fmt = function { defined; _ } -> def_dep fmt defined
 
 let e_def code = { expr = Fmt.const pp_def code }
 let pp_var fmt c = open_close_stag fmt (PrintVar c)
@@ -136,8 +124,8 @@ let e_addr v = expr "&%a" pp_var v
 let e_deref v = expr "*%a" pp_var v
 
 let pp_call fmt (code, binds) =
-  let rec aux binds = function
-    | Defined { defined; params } ->
+  let aux binds = function
+    | { defined; params } ->
         let pp_arg fmt v =
           match List.assq_opt v binds with
           | None -> pp_var fmt v
@@ -146,9 +134,6 @@ let pp_call fmt (code, binds) =
         Fmt.pf fmt "@[<hv>@[<hv 2>@[%a(@]@,%a@]@,)@]" pp_def defined
           Fmt.(list ~sep:comma pp_arg)
           params
-    | Implicit (def, others) ->
-        aux binds def;
-        List.iter (code_dep fmt) others
   in
   aux binds code
 
@@ -163,8 +148,7 @@ let ddef ?kind id p =
 
 let mk ?(kind = C) ?(params = []) id toplevel =
   let code =
-    Defined
-      { defined = Def { id; kind; toplevel = { expr = toplevel } }; params }
+    { defined = Def { id; kind; toplevel = { expr = toplevel } }; params }
   in
   code
 

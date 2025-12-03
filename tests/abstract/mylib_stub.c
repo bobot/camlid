@@ -9,7 +9,6 @@
 #include <string.h>
 #include "lib.h"
 typedef int * camlid_abstract;
-void lib_init(camlid_abstract *);
 static void camlid_c2ml(value * v, camlid_abstract * c){
   *v = caml_alloc((sizeof(camlid_abstract) + sizeof(value) - 1) / sizeof(value), Abstract_tag);
   *((camlid_abstract *) Bp_val(*v)) = *c;
