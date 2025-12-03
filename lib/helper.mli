@@ -234,12 +234,7 @@ val map_param_in_call :
   (('a -> Expr.expr -> 'b) -> Expr.expr -> 'c, 'a, 'b, 'd, 'd, 'c) format6 ->
   Type.param
 
-val do_nothing :
-  ?result:Type.typedef ->
-  ?ignored_result:Type.typedef ->
-  string ->
-  Type.param list ->
-  Expr.expr
+val do_nothing : string -> Type.param list -> Expr.expr
 
 val convert :
   ?c_to_mlc:string ->

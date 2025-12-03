@@ -45,29 +45,37 @@ let bool : typedef =
 let string_nt = Expert.string_nt
 let ptr_ref = ptr_ref
 
-let func_id ~ml ?result ?ignored_result fid params =
+let func_id ~ml ?result fid params =
   (* C function declaration *)
-  match (result, ignored_result) with
-  | Some _, Some _ ->
-      failwith "Camlid.Helper.func: can't set both result and ignored_result"
-  | Some rty, None ->
-      print_ml_fun fid ~mlname:ml ~params ~result:(Expert.simple_result rty)
-  | None, Some rty ->
-      let rc = Var.mk "res" rty.cty.cty in
-      let bind' code = Expr.binds [ (rty.cty.c, e_addr rc) ] code in
-      print_ml_fun fid ~mlname:ml ~params
-        ~result:{ routput = PONone; rc; rfree = Option.map bind' rty.cty.free }
-  | None, None -> print_ml_fun fid ~mlname:ml ~params
+  print_ml_fun fid ~mlname:ml ~params ?result
 
-let func ?ml ?result ?ignored_result fname params =
+let func_res ?ml ?result fname params =
   let ml = Option.value ~default:fname ml in
   let fid =
     let vars_used_in_calls =
       List.filter_map (fun p -> Option.map fst p.pused_in_call) params
     in
-    existing fname vars_used_in_calls
+    let pp_result fmt = function
+      | None -> ()
+      | Some r -> Fmt.pf fmt "%a = " pp_var r.rc
+    in
+    expr "%a%a;" pp_result result pp_call (existing fname vars_used_in_calls, [])
   in
-  func_id ~ml ?result ?ignored_result fid params
+  func_id ~ml ?result fid params
+
+let func ?ml ?result ?ignored_result fname params =
+  let result =
+    match (result, ignored_result) with
+    | Some _, Some _ ->
+        failwith "Camlid.Helper.func: can't set both result and ignored_result"
+    | Some rty, None -> Some (Expert.simple_result rty)
+    | None, Some rty ->
+        let rc = Var.mk "res" rty.cty.cty in
+        let bind' code = Expr.binds [ (rty.cty.c, e_addr rc) ] code in
+        Some { routput = PONone; rc; rfree = Option.map bind' rty.cty.free }
+    | None, None -> None
+  in
+  func_res ?ml ?result fname params
 
 let input_array ?owned ?(output = false) ?(input = true) ?(name = "array") ty =
   let a_len = array_length ?owned ty in
@@ -178,7 +186,7 @@ let abstract ?initialize ?get ?set ?internal ~ml ~c () : typedef =
     Option.map
       (fun initialize ->
         let c = Var.mk "c" (expr "%a *" pp_def cty) in
-        { initialize = existing initialize [ c ]; c })
+        { initialize = calli_existing initialize [ c ]; c })
       initialize
   in
   let get =
@@ -186,7 +194,7 @@ let abstract ?initialize ?get ?set ?internal ~ml ~c () : typedef =
       (fun get ->
         let c = Var.mk "c" (expr "%a *" pp_def cty) in
         let i = Var.mk "i" (expr "%a *" pp_def icty) in
-        { get = existing get [ c; i ]; c; i })
+        { get = calli_existing get [ c; i ]; c; i })
       get
   in
   let set =
@@ -194,7 +202,7 @@ let abstract ?initialize ?get ?set ?internal ~ml ~c () : typedef =
       (fun set ->
         let c = Var.mk "c" (expr "%a *" pp_def cty) in
         let i = Var.mk "i" (expr "%a *" pp_def icty) in
-        { set = existing set [ i; c ]; c; i })
+        { set = calli_existing set [ i; c ]; c; i })
       set
   in
   Expert.abstract ?initialize ?set ?get ~icty ~cty ~ml ()
@@ -248,8 +256,7 @@ let map_param_in_call ?(name = "arg") ~ty param fmt =
     (fun _ e -> (expr "%s" ty, expr "%(%a%)" fmt pp_expr e))
     param
 
-let do_nothing ?result ?ignored_result ml =
-  func_id ~ml ?result ?ignored_result (expr "")
+let do_nothing ml = func_id ~ml ?result:None (expr "")
 
 let convert ?c_to_mlc ?mlc_to_c ?(using = []) ~mlc ~c () =
   let mk =

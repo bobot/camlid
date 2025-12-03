@@ -1,7 +1,8 @@
 val typedef : string -> ('a, Format.formatter, unit, Expr.defined) format4 -> 'a
 val mlalias : string -> ('a, Format.formatter, unit, Expr.defined) format4 -> 'a
 val mlabstract : ?keep_name:bool -> string -> Expr.defined
-val existing : string -> Expr.var list -> Expr.expr
+val existing : string -> Expr.var list -> Expr.code
+val calli_existing : string -> Expr.var list -> Expr.expr
 val get_boxing : Type.conv -> Expr.expr * Expr.expr
 
 val builtin_mltypes :

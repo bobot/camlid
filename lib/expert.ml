@@ -17,8 +17,9 @@ let mlabstract ?keep_name name =
 
 let existing f params =
   let id = ID.mk ~keep_name:true f in
-  let c = dfp ~params id "" in
-  expr "%a" pp_call (c, [])
+  dfp ~params id ""
+
+let calli_existing f params = expr "%a" pp_calli (existing f params, [])
 
 let get_boxing = function
   | Boxed { c2ml; ml2c } -> (ml2c, c2ml)
@@ -242,12 +243,10 @@ struct
     match (vars, exprs) with
     | Some _, Some _ -> Fmt.invalid_arg "mk_%s: only vars or args" debug_name
     | None, Some (exprs : Expr.expr list App.t) ->
-        expr "@[<hv>%s(@ %a)@];" name
-          Fmt.(list ~sep:comma pp_expr)
-          (App.app args exprs)
+        expr "%s(@ %a);" name Fmt.(list ~sep:comma pp_expr) (App.app args exprs)
     | Some (vars : Expr.var list App.t), None ->
-        existing name (App.app args vars)
-    | None, None -> existing name (App.none args)
+        expr "%a;" pp_call (existing name (App.app args vars), [])
+    | None, None -> expr "%a;" pp_call (existing name (App.none args), [])
 end
 
 module DstSrc = App (struct
@@ -283,16 +282,18 @@ let copy ~copy (ty : typedef) =
                   (* todo init_expr *)
                   Option.iter
                     (fun init ->
-                      fmt "%a" pp_expr_binds (init, [ (ty.cty.c, e_var tmp) ]))
+                      fmt "@[%a@]@ " pp_expr_binds
+                        (init, [ (ty.cty.c, e_var tmp) ]))
                     ty.cty.init;
-                  fmt "%a@ " pp_expr_binds
+                  fmt "@[%a@]@ " pp_expr_binds
                     ( copy.copy,
                       [ (copy.c_from, e_var c'); (copy.c_to, e_addr tmp) ] );
-                  fmt "%a@ " pp_expr_binds
+                  fmt "@[%a@]@ " pp_expr_binds
                     (c2ml, [ (ty.cty.c, e_var tmp); (ty.v, e_deref v') ]);
                   Option.iter
                     (fun free ->
-                      fmt "%a" pp_expr_binds (free, [ (ty.cty.c, e_var tmp) ]))
+                      fmt "@[%a@]" pp_expr_binds
+                        (free, [ (ty.cty.c, e_var tmp) ]))
                     ty.cty.free);
           }
     | Unboxable _ -> invalid_arg "not implemented"
@@ -560,7 +561,7 @@ let abstract ?initialize ?get ?set ~icty ~ml ~cty () =
         c;
         init =
           (let pp_init fmt f =
-             Fmt.pf fmt "%a;" pp_expr_binds (f.initialize, [ (f.c, e_addr c) ])
+             Fmt.pf fmt "%a" pp_expr_binds (f.initialize, [ (f.c, e_addr c) ])
            in
            expro "%a" Fmt.(option pp_init) initialize);
         init_expr = expr "((%a) { 0 })" pp_def cty;
@@ -596,7 +597,7 @@ let custom ?initialize ?finalize ?hash ?compare ?get ?set ~ml ~icty ~cty () =
         Some
           {
             finalize_op =
-              code "finalize_op" "%a;" pp_expr_binds
+              code "finalize_op" "%a" pp_expr_binds
                 (finalize.finalize, [ (finalize.i, data_custom_val icty v) ]);
             v;
           }
@@ -665,7 +666,7 @@ let custom ?initialize ?finalize ?hash ?compare ?get ?set ~ml ~icty ~cty () =
             | None ->
                 expr "%a = *(%a);" pp_var c pp_expr (data_custom_val icty v)
             | Some f ->
-                expr "%a;" pp_expr_binds
+                expr "%a" pp_expr_binds
                   (f.get, [ (f.i, data_custom_val icty v); (f.c, e_addr c) ]));
           c2ml =
             call_codef "c2ml"
@@ -678,7 +679,7 @@ let custom ?initialize ?finalize ?hash ?compare ?get ?set ~ml ~icty ~cty () =
                     fmt "@[*(%a) = *%a;@]" pp_expr (data_custom_val' icty v')
                       pp_var c'
                 | Some f ->
-                    fmt "@[%a;@]" pp_expr_binds
+                    fmt "@[%a@]" pp_expr_binds
                       ( f.set,
                         [ (f.i, data_custom_val' icty v'); (f.c, e_var c') ] ));
         };
@@ -687,7 +688,7 @@ let custom ?initialize ?finalize ?hash ?compare ?get ?set ~ml ~icty ~cty () =
         cty;
         init =
           (let pp_init fmt f =
-             Fmt.pf fmt "%a;" pp_expr_binds (f.initialize, [ (f.c, e_addr c) ])
+             Fmt.pf fmt "%a" pp_expr_binds (f.initialize, [ (f.c, e_addr c) ])
            in
            expro "%a" Fmt.(option pp_init) initialize);
         init_expr = expr "((%a) { 0 })" pp_expr cty;
@@ -708,7 +709,7 @@ let custom_ptr ?initialize ?finalize ?hash ?compare ?(malloc = true) ~ml ~cty ()
       fmt "*%a = malloc(sizeof(%a));" pp_var c pp_expr cty
     in
     let finit initialize { fmt } =
-      fmt "%a;" pp_expr_binds
+      fmt "%a" pp_expr_binds
         (initialize.initialize, [ (initialize.c, expr "*%a" pp_var c) ])
     in
     match initialize with
@@ -731,7 +732,7 @@ let custom_ptr ?initialize ?finalize ?hash ?compare ?(malloc = true) ~ml ~cty ()
     let i = Var.mk "i" (expr "%a *" pp_expr cty_ptr) in
     let ffree { fmt } = fmt "free(*%a);" pp_var i in
     let ffinalize finalize { fmt } =
-      fmt "%a;" pp_expr_binds
+      fmt "%a" pp_expr_binds
         (finalize.finalize, [ (finalize.i, expr "*%a" pp_var i) ])
     in
     match finalize with
@@ -815,7 +816,7 @@ let mk_hash ~icty ?vars ?exprs hash =
 let mk_compare ~icty compare =
   let i1 = Var.mk "c" (expr "%a *" pp_expr icty) in
   let i2 = Var.mk "i" (expr "%a *" pp_expr icty) in
-  { compare = existing compare [ i1; i2 ]; i1; i2 }
+  { compare = expr "%a" pp_call (existing compare [ i1; i2 ], []); i1; i2 }
 
 let mk_initialize ~cty ?vars ?exprs initialize =
   let c = Var.mk "c" (expr "%a *" pp_expr cty) in
@@ -927,7 +928,7 @@ let add_result params result =
       {
         pinput = PINone;
         poutput = result.routput;
-        pused_in_call = None;
+        pused_in_call = Some (result.rc, e_var result.rc);
         pfree = result.rfree;
         pinit = None;
         pinit_expr = [ (result.rc, None) ];
@@ -1083,11 +1084,7 @@ let code_c_fun ~params ~result ~name (fid : expr) =
       (* initialize variables *)
       pp_scall (fun p -> p.pinit) { fmt } params;
       (* function call *)
-      let pp_result fmt = function
-        | None -> ()
-        | Some r -> Fmt.pf fmt "%a = " pp_var r.rc
-      in
-      fmt "@[%a%a;@]@," pp_result result pp_expr_binds
+      fmt "@[%a@]@," pp_expr_binds
         (fid, List.filter_map (fun p -> p.pused_in_call) params);
       (* convert output variable *)
       pp_scall c2a_poutput { fmt } params;
@@ -1633,5 +1630,7 @@ let simple_result rty =
   in
   { routput; rc; rfree = Option.map bind' rty.cty.free }
 
-let get_expression ~mlname ty expr =
-  print_ml_fun ~mlname ~result:(simple_result ty) expr ~params:[]
+let get_expression ~mlname ty e =
+  let result = simple_result ty in
+  let e = expr "%a = %a;" pp_var result.rc pp_expr e in
+  print_ml_fun ~mlname ~result e ~params:[]
