@@ -30,7 +30,6 @@ type c = {
 }
 
 type typedef = {
-  mlname : string option;  (** ml name *)
   mlty : expr;  (** print the ocaml type *)
   conv : conv;  (** convert C values of this type to ML value *)
   cty : c;

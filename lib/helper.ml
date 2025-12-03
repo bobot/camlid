@@ -139,7 +139,6 @@ let string_as_FILE_ptr =
   in
   {
     mlty = expr "string";
-    mlname = None;
     conv =
       Boxed
         {

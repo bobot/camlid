@@ -36,7 +36,6 @@ let builtin_mltypes ~unbox_attribute ?u_type ~c_type ~c2ml ~ml2c ?(u2c = "")
   let mk map x y = expr "%a = %s(%a);" pp_var x map pp_var y in
   {
     mlty = expr "%s" ml_type;
-    mlname = None;
     conv =
       Unboxable
         {
@@ -72,7 +71,6 @@ let string_nt ?(owned = true) () =
   let c = Var.mk "c" (expr "%a" pp_def cty) in
   {
     mlty = e_def string_nt_alias;
-    mlname = None;
     conv =
       Boxed
         {
@@ -112,7 +110,6 @@ let string_fixed_length ?(init = true) ?(owned = true) len =
   let c' = Var.mk "c" (expr "%a*" pp_def cty) in
   {
     mlty = expr "%s" "string";
-    mlname = None;
     conv =
       Boxed
         {
@@ -157,7 +154,6 @@ let string_length ?(owned = true) () =
   let c' = Var.mk "c" (expr "%a *" pp_def cty) in
   {
     mlty = expr "%s" "string";
-    mlname = None;
     conv =
       Boxed
         {
@@ -213,7 +209,6 @@ let ptr_ref (ty : typedef) =
   in
   {
     mlty = ty.mlty;
-    mlname = None;
     conv;
     cty =
       {
@@ -312,7 +307,6 @@ let array ?(init = true) ?(owned = true) ~len (ty : typedef) =
   in
   {
     mlty = expr "(%a array)" pp_expr ty.mlty;
-    mlname = None;
     conv =
       (let ml2c, c2ml = get_boxing ty.conv in
        Boxed
@@ -401,7 +395,6 @@ let array_length ?(owned = true) (ty : typedef) =
   let c' = Var.mk "c" (expr "%a *" pp_def cty) in
   {
     mlty = expr "(%a array)" pp_expr ty.mlty;
-    mlname = None;
     conv =
       (let ml2c, c2ml = get_boxing ty.conv in
        Boxed
@@ -519,7 +512,6 @@ let abstract ?initialize ?get ?set ~icty ~ml ~cty () =
   {
     v;
     mlty = e_def @@ mlabstract ~keep_name:true ml;
-    mlname = Some ml;
     conv =
       Boxed
         {
@@ -657,7 +649,6 @@ let custom ?initialize ?finalize ?hash ?compare ?get ?set ~ml ~icty ~cty () =
   in
   {
     mlty = e_def @@ mlabstract ~keep_name:true ml;
-    mlname = Some ml;
     conv =
       Boxed
         {
@@ -1364,7 +1355,7 @@ let convert ?mlc_to_c ?c_to_mlc ~(mlc : typedef) ~(c : c) () =
             c2ml = mk_ml2c c2ml;
           }
   in
-  { mlty = mlc.mlty; mlname = mlc.mlname; conv; cty = c; v = mlc.v }
+  { mlty = mlc.mlty; conv; cty = c; v = mlc.v }
 
 module AlgData = struct
   type kind =
@@ -1475,7 +1466,6 @@ module AlgData = struct
     let ty =
       {
         mlty = e_def mlty;
-        mlname = None;
         conv = Boxed { c2ml; ml2c = expr "#error(\"not_yet_implemented\")" };
         cty =
           {
@@ -1557,7 +1547,6 @@ let value =
   fun ml ->
     {
       mlty = expr "%s" ml;
-      mlname = None;
       conv;
       cty = { cty; init = None; init_expr; free = None; in_call = None; c };
       v;
