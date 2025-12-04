@@ -12,36 +12,37 @@ let ignored = simple_param ~input:false ~output:false
 
 let int : mlc =
   builtin_mltypes "int" ~c_type:"intptr_t" ~c2ml:"Val_long" ~ml2c:"Long_val"
-    ~unbox_attribute:Untagged
+    ~unbox_attribute:Untagged ~unbox_version:(4, 3)
 
 let size_t : mlc =
   builtin_mltypes "int" ~u_type:"intptr_t" ~c_type:"size_t" ~u2c:"(size_t)"
     ~ml2u:"Long_val" ~c2ml:"Val_long" ~ml2c:"(size_t)Long_val" ~c2u:"(intptr_t)"
-    ~unbox_attribute:Untagged
+    ~unbox_attribute:Untagged ~unbox_version:(4, 3)
 
 let int_trunc : mlc =
   builtin_mltypes "int" ~u_type:"intptr_t" ~c_type:"int" ~c2ml:"Val_int"
     ~ml2c:"Int_val" ~u2c:"(int)" ~c2u:"(intptr_t)" ~unbox_attribute:Untagged
+    ~unbox_version:(4, 3)
 
 let double : mlc =
   builtin_mltypes "float" ~c_type:"double" ~c2ml:"caml_copy_double"
-    ~ml2c:"Double_val" ~unbox_attribute:Unboxed
+    ~ml2c:"Double_val" ~unbox_attribute:Unboxed ~unbox_version:(4, 3)
 
 let int32 : mlc =
   builtin_mltypes "int32" ~c_type:"int32_t" ~c2ml:"caml_copy_int32"
-    ~ml2c:"Int32_val" ~unbox_attribute:Unboxed
+    ~ml2c:"Int32_val" ~unbox_attribute:Unboxed ~unbox_version:(4, 3)
 
 let int64 : mlc =
   builtin_mltypes "int64" ~c_type:"int64_t" ~c2ml:"caml_copy_int64"
-    ~ml2c:"Int64_val" ~unbox_attribute:Unboxed
+    ~ml2c:"Int64_val" ~unbox_attribute:Unboxed ~unbox_version:(4, 3)
 
 let nativeint : mlc =
   builtin_mltypes "nativeint" ~c_type:"intptr_t" ~c2ml:"caml_copy_nativeint"
-    ~ml2c:"Nativeint_val" ~unbox_attribute:Unboxed
+    ~ml2c:"Nativeint_val" ~unbox_attribute:Unboxed ~unbox_version:(4, 3)
 
 let bool : mlc =
   builtin_mltypes "bool" ~c_type:"int" ~c2ml:"Val_bool" ~ml2c:"Bool_val"
-    ~unbox_attribute:Untagged
+    ~unbox_attribute:Untagged ~unbox_version:(5, 2)
 
 let string_nt = Expert.string_nt
 let ptr_ref = ptr_ref

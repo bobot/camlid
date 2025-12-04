@@ -30,9 +30,14 @@ let get_boxing = function
   | Boxed { c2ml; ml2c } -> (ml2c, c2ml)
   | Unboxable { c2ml; ml2c; _ } -> (ml2c, c2ml)
 
+let ocaml_version =
+  match String.split_on_char '.' Sys.ocaml_version with
+  | major :: minor :: _ -> (int_of_string major, int_of_string minor)
+  | _ -> invalid_arg "invaliad ocaml Sys.ocaml_version"
+
 (** Native integer, the last bit is lost during translation *)
-let builtin_mltypes ~unbox_attribute ?u_type ~c_type ~c2ml ~ml2c ?(u2c = "")
-    ?(c2u = "") ?(ml2u = ml2c) ?(u2ml = c2ml) ml_type =
+let builtin_mltypes ~unbox_attribute ~unbox_version ?u_type ~c_type ~c2ml ~ml2c
+    ?(u2c = "") ?(c2u = "") ?(ml2u = ml2c) ?(u2ml = c2ml) ml_type =
   let cty = expr "%s" c_type in
   let uty = match u_type with None -> cty | Some u_type -> expr "%s" u_type in
   let v = Var.mk "v" (expr "value") in
@@ -42,18 +47,20 @@ let builtin_mltypes ~unbox_attribute ?u_type ~c_type ~c2ml ~ml2c ?(u2c = "")
   {
     mlty = expr "%s" ml_type;
     conv =
-      Unboxable
-        {
-          unbox_attribute;
-          uty;
-          u;
-          ml2u = mk ml2u u v;
-          u2ml = mk u2ml v u;
-          c2u = mk c2u u c;
-          u2c = mk u2c c u;
-          ml2c = mk ml2c c v;
-          c2ml = mk c2ml v c;
-        };
+      (if unbox_version <= ocaml_version then
+         Unboxable
+           {
+             unbox_attribute;
+             uty;
+             u;
+             ml2u = mk ml2u u v;
+             u2ml = mk u2ml v u;
+             c2u = mk c2u u c;
+             u2c = mk u2c c u;
+             ml2c = mk ml2c c v;
+             c2ml = mk c2ml v c;
+           }
+       else Boxed { ml2c = mk ml2c c v; c2ml = mk c2ml v c });
     cty =
       {
         cty;
@@ -1039,7 +1046,7 @@ let code_c_fun ~params ~result ~name (fid : expr) =
           | a1 :: a2 :: l -> ([ a1; a2 ], l)
           | a1 :: l -> ([ a1 ], l)
         in
-        if List.is_empty p then (if first then fmt "@[CAMLparam0();@]@,")
+        if p = [] then (if first then fmt "@[CAMLparam0();@]@,")
         else (
           fmt "@[CAML%t%s%i(%a);@]@," add_x name (List.length p)
             Fmt.(list ~sep:comma pp_input)
@@ -1385,7 +1392,7 @@ module AlgData = struct
       List.fold_left_map
         (fun (id_cst, id_non_cst) (name, fields) ->
           let id = ID.mk (Printf.sprintf "%s_%s" ml_type name) in
-          if List.is_empty fields then
+          if [] = fields then
             ((id_cst + 1, id_non_cst), (name, id, KConst id_cst))
           else
             let fields =

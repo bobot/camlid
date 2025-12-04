@@ -160,7 +160,11 @@ let fp ?kind ?params id pp =
 let dfp ?kind ?params id =
   Format.kdprintf (fun k -> mk ?kind ?params id (fun fmt () -> k fmt))
 
-module StringH = Hashtbl.Make (String)
+module StringH = Hashtbl.Make (struct
+  include String
+
+  let hash (x : string) = Hashtbl.hash x
+end)
 
 type env = {
   ids_c : string ID.H.t;
@@ -253,8 +257,8 @@ let run_aux ~pp_id env e fmt =
         | _ -> ());
       print_close_stag =
         (function
-        | InEnv _ -> Stack.drop env.bindings
-        | Bind _ -> Stack.drop env.bindings
+        | InEnv _ -> ignore (Stack.pop env.bindings)
+        | Bind _ -> ignore (Stack.pop env.bindings)
         | _ -> ());
     };
   e fmt;
