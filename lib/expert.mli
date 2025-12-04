@@ -16,13 +16,13 @@ val builtin_mltypes :
   ?ml2u:string ->
   ?u2ml:string ->
   string ->
-  Type.typedef
+  Type.mlc
 
-val string_nt : ?owned:bool -> unit -> Type.typedef
-val string_fixed_length : ?init:bool -> ?owned:bool -> Expr.var -> Type.typedef
+val string_nt : ?owned:bool -> unit -> Type.mlc
+val string_fixed_length : ?init:bool -> ?owned:bool -> Expr.var -> Type.mlc
 val string_length_struct : Expr.defined
-val string_length : ?owned:bool -> unit -> Type.typedef
-val ptr_ref : Type.typedef -> Type.typedef
+val string_length : ?owned:bool -> unit -> Type.mlc
+val ptr_ref : Type.mlc -> Type.mlc
 
 type copy = { copy : Expr.expr; c_from : Expr.Var.t; c_to : Expr.Var.t }
 
@@ -33,12 +33,9 @@ val mk_copy :
   string ->
   copy
 
-val copy : copy:copy -> Type.typedef -> Type.typedef
-
-val array :
-  ?init:bool -> ?owned:bool -> len:Expr.var -> Type.typedef -> Type.typedef
-
-val array_length : ?owned:bool -> Type.typedef -> Type.typedef
+val copy : copy:copy -> Type.mlc -> Type.mlc
+val array : ?init:bool -> ?owned:bool -> len:Expr.var -> Type.mlc -> Type.mlc
+val array_length : ?owned:bool -> Type.mlc -> Type.mlc
 
 val map_param_in_call :
   ?name:string ->
@@ -49,7 +46,7 @@ val map_param_in_call :
 val deref_in_call : Type.param -> Type.param
 val use_new_param_only_in_call : Type.param -> Type.param
 val get_field : Expr.expr -> string -> Type.param -> Type.param
-val t_field : Type.typedef -> Type.param -> Type.param
+val t_field : Type.mlc -> Type.param -> Type.param
 val len_field : Type.param -> Type.param
 
 type get = { get : Expr.expr; c : Expr.var; i : Expr.var }
@@ -64,7 +61,7 @@ val abstract :
   ml:string ->
   cty:Expr.defined ->
   unit ->
-  Type.typedef
+  Type.mlc
 
 type finalize = { finalize : Expr.expr; i : Expr.var }
 type finalize_op = { finalize_op : Expr.code; v : Expr.var }
@@ -84,7 +81,7 @@ val custom :
   icty:Expr.expr ->
   cty:Expr.expr ->
   unit ->
-  Type.typedef
+  Type.mlc
 
 val custom_ptr :
   ?initialize:initialize ->
@@ -95,10 +92,10 @@ val custom_ptr :
   ml:string ->
   cty:Expr.expr ->
   unit ->
-  Type.typedef
+  Type.mlc
 
 val e_value : Expr.expr
-val value : string -> Type.typedef
+val value : string -> Type.mlc
 
 val mk_get :
   icty:Expr.expr ->
@@ -153,10 +150,10 @@ val simple_param :
   ?output:bool ->
   ?used_in_call:bool ->
   ?name:string ->
-  Type.typedef ->
+  Type.mlc ->
   Type.param * Expr.var
 
-val simple_result : Type.typedef -> Type.result
+val simple_result : Type.mlc -> Type.result
 
 val list_or_empty :
   empty:(Format.formatter -> unit -> unit) ->
@@ -200,15 +197,15 @@ val mk_converter :
 val convert :
   ?mlc_to_c:convert ->
   ?c_to_mlc:convert ->
-  mlc:Type.typedef ->
+  mlc:Type.mlc ->
   c:Type.c ->
   unit ->
-  Type.typedef
+  Type.mlc
 
 module AlgData : sig
   type kind =
     | KConst of int
-    | KNonConst of int * (string * Expr.var * Type.typedef) list
+    | KNonConst of int * (string * Expr.var * Type.mlc) list
 
   type constr = {
     name : string;
@@ -218,20 +215,20 @@ module AlgData : sig
   }
 
   type t = {
-    ty : Type.typedef;
+    ty : Type.mlc;
     constrs : constr list;
     dst_smart_constructors : Expr.var;
   }
 
-  val algdata : string -> (string * (string * Type.typedef) list) list -> t
+  val algdata : string -> (string * (string * Type.mlc) list) list -> t
 end
 
-val ret_option_if : Expr.expr -> Type.typedef -> Type.typedef
+val ret_option_if : Expr.expr -> Type.mlc -> Type.mlc
 (** [ret_option_if expr ty] the ocaml calue returned is [Some v] if the C
     expression [expr] is true, and [v] is returned by [ty], otherwise it is
     [None]*)
 
-val get_expression : mlname:string -> Type.typedef -> Expr.expr -> Expr.expr
+val get_expression : mlname:string -> Type.mlc -> Expr.expr -> Expr.expr
 (** [get_expression ~mlname ty expr] defined the function [mlname] that return
     the value of the C expression [expr] of type [ty] *)
 
@@ -242,7 +239,7 @@ val bigarray_array1 :
   mlty:string ->
   mlelt:string ->
   unit ->
-  Type.typedef
+  Type.mlc
 (** The biggaray is mirrored by a structure with a field "len" of type size_t
     and a field "t" of type "cty*"
     @param managed C constant name for the managed flag

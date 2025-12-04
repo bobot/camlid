@@ -10,36 +10,36 @@ let output = simple_param ~output:true ~input:false
 let inout = simple_param ~input:true ~output:true
 let ignored = simple_param ~input:false ~output:false
 
-let int : typedef =
+let int : mlc =
   builtin_mltypes "int" ~c_type:"intptr_t" ~c2ml:"Val_long" ~ml2c:"Long_val"
     ~unbox_attribute:Untagged
 
-let size_t : typedef =
+let size_t : mlc =
   builtin_mltypes "int" ~u_type:"intptr_t" ~c_type:"size_t" ~u2c:"(size_t)"
     ~ml2u:"Long_val" ~c2ml:"Val_long" ~ml2c:"(size_t)Long_val" ~c2u:"(intptr_t)"
     ~unbox_attribute:Untagged
 
-let int_trunc : typedef =
+let int_trunc : mlc =
   builtin_mltypes "int" ~u_type:"intptr_t" ~c_type:"int" ~c2ml:"Val_int"
     ~ml2c:"Int_val" ~u2c:"(int)" ~c2u:"(intptr_t)" ~unbox_attribute:Untagged
 
-let double : typedef =
+let double : mlc =
   builtin_mltypes "float" ~c_type:"double" ~c2ml:"caml_copy_double"
     ~ml2c:"Double_val" ~unbox_attribute:Unboxed
 
-let int32 : typedef =
+let int32 : mlc =
   builtin_mltypes "int32" ~c_type:"int32_t" ~c2ml:"caml_copy_int32"
     ~ml2c:"Int32_val" ~unbox_attribute:Unboxed
 
-let int64 : typedef =
+let int64 : mlc =
   builtin_mltypes "int64" ~c_type:"int64_t" ~c2ml:"caml_copy_int64"
     ~ml2c:"Int64_val" ~unbox_attribute:Unboxed
 
-let nativeint : typedef =
+let nativeint : mlc =
   builtin_mltypes "nativeint" ~c_type:"intptr_t" ~c2ml:"caml_copy_nativeint"
     ~ml2c:"Nativeint_val" ~unbox_attribute:Unboxed
 
-let bool : typedef =
+let bool : mlc =
   builtin_mltypes "bool" ~c_type:"int" ~c2ml:"Val_bool" ~ml2c:"Bool_val"
     ~unbox_attribute:Untagged
 
@@ -78,17 +78,19 @@ let func ?ml ?result ?ignored_result fname params =
   in
   func_res ?ml ?result fname params
 
+type with_length = { t : Type.param; len : Type.param }
+
 let input_array ?owned ?(output = false) ?(input = true) ?(name = "array") ty =
   let a_len = array_length ?owned ty in
   let io_a_len, _ = Expert.simple_param ~input ~output a_len ~name in
 
   let a = t_field ty io_a_len in
   let len_ptr = len_field io_a_len |> use_new_param_only_in_call in
-  (a, len_ptr)
+  { t = a; len = len_ptr }
 
 let output_array ?owned ?(output = true) ?(input = false) ?name ty =
-  let a, len_ptr = input_array ?owned ~output ~input ?name ty in
-  (deref_in_call a, deref_in_call len_ptr)
+  let a = input_array ?owned ~output ~input ?name ty in
+  { t = deref_in_call a.t; len = deref_in_call a.len }
 
 let fixed_length_array ?init ?owned ?(input = false) ?(output = true)
     ?(len_used_in_call = false) ?(name = "array") ty =
@@ -99,18 +101,20 @@ let fixed_length_array ?init ?owned ?(input = false) ?(output = true)
   let a_len =
     simple_param ~input ~output (array ?init ?owned ~len:len_pc ty) ~name
   in
-  (a_len, len)
+  { t = a_len; len }
 
-let input_string ?owned ?(output = false) ?(name = "string") () =
+let input_string ?owned ?(input = true) ?(output = false) ?(name = "string") ()
+    =
   let a_len = string_length ?owned () in
-  let io_a_len, _ = Expert.simple_param ~input:true ~output a_len ~name in
+  let io_a_len, _ = Expert.simple_param ~input ~output a_len ~name in
   let a = get_field (expr "char *") "t" io_a_len in
   let len_ptr = len_field io_a_len |> use_new_param_only_in_call in
-  (deref_in_call a, deref_in_call len_ptr)
+  { t = a; len = len_ptr }
 
-let output_string ?owned ?(output = false) ?name () =
-  let a, len_ptr = input_string ?owned ~output ?name () in
-  (a, len_ptr)
+let output_string ?owned ?(input = false) ?(output = true) ?(name = "string") ()
+    =
+  let a = input_string ?owned ~input ~output ~name () in
+  { t = deref_in_call a.t; len = deref_in_call a.len }
 
 let fixed_length_string ?init ?owned ?(input = false) ?(output = true)
     ?(len_used_in_call = false) ?(name = "string") () =
@@ -121,7 +125,7 @@ let fixed_length_string ?init ?owned ?(input = false) ?(output = true)
   let a_len =
     simple_param ~input ~output (string_fixed_length ?init ?owned len_pc) ~name
   in
-  (a_len, len)
+  { t = a_len; len }
 
 let file_struct =
   let id = ID.mk "file_s" in
@@ -175,7 +179,7 @@ let string_as_FILE_ptr =
 let input_value ml = input (value ml)
 let output_value ml = output (value ml) |> deref_in_call
 
-let abstract ?initialize ?get ?set ?internal ~ml ~c () : typedef =
+let abstract ?initialize ?get ?set ?internal ~ml ~c () : mlc =
   let cty = typedef "abstract" "%s" c in
   let icty =
     match internal with

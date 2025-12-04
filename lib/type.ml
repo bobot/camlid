@@ -25,16 +25,21 @@ type c = {
   free : expr option;
       (** Free the C memory allocated during the call (not accessible in output
           OCaml value) *)
-  in_call : expr option; (* default: variable c*)
-  c : var; (* variable for the addresse of c version *)
+  in_call : expr option;
+      (* expression used in the call of the stubbed function (default: variable c) *)
+  c : var;
+      (* variable of the c version used in the expression of the previous fields  *)
 }
+(** A C type with utility functions *)
 
-type typedef = {
+type mlc = {
   mlty : expr;  (** print the ocaml type *)
   conv : conv;  (** convert C values of this type to ML value *)
   cty : c;
-  v : var; (* variable for the addresse of ml version *)
+  v : var;
+      (* variable for the ml version used in the expression of the previous fields *)
 }
+(** The conversion between an ML and C type *)
 
 type pinput =
   | PINone
@@ -47,7 +52,7 @@ type pinput =
       u : var;
       ml : var;
       pmlty : expr;
-    }
+    }  (** C Expression used for the conversion of the input of a parameter *)
 
 type poutput =
   | PONone
@@ -60,26 +65,25 @@ type poutput =
       ml : var;
       c2ml : expr; (* used when more than one result*)
       pmlty : expr;
-    }
+    }  (** C Expression used for the conversion of the output of a parameter *)
 
 type param = {
   pinput : pinput;
-  poutput : poutput;
-  pused_in_call : (var * expr) option;
-  pinit : expr option;
   pinit_expr : (var * expr option) list;
+  pinit : expr option;
+  pused_in_call : (var * expr) option;
   pfree : expr option;
+  poutput : poutput;
 }
+(** A parameter is a set of variable linked by conversion expression. Possibly:
+    - An input variable of type value and conversion functions
+    - An unboxed input variable and conversion functions
+    - C variables to declare locally
+    - An expression used usually for initialisation
+    - A parameter used in the call of the stubbed function
+    - An unboxed output variable
+    - An output variable of type value and conversion functions
+    - An expression used usually for freeing memory *)
 
-type result = {
-  routput : poutput; (* appears in ML results *)
-  rfree : expr option;
-  rc : var;
-}
-
+type result = { routput : poutput; rfree : expr option; rc : var }
 type conf = Expr.expr list
-
-let ty_binds ?(binds = []) ?v ?c ty =
-  let bv = match v with None -> [] | Some v -> [ (ty.v, v) ] in
-  let bc = match c with None -> [] | Some c -> [ (ty.cty.c, c) ] in
-  bv @ bc @ binds

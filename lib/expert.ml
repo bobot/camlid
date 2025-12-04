@@ -1,6 +1,11 @@
 open Expr
 open Type
 
+let ty_binds ?(binds = []) ?v ?c ty =
+  let bv = match v with None -> [] | Some v -> [ (ty.v, v) ] in
+  let bc = match c with None -> [] | Some c -> [ (ty.cty.c, c) ] in
+  bv @ bc @ binds
+
 let e_value = expr "value"
 
 let typedef name =
@@ -185,7 +190,7 @@ let string_length ?(owned = true) () =
     v;
   }
 
-let ptr_ref (ty : typedef) =
+let ptr_ref (ty : mlc) =
   let cty = typedef "ref" "%a *" pp_expr ty.cty.cty in
   let c = Var.mk "c" (expr "%a *" pp_def cty) in
   let add_addr e = binds [ (ty.cty.c, expr "*%a" pp_var c) ] e in
@@ -258,7 +263,7 @@ let mk_copy ~cty ?vars ?exprs copy =
   let copy = DstSrc.gen ~debug_name:"copy" vars exprs copy (c_to, c_from) in
   { copy; c_to; c_from }
 
-let copy ~copy (ty : typedef) =
+let copy ~copy (ty : mlc) =
   let tmp = Var.mk "tmp" ty.cty.cty in
   let v' = Var.mk "v" (expr "value*") in
   let c' = Var.mk "c" (expr "%a*" pp_expr ty.cty.cty) in
@@ -295,7 +300,7 @@ let copy ~copy (ty : typedef) =
   in
   { ty with conv }
 
-let array ?(init = true) ?(owned = true) ~len (ty : typedef) =
+let array ?(init = true) ?(owned = true) ~len (ty : mlc) =
   let cty = expr "%a*" pp_expr ty.cty.cty in
   let v = Var.mk "v" (expr "value") in
   let c = Var.mk "c" (expr "%a" pp_expr cty) in
@@ -382,7 +387,7 @@ let array ?(init = true) ?(owned = true) ~len (ty : typedef) =
     v;
   }
 
-let array_length ?(owned = true) (ty : typedef) =
+let array_length ?(owned = true) (ty : mlc) =
   let sstruct =
     let id = ID.mk "array_s" in
     toplevel id "struct %a { %a* t; size_t len; };@." pp_id id pp_expr
@@ -1279,7 +1284,7 @@ let mk_converter ~(src : c) ~(dst : c) ?vars ?exprs name =
   let convert = DstSrc.gen ~debug_name:"convert" vars exprs name (dst, src) in
   { dst; src; convert }
 
-let convert ?mlc_to_c ?c_to_mlc ~(mlc : typedef) ~(c : c) () =
+let convert ?mlc_to_c ?c_to_mlc ~(mlc : mlc) ~(c : c) () =
   let v' = Var.mk "v" (expr "value *") in
   let c' = Var.mk "c" (expr "%a *" pp_expr c.cty) in
   let binds = [ (v', e_addr mlc.v); (c', e_addr c.c) ] in
@@ -1360,7 +1365,7 @@ let convert ?mlc_to_c ?c_to_mlc ~(mlc : typedef) ~(c : c) () =
 module AlgData = struct
   type kind =
     | KConst of int
-    | KNonConst of int * (string * Expr.var * typedef) list
+    | KNonConst of int * (string * Expr.var * mlc) list
 
   type constr = {
     name : string;
@@ -1370,7 +1375,7 @@ module AlgData = struct
   }
 
   type t = {
-    ty : typedef;
+    ty : mlc;
     constrs : constr list;
     dst_smart_constructors : Expr.var;
   }

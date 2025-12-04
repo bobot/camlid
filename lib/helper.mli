@@ -2,8 +2,8 @@
 
 val func :
   ?ml:string ->
-  ?result:Type.typedef ->
-  ?ignored_result:Type.typedef ->
+  ?result:Type.mlc ->
+  ?ignored_result:Type.mlc ->
   string ->
   Type.param list ->
   Expr.expr
@@ -36,7 +36,7 @@ val func :
     be used multiple times in the description of the same C function. However it
     could be used in different descriptions *)
 
-val input : ?name:string -> Type.typedef -> Type.param
+val input : ?name:string -> Type.mlc -> Type.param
 (** [input ~name ty] create an input parameter using the typedef template [ty].
     The parameter:
     - appears in the arguments of the ML function
@@ -46,7 +46,7 @@ val input : ?name:string -> Type.typedef -> Type.param
     @param name Basename used for the fresh generated variable
     @param ty Template used for generatiing the parameter. *)
 
-val output : ?name:string -> Type.typedef -> Type.param
+val output : ?name:string -> Type.mlc -> Type.param
 (** [input ~name ty] create an input parameter using the typedef template [ty].
     The parameter:
     - does not appear in the arguments of the ML function
@@ -56,7 +56,7 @@ val output : ?name:string -> Type.typedef -> Type.param
     @param name Basename used for the fresh generated variable
     @param ty template used for generatiing the parameter. *)
 
-val inout : ?name:string -> Type.typedef -> Type.param
+val inout : ?name:string -> Type.mlc -> Type.param
 (** [input ~name ty] create an input parameter using the typedef template [ty].
     The parameter:
     - does not appear in the arguments of the ML function
@@ -66,7 +66,7 @@ val inout : ?name:string -> Type.typedef -> Type.param
     @param name Basename used for the fresh generated variable
     @param ty template used for generatiing the parameter. *)
 
-val ignored : ?name:string -> Type.typedef -> Type.param
+val ignored : ?name:string -> Type.mlc -> Type.param
 (** [input ~name ty] create an input parameter using the typedef template [ty].
     The parameter:
     - does not appear in the arguments of the ML function
@@ -78,36 +78,36 @@ val ignored : ?name:string -> Type.typedef -> Type.param
 
 (** Common OCaml values *)
 
-val int : Type.typedef
+val int : Type.mlc
 (** It is {!int} in OCaml, and [intptr_t] in C. The highest bit is lost when
     going from C to OCaml *)
 
-val size_t : Type.typedef
+val size_t : Type.mlc
 (** It is {!int} in OCaml, and [size_t] in C. The highest bit is lost when going
     from C to OCaml. Unsigned version of {!int} *)
 
-val int_trunc : Type.typedef
+val int_trunc : Type.mlc
 (** It is {!int} in OCaml, and [int] in C. On 64bit, half of the highest bit are
     lost (63 bit long in OCaml and 32 bit long in C). *)
 
-val double : Type.typedef
+val double : Type.mlc
 (** It is [float] in OCaml, and [double] in C. No loss during conversion. *)
 
-val int32 : Type.typedef
+val int32 : Type.mlc
 (** It is {!int32} in OCaml, and [int32_t] in C. No loss during conversion. *)
 
-val int64 : Type.typedef
+val int64 : Type.mlc
 (** It is {!int64} in OCaml, and [int64_t] in C. No loss during conversion. *)
 
-val nativeint : Type.typedef
+val nativeint : Type.mlc
 (** It is {!nativeint} in OCaml, and [intptr_t] in C. No loss during conversion.
 *)
 
-val bool : Type.typedef
+val bool : Type.mlc
 (** It is {!bool} in OCaml, and [int] in C. No loss during conversion if the int
     is considered as a boolean. *)
 
-val ptr_ref : Type.typedef -> Type.typedef
+val ptr_ref : Type.mlc -> Type.mlc
 (** [ptr_def ty] it change the C value used when calling the C function to a
     pointer on the given type. It is useful with {!output}. The pointer is valid
     for the duration og the call. The OCaml type is the same as for [ty]. *)
@@ -127,16 +127,35 @@ val ptr_ref : Type.typedef -> Type.typedef
 (** In all this section, [init] indicates if the stub need to allocate the
     memory before calling the C function *)
 
-val string_nt : ?owned:bool -> unit -> Type.typedef
+val string_nt : ?owned:bool -> unit -> Type.mlc
 (** It is [string] in OCaml, and [char *] in C. In both side the conversion
     stops at the first null character. If there is no null character in the
     OCaml string it stops at the end. *)
 
+type with_length = {
+  t : Type.param; (* array parameter *)
+  len : Type.param; (* length of the array *)
+}
+
 val input_string :
-  ?owned:bool -> ?output:bool -> ?name:string -> unit -> Type.param * Type.param
+  ?owned:bool ->
+  ?input:bool ->
+  ?output:bool ->
+  ?name:string ->
+  unit ->
+  with_length
+(** Parameter for a "char*" and its length. Given as such to the stubbed
+    function. Converted from/to a [string] in ocaml. *)
 
 val output_string :
-  ?owned:bool -> ?output:bool -> ?name:string -> unit -> Type.param * Type.param
+  ?owned:bool ->
+  ?input:bool ->
+  ?output:bool ->
+  ?name:string ->
+  unit ->
+  with_length
+(** Parameter for a "char*" and its length. The address of those variables are
+    given to the stubbed function. Converted from/to a [string] in ocaml. *)
 
 val fixed_length_string :
   ?init:bool ->
@@ -146,23 +165,32 @@ val fixed_length_string :
   ?len_used_in_call:bool ->
   ?name:string ->
   unit ->
-  Type.param * Type.param
+  with_length
+(** Parameter for a "char*" converted (if input) or allocated (if output) with
+    the length given as input. [(fixed_length_string ()).len] is an input
+    parameter. Converted from/to a [string] in ocaml. *)
 
 val input_array :
   ?owned:bool ->
   ?output:bool ->
   ?input:bool ->
   ?name:string ->
-  Type.typedef ->
-  Type.param * Type.param
+  Type.mlc ->
+  with_length
+(** [input_array mlc] Parameter for an array of [mlc] and its length. Given as
+    such to the stubbed function. Converted from/to an array of [mlc] in OCaml.
+*)
 
 val output_array :
   ?owned:bool ->
   ?output:bool ->
   ?input:bool ->
   ?name:string ->
-  Type.typedef ->
-  Type.param * Type.param
+  Type.mlc ->
+  with_length
+(** [output_array mlc] Parameter for an array of [mlc] and its length. The
+    address of those variables are given to the stubbed function. Converted
+    from/to an array of [mlc] in OCaml. *)
 
 val fixed_length_array :
   ?init:bool ->
@@ -171,8 +199,12 @@ val fixed_length_array :
   ?output:bool ->
   ?len_used_in_call:bool ->
   ?name:string ->
-  Type.typedef ->
-  Type.param * Type.param
+  Type.mlc ->
+  with_length
+(** [fixed_length_array mlc] Parameter for an array of [mlc] converted (if
+    input) or allocated (if output) with the length given as input.
+    [(fixed_length_array ()).len] is an input parameter. Converted from/to an
+    array of [mlc] in OCaml.*)
 
 val abstract :
   ?initialize:string ->
@@ -182,7 +214,7 @@ val abstract :
   ml:string ->
   c:string ->
   unit ->
-  Type.typedef
+  Type.mlc
 
 val custom :
   ?initialize:string ->
@@ -195,7 +227,7 @@ val custom :
   ml:string ->
   c:string ->
   unit ->
-  Type.typedef
+  Type.mlc
 
 val custom_ptr :
   ?initialize:string ->
@@ -206,26 +238,24 @@ val custom_ptr :
   ml:string ->
   c:string ->
   unit ->
-  Type.typedef
+  Type.mlc
 
-val algdata :
-  string -> (string * (string * Type.typedef) list) list -> Type.typedef
-
-val string_as_FILE_ptr : Type.typedef
+val algdata : string -> (string * (string * Type.mlc) list) list -> Type.mlc
+val string_as_FILE_ptr : Type.mlc
 val input_value : string -> Type.param
 val output_value : string -> Type.param
 val module_ : string -> Expr.expr list -> Expr.expr
-val ml_alias : string -> Type.typedef -> Expr.expr
+val ml_alias : string -> Type.mlc -> Expr.expr
 
 val copy :
-  Type.typedef ->
+  Type.mlc ->
   ?vars:(dst:Expr.Var.t -> src:Expr.Var.t -> Expr.Var.t list) ->
   ?exprs:(dst:Expr.Var.t -> src:Expr.Var.t -> Expr.expr list) ->
   string ->
-  Type.typedef
+  Type.mlc
 
-val ret_option_if : Type.typedef -> Type.param * Type.typedef
-val get_expression : name:string -> Type.typedef -> string -> Expr.expr
+val ret_option_if : Type.mlc -> Type.param * Type.mlc
+val get_expression : name:string -> Type.mlc -> string -> Expr.expr
 
 val map_param_in_call :
   ?name:string ->
@@ -240,7 +270,7 @@ val convert :
   ?c_to_mlc:string ->
   ?mlc_to_c:string ->
   ?using:Expr.Var.t list ->
-  mlc:Type.typedef ->
+  mlc:Type.mlc ->
   c:Type.c ->
   unit ->
-  Type.typedef
+  Type.mlc
