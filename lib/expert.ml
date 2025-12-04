@@ -163,7 +163,7 @@ let string_length ?(owned = true) () =
               (fun { fmt } ->
                 fmt "*%a = caml_alloc_string(%a->len);" pp_var v' pp_var c';
                 fmt "memcpy(&Byte(*%a,0),%a->t,%a->len);" pp_var v' pp_var c'
-                  pp_var c);
+                  pp_var c');
           ml2c =
             call_codef "ml2c"
               [ (v', e_addr v); (c', e_addr c) ]
@@ -1623,3 +1623,54 @@ let get_expression ~mlname ty e =
   let result = simple_result ty in
   let e = expr "%a = %a;" pp_var result.rc pp_expr e in
   print_ml_fun ~mlname ~result e ~params:[]
+
+let bigarray_array1_aux ~managed ~kind ~cty ~mlty ~mlelt () =
+  let _struct =
+    let id = ID.mk "bigarray" in
+    toplevel id "struct %a { %s* t; size_t len; };@." pp_id id cty
+  in
+  let cty = typedef "bigarray" "struct %a" pp_def _struct in
+  let v = Var.mk "v" (expr "value") in
+  let c = Var.mk "c" (expr "%a" pp_def cty) in
+  let v' = Var.mk "v" (expr "value *") in
+  let c' = Var.mk "c" (expr "%a *" pp_def cty) in
+  {
+    mlty = expr "(%s,%s,c_layout) Bigarray.Array1.t" mlty mlelt;
+    conv =
+      Boxed
+        {
+          ml2c =
+            call_codef "ml2c"
+              [ (v', e_addr v); (c', e_addr c) ]
+              (fun { fmt } ->
+                fmt "%a->len=Caml_ba_array_val(*%a)->dim[0];@ " pp_var c' pp_var
+                  v';
+                fmt "%a->t=Caml_ba_array_val(*%a)->data;@ " pp_var c' pp_var c');
+          c2ml =
+            expr
+              "%a = caml_ba_alloc_dims@[(%s|CAML_BA_C_LAYOUT|%s,@ 1,@ %a->t,@ \
+               %a->len@]);"
+              pp_var v kind managed pp_var c pp_var c;
+        };
+    cty =
+      {
+        cty = e_def cty;
+        init = None;
+        init_expr = expr "((%a) { 0 })" pp_def cty;
+        free = None;
+        in_call = None;
+        c;
+      };
+    v;
+  }
+
+let bigarray_array1 =
+  let h = Hashtbl.create 10 in
+  fun ~managed ~kind ~cty ~mlty ~mlelt () ->
+    let key = (managed, kind, cty, mlty, mlelt) in
+    match Hashtbl.find_opt h key with
+    | Some s -> s
+    | None ->
+        let s = bigarray_array1_aux ~managed ~kind ~cty ~mlty ~mlelt () in
+        Hashtbl.add h key s;
+        s

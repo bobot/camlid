@@ -227,4 +227,26 @@ module AlgData : sig
 end
 
 val ret_option_if : Expr.expr -> Type.typedef -> Type.typedef
+(** [ret_option_if expr ty] the ocaml calue returned is [Some v] if the C
+    expression [expr] is true, and [v] is returned by [ty], otherwise it is
+    [None]*)
+
 val get_expression : mlname:string -> Type.typedef -> Expr.expr -> Expr.expr
+(** [get_expression ~mlname ty expr] defined the function [mlname] that return
+    the value of the C expression [expr] of type [ty] *)
+
+val bigarray_array1 :
+  managed:string ->
+  kind:string ->
+  cty:string ->
+  mlty:string ->
+  mlelt:string ->
+  unit ->
+  Type.typedef
+(** The biggaray is mirrored by a structure with a field "len" of type size_t
+    and a field "t" of type "cty*"
+    @param managed C constant name for the managed flag
+    @param kind C constant name for the kind flag
+    @param cty the C type of the C elements
+    @param mlty the OCaml type of the OCaml elements
+    @param mlelt the OCaml type witness for the C elements *)
