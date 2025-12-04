@@ -1,3 +1,12 @@
-(rule (targets mylib_stub.h mylib_stub.c mylib.ml) (action (run %{exe:generator/generator.exe})) (mode promote))
+(rule
+ (targets mylib_stub.h mylib_stub.c mylib.ml)
+ (action
+  (run %{exe:generator/generator.exe}))
+ (mode promote))
 
-(test (name app) (foreign_stubs (language c) (names mylib_stub cudd) (flags -Wall -Werror -Wconversion --pedantic-errors -std=c17)))
+(test
+ (name app)
+ (foreign_stubs
+  (language c)
+  (names mylib_stub cudd)
+  (flags -Wall -Werror -Wconversion --pedantic-errors -std=c17)))

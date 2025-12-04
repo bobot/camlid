@@ -1,13 +1,22 @@
-(rule (targets mylib_stub.c mylib.ml) (action (run %{exe:generator/generator.exe})) (mode promote))
+(rule
+ (targets mylib_stub.c mylib.ml)
+ (action
+  (run %{exe:generator/generator.exe}))
+ (mode promote))
 
-(test (name app) (foreign_stubs (language c) (names mylib_stub lib) (flags -Wall -Werror -Wconversion --pedantic-errors -std=c17))
-(modes byte_complete exe))
+(test
+ (name app)
+ (foreign_stubs
+  (language c)
+  (names mylib_stub lib)
+  (flags -Wall -Werror -Wconversion --pedantic-errors -std=c17))
+ (modes byte_complete exe))
 
 (rule
-(alias runtest)
-(action
- (progn
-    (with-stdout-to byte.result (run %{exe:app.bc.exe}))
-    (run diff -u %{dep:app.expected} byte.result)
- )))
-
+ (alias runtest)
+ (action
+  (progn
+   (with-stdout-to
+    byte.result
+    (run %{exe:app.bc.exe}))
+   (run diff -u %{dep:app.expected} byte.result))))

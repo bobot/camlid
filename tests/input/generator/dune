@@ -1,1 +1,3 @@
-(executable (name generator) (libraries camlid))
+(executable
+ (name generator)
+ (libraries camlid))
