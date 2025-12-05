@@ -25,4 +25,4 @@
    (with-stdout-to
     byte.result
     (run %{exe:app.bc.exe}))
-   (run diff -u --strip-trailing-cr %{dep:app.expected} byte.result))))
+   (diff? %{dep:app.expected} byte.result))))
