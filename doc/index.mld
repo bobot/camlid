@@ -46,9 +46,9 @@ open Helper
   ]
 ]}
 
-Each [func "name"] describe the signature of one C function named "name". Each arguments of the function will become inputs, outputs of the OCaml function. It is usual for a C function to fill a [int * result] argument during its call. Parameters that are used as input or output are distintinguished using the function {!Camlid.Helper.input} or {!Camlid.Helper.output}. Parameters of the C function can also be ignored using {!Camlid.Helper.ignored}.
+Each [func "name" l] describes the signature of one C function named "name" and its parameters. Each elements of [l] are usually arguments of the function that should become inputs or outputs of the OCaml function. It is usual for a C function to fill a [int * result] argument during its call, so an argument of the C function can be an output. Inputs or outputs are distintinguished using the function {!Camlid.Helper.input} or {!Camlid.Helper.output}, which takes as argument a description of the type. Parameters of the C function can also be ignored using instead {!Camlid.Helper.ignored}.
 
-The type of the parameters must also be given. Here the [!CamlId.Helper.int_trunc] is used for converting OCaml type [int] to ocaml C type [int]. It is called {e int_trunc} since the value is truncated on 64-bits platform. The OCaml [int] type corresponds to [intptr_t], and [!CamlId.Helper.int] can be used in this case.
+The description of the type of the parameters describe the C type, the OCaml type, the convertion function to use and even in some case the initialisation or deallocation needed. Here the [!CamlId.Helper.int_trunc] is used for converting OCaml type [int] to ocaml C type [int]. It is called {e int_trunc} since the value is truncated on 64-bits platform. The OCaml [int] type corresponds to [intptr_t], and [!CamlId.Helper.int] can be used in this case.
 
 Now in the directory of your OCaml library, you add in the dune file:
 
@@ -56,15 +56,17 @@ Now in the directory of your OCaml library, you add in the dune file:
 
 You can add to this stanza [(mode promote)] or [(mode (promote (until-clean)))], if you want to see the generated files in the source directory (c.f. {{:https://dune.readthedocs.io/en/stable/reference/dune/rule.html#modes}modes}).
 
-The compilation of the stubs now done as {{:https://dune.readthedocs.io/en/stable/foreign-code.html}usual}, for example if {e alib.h} and {e alib.c} are in the current directory.
+The compilation of the stubs is now done as {{:https://dune.readthedocs.io/en/stable/foreign-code.html}usual}, for example if {e alib.h} and {e alib.c} are in the current directory.
 
-{@dune[(library (public_name mylib) (foreign_stubs (language c) (names mylib_stub alib) (flags -Wall -std=c17)))]}
+{@dune[(library (public_name mylib) (foreign_stubs (language c) (names mylib_stub alib) (flags -Werror=implicit-function-declaration -std=c11)))]}
 
-Camlid do not need to be added in the libraries used. Additional C flags can be added such as {e -Wconversion --pedantic-errors}.
+Camlid do not need to be added in the libraries used. Additional C flags can be added in development mode:
+
+{@dune[(env (dev (c_flags -Wall -Werror -Wconversion --pedantic-errors :standard )))]}
 
 {2 Helper}
 
-The {!Camlid.Helper} modules allows to describe simply common cases of uses of the arguments using {!Camlid.Helper.input}, {!Camlid.Helper.output}, {!Camlid.Helper.inout}, {!Camlid.Helper.ignored}. Morevoer the result is specified as optional arguments of {!Camlid.Helper.func}. With the label [~result] when the result should be returned by the OCaml function and [~result_ignored] when the result should be discarded.
+The {!Camlid.Helper} modules allows to describe simply common cases. The kind of arguments are specified using {!Camlid.Helper.input}, {!Camlid.Helper.output}, {!Camlid.Helper.inout}, {!Camlid.Helper.ignored}. Morevoer the result is specified as optional arguments of {!Camlid.Helper.func}. With the label [~result] when the result should be returned by the OCaml function and [~result_ignored] when the result should be discarded.
 
 {3 Common types}
 
@@ -72,7 +74,7 @@ OCaml common types can be translated to there C counter-parts:
 
 {t | Camlid | OCaml | C | remarks |
    |----------|----------|
-   | {!Camlid.Helper.int} | [int] | [intptr_t] (alias into [intnat]) | Loose one bit when converting to OCaml |
+   | {!Camlid.Helper.int} | [int] | [intptr_t] (same size as [intnat]) | Loose one bit when converting to OCaml |
    | {!Camlid.Helper.int_trunc} | [int] | [int] | 32 bit on 64 bit architecture, loose half the bits going to C on 64bit and one going to ML in 32 bit |
    | {!Camlid.Helper.int32} | [int32] | [int32_t] | |
    | {!Camlid.Helper.int64} | [int64] | [int64_t] | |
@@ -88,41 +90,41 @@ For outputs, using [Camlid.Helper.(output int_trunc)] is not useful since a para
 {3 Types with Allocations}
 
 Types that require allocations have more versions:
- - Is the size given as input, given by the C function, or found by looking for the first null pointer or the first null character?
+ - Is the size of an output array given as input, given by the C function, or found by looking for the first null pointer or the first null character?
  - Is the data allocated owned by the OCaml code or the C code?
 
-For [string] the simplest is [Camlid.Helper.string_nt ?owned ()], which convert between [string] and [char *]. The conversion stop at the first null character, in both side. Since OCaml [string] can contains multiple null characters, only a part of the OCaml [string] can be converted to [char *].
+For [string] the simplest is [Camlid.Helper.string_nt ?owned ()], which convert between [string] and [char *]. The conversion stop at the first null character, in both side. Since OCaml [string] can contains multiple null characters, in this case only a part of the OCaml [string] is converted to [char *].
 
 If the C function accept the length of the string as a separate argument the function {!Camlid.Helper.input_string} and {!Camlid.Helper.output_string} that return a pair of parameters. They are directly used to describe parameters in [Camlid.Helper.func].
 
 {[
-      (let a, len = input_string () in
-       func "f_input" [ a; len ]);
+      (let a = input_string () in
+       func "f_input" [ a.t; a.len ]);
 ]}
 
-Only [a] will appear as a parameter of the OCaml function, [len] is only used for the C call as a [size_t]. [a] is a [char *].
+Only [a.t] will appear as a parameter of the OCaml function, [a.len] is only used for the C call as a [size_t]. [a.t] is a [char *].
 
 {[
-      (let a, len = output_string () in
-       func "f_input" [ a; len ]);
+      (let a = output_string () in
+       func "f_input" [ a.t; a.len ]);
 ]}
 
-In the case of {!Camlid.Helper.output_string}, [a] is a [char **] and [len] is a [size_t *].
+In the case of {!Camlid.Helper.output_string}, [a.t] is a [char **] and [a.len] is a [size_t *].
 
-The parameter [a],[len] can be used in the description of different functions but only once by function. [len] should only be used when [a] is also present, since it is just a view on the length of [a].
+The parameters [a.t], [a.len] can be used in the description of different functions but only once by function. [a.len] should only be used when [a.t] is also present, since it is just a view on the length of [a.t].
 
 If the length of the string is known by the caller, {!Camlid.Helper.fixed_length_string} should be used.
 
 {[
-      (let a, len = fixed_length_string () in
-       func "f_output" [ a; len ]);
+      (let a = fixed_length_string () in
+       func "f_output" [ a.t; a.len ]);
 ]}
 
-In that case [len] is an input. If the length should also be given to the C call [len_used_in_call] should be added:
+In that case [a.len] is an input. If the length should also be given to the C call [len_used_in_call] should be added:
 
 {[
-      (let a, len = fixed_length_string ~len_used_in_call:true () in
-       func "f_output" [ a; len ]);
+      (let a = fixed_length_string ~len_used_in_call:true () in
+       func "f_output" [ a.t; a.len ]);
 ]}
 
 For arrays the functions take additionnaly the type of the elements, {!Camlid.Helper.input_array}, {!Camlid.Helper.output_array}, {!Camlid.Helper.fixed_length_array}.
@@ -144,7 +146,7 @@ let () =
 
 It defines an abstract type [type myptr].
 
-In the cas of output parameters that are not also an input, an initialization function can be given.
+In the case of output parameters that are not also an input, an initialization function can be given.
 
 {[
 let pointer = abstract ~initialize:"lib_init" ~ml:"myptr" ~c:"int *" ()
@@ -166,6 +168,8 @@ let () =
       func "to_int" [ input pointer ] ~result:int;
     ]
 ]}
+
+When the C type wrapped is a pointer, {!Camlid.Helper.custom_ptr} is prefered because the functions take the pointer as argument instead of a reference on it.
 
 {1:expert Expert}
 

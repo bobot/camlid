@@ -2,11 +2,13 @@
 
  Camlid is a C binding generator for OCaml. Its interface is not yet stable.
  
- The description is similar to the extension of IDL found in CamlIDL, but it is a DSL in OCaml and it removes the interface language part of IDL. Moreover it tries to keep a core simple and generic and uses predefined helpers for common types and patterns.
+ The description is similar to the extension of IDL found in CamlIDL, but it is a DSL in OCaml and it removes the interface language part of IDL. Moreover it tries to keep a core simple and generic and uses predefined helpers for common types and patterns. It  supports automatic unboxing, untagging when possible. The ownership of the allocated memory after the call to a stubbed C function can be specified.
 
  C11 is required.
 
- ### Example
+ [Documentation](https://bobot.github.io/camlid/camlid/index.html)
+
+ ### Quick Example
 
 Suppose the following header (`alib.h`):
 
