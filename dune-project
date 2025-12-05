@@ -10,4 +10,4 @@
 
 (package
  (name camlid)
- (depends fmt (ocaml (>= 4.11))))
+ (depends (fmt (>= 0.10.0)) (ocaml (>= 4.11))))
