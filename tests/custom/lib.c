@@ -1,6 +1,6 @@
 #include "lib.h"
 #include "stdio.h"
-#include "malloc.h"
+#include "stdlib.h"
 
 void finalize_ptr(int ** p){ printf("finalize\n"); fflush(stdout); free(*p); }
 void initialize_ptr(int ** p){ printf("initialize\n"); fflush(stdout); *p = malloc(sizeof(int)); }

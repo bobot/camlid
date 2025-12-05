@@ -53,7 +53,7 @@ static void camlid_c2ml1(value * v, camlid_array1 * c){
     }
   CAMLreturn0;
   }
-extern value camlid_stub_f_output(){
+extern value camlid_stub_f_output(void){
   CAMLparam0();
   CAMLlocal1(array_r);
   camlid_array1 array = ((camlid_array1) { 0 });
@@ -148,3 +148,4 @@ extern value camlid_stub_f4_byte(value array_len){
   return camlid_stub_f4(array_len1);
   
 }
+

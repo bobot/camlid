@@ -23,7 +23,7 @@ static void caml_cudd_c2ml(value * v, DdManager* * c){
   *v = caml_alloc_custom(&caml_cudd_cops,sizeof(DdManager*), 0, 1);
   *(((DdManager* *) Data_custom_val(*v))) = *c;
   }
-extern value caml_cudd_stub_init(){
+extern value caml_cudd_stub_init(void){
   CAMLparam0();
   CAMLlocal1(vres);
   DdManager* res;
@@ -230,3 +230,4 @@ extern value caml_cudd_stub_inspect(value man,
   caml_cudd_c2ml2(man1, &p_r, &*p1);
   CAMLreturn(p_r);
 }
+

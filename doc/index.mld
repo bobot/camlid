@@ -62,7 +62,7 @@ The compilation of the stubs is now done as {{:https://dune.readthedocs.io/en/st
 
 Camlid do not need to be added in the libraries used. Additional C flags can be added in development mode:
 
-{@dune[(env (dev (c_flags -Wall -Werror -Wconversion --pedantic-errors :standard )))]}
+{@dune[(env (dev (c_flags -Wall -Werror -Wconversion -Wstrict-prototypes --pedantic-errors :standard )))]}
 
 {2 Helper}
 

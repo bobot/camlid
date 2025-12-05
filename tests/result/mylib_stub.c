@@ -8,7 +8,7 @@
 #include <stdio.h>
 #include <string.h>
 #include "lib.h"
-extern intptr_t camlid_stub_f(){
+extern intptr_t camlid_stub_f(void){
   CAMLparam0();
   intptr_t ures;
   intptr_t res;
@@ -16,10 +16,11 @@ extern intptr_t camlid_stub_f(){
   ures = (res);
   CAMLreturnT(intptr_t,ures);
 }
-extern value camlid_stub_f_byte(){
+extern value camlid_stub_f_byte(void){
   intptr_t ures;
   value vres;
   ures = camlid_stub_f();
   vres = Val_long(ures);
   return vres;
 }
+

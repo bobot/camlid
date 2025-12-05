@@ -23,7 +23,7 @@ extern value camlid_stub_f_in(value p){
   CAMLreturn(Val_unit);
 }
 typedef camlid_string_nt * camlid_ref;
-extern value camlid_stub_f_out(){
+extern value camlid_stub_f_out(void){
   CAMLparam0();
   CAMLlocal1(p_r);
   camlid_ref p = &(((struct { camlid_string_nt a; }) { ((camlid_string_nt) { 0 }) }).a);
@@ -54,3 +54,4 @@ extern value camlid_stub_f_in3_byte(value string_len){
   return camlid_stub_f_in3(string_len1);
   
 }
+

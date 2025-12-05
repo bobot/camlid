@@ -45,6 +45,9 @@ let to_file ?(in_header = false) ?(prefix = "camlid_") ?(headers = [])
     (expr "%a" Fmt.(list ~sep:Fmt.cut pp_expr) l);
   if in_header then (
     output_string cout_h (Printf.sprintf "#endif");
+    output_string cout_h "\n";
     close_out cout_h);
+  output_string cout_c "\n";
   close_out cout_c;
+  output_string cout_ml "\n";
   close_out cout_ml

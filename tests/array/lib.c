@@ -22,6 +22,7 @@ void f(intptr_t **a, size_t *len)
         }
     }
 }
+
 void f2(intptr_t *a, size_t len)
 {
     for (size_t i = 0; i < len; i++)
@@ -31,6 +32,7 @@ void f2(intptr_t *a, size_t len)
         a[i] += 1;
     }
 }
+
 void f4(intptr_t * a) {
     a[0] = 4;
     a[1] = 5;

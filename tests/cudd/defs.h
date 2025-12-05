@@ -1,6 +1,6 @@
 #include "mylib_stub.h"
 
-static DdManager* cudd_init(){
+static DdManager* cudd_init(void){
     return Cudd_Init(0, 0, CUDD_UNIQUE_SLOTS, CUDD_CACHE_SLOTS, 0);
 }
 

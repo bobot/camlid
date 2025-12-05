@@ -1030,7 +1030,7 @@ let code_c_fun ~params ~result ~name (fid : expr) =
       in
       fmt "@[<hv>@[<hv 2>@[extern %a %a@](%a)@[{@]@," pp_result kind_of_result
         pp_id id
-        Fmt.(list ~sep:comma pp_formal)
+        Fmt.(list_or_empty ~empty:(any "void") ~sep:comma pp_formal)
         inputs;
       (* Local ML values *)
       let rec camlParam ~is_param ~first l =
@@ -1166,7 +1166,7 @@ let code_c_fun_bytecode ~params ~result fid_native =
       if List.length inputs <= 5 then
         let pp_formal fmt pv = Fmt.pf fmt "%a %a" pp_expr pv.ty pp_var pv in
         fmt "@[<hv>@[<hv 2>@[extern value %a@](%a)@[{@]@," pp_id id
-          Fmt.(list ~sep:comma pp_formal)
+          Fmt.(list_or_empty ~empty:(any "void") ~sep:comma pp_formal)
           inputs
       else (
         fmt "@[<hv>@[<hv 2>@[extern value %a@](value * argv, int argn)@[{@]@,"

@@ -1,6 +1,6 @@
 #include "lib.h"
 #include "stdio.h"
-#include "malloc.h"
+#include "stdlib.h"
 
 void lib_free(int * p){ printf("finalize\n"); fflush(stdout); free(p); }
 void lib_init(int ** p){ printf("initialize\n"); fflush(stdout); *p = malloc(sizeof(int)); }

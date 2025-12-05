@@ -8,4 +8,5 @@
 #include <stdio.h>
 #include <string.h>
 #include "lib.h"
-extern value camlid_stub_f(){CAMLparam0();f();CAMLreturn(Val_unit);}
+extern value camlid_stub_f(void){CAMLparam0();f();CAMLreturn(Val_unit);}
+

@@ -9,7 +9,7 @@
 #include <string.h>
 #include "lib.h"
 typedef int * camlid_ref;
-extern intptr_t camlid_stub_f(){
+extern intptr_t camlid_stub_f(void){
   CAMLparam0();
   intptr_t p;
   camlid_ref p1 = &(((struct { int a; }) { ((int) { 0 }) }).a);
@@ -17,7 +17,7 @@ extern intptr_t camlid_stub_f(){
   p = (intptr_t)(*p1);
   CAMLreturnT(intptr_t,p);
 }
-extern value camlid_stub_f_byte(){
+extern value camlid_stub_f_byte(void){
   intptr_t p;
   value p_r;
   p = camlid_stub_f();
@@ -26,7 +26,7 @@ extern value camlid_stub_f_byte(){
 }
 typedef int * camlid_ref1;
 typedef int * camlid_ref2;
-extern value camlid_stub_f2(){
+extern value camlid_stub_f2(void){
   CAMLparam0();
   CAMLlocal3(ret, p_r, p_r1);
   camlid_ref1 p = &(((struct { int a; }) { ((int) { 0 }) }).a);
@@ -39,3 +39,4 @@ extern value camlid_stub_f2(){
   Store_field(ret, 1, p_r1);
 CAMLreturn(ret);
 }
+
