@@ -9,5 +9,11 @@
  (foreign_stubs
   (language c)
   (names mylib_stub lib)
-  (flags -Wall -Werror -Wconversion -Wstrict-prototypes --pedantic-errors -std=c11))
+  (flags
+   -Wall
+   -Werror
+   -Wconversion
+   -Wstrict-prototypes
+   --pedantic-errors
+   -std=c11))
  (libraries fmt))
