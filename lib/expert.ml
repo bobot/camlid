@@ -612,7 +612,7 @@ let custom ?initialize ?finalize ?hash ?compare ?get ?set ~ml ~icty ~cty () =
         let v = Var.mk "v" e_value in
         {
           hash_op =
-            code ~ret:(expr "intptr_t") "hash_op" "return %a;" pp_expr_binds
+            code ~ret:(expr "intnat") "hash_op" "return %a;" pp_expr_binds
               (hash.hash, [ (hash.i, data_custom_val icty v) ]);
           v;
         })

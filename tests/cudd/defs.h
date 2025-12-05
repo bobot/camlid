@@ -18,7 +18,7 @@ static void bdd_inspect(DdManager *man, caml_cudd_result *dst, DdNode *src)
     {
         DdNode *th = Cudd_T(src);
         DdNode *el = Cudd_E(src);
-        intptr_t v = Cudd_NodeReadIndex(src);
+        intptr_t v = (intptr_t) Cudd_NodeReadIndex(src);
         if (Cudd_IsComplement(src))
         {
             th = Cudd_Not(th);
