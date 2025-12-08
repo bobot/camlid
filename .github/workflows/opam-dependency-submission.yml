@@ -6,6 +6,9 @@ on:
 
 jobs:
   opam-dependency-submission:
+    permissions:
+      contents: write
+
     runs-on: ubuntu-latest
     steps:
       - name: Checkout tree
