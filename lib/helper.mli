@@ -4,6 +4,7 @@ val func :
   ?ml:string ->
   ?result:Type.mlc ->
   ?ignored_result:Type.mlc ->
+  ?call_params:Type.param list ->
   string ->
   Type.param list ->
   Expr.expr
@@ -28,7 +29,10 @@ val func :
     @param params
       usually parameters of the C function. More generally when using
       {!Camlid.Expert}, it gives all the variables and their functions used for
-      the generation of the C stub function. *)
+      the generation of the C stub function.
+    @param call_params
+      allows to reorder the list of parameters for the call to the stubbed
+      function (by default params) *)
 
 (** {1 Creating parameters from templates} *)
 

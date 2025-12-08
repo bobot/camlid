@@ -166,16 +166,20 @@ val list_or_empty :
 
 val code_c_fun :
   params:Type.param list ->
+  call_params:Type.param list ->
   result:Type.result option ->
   name:string ->
   Expr.expr ->
   Expr.code
+(** @param call_params
+      should be a reordered subset of params (usually it is [params]) *)
 
 val code_c_fun_bytecode :
   params:Type.param list -> result:Type.result option -> Expr.code -> Expr.code
 
 val print_ml_fun :
   params:Type.param list ->
+  ?call_params:Type.param list ->
   ?result:Type.result ->
   mlname:string ->
   Expr.expr ->

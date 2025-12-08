@@ -47,15 +47,16 @@ let bool : mlc =
 let string_nt = Expert.string_nt
 let ptr_ref = ptr_ref
 
-let func_id ~ml ?result fid params =
+let func_id ~ml ?result ~call_params fid params =
   (* C function declaration *)
-  print_ml_fun fid ~mlname:ml ~params ?result
+  print_ml_fun ~call_params fid ~mlname:ml ~params ?result
 
-let func_res ?ml ?result fname params =
+let func_res ?ml ?result ?call_params fname params =
+  let call_params = Option.value call_params ~default:params in
   let ml = Option.value ~default:fname ml in
   let fid =
     let vars_used_in_calls =
-      List.filter_map (fun p -> Option.map fst p.pused_in_call) params
+      List.filter_map (fun p -> Option.map fst p.pused_in_call) call_params
     in
     let pp_result fmt = function
       | None -> ()
@@ -63,9 +64,9 @@ let func_res ?ml ?result fname params =
     in
     expr "%a%a;" pp_result result pp_call (existing fname vars_used_in_calls, [])
   in
-  func_id ~ml ?result fid params
+  func_id ~ml ?result ~call_params fid params
 
-let func ?ml ?result ?ignored_result fname params =
+let func ?ml ?result ?ignored_result ?call_params fname params =
   let result =
     match (result, ignored_result) with
     | Some _, Some _ ->
@@ -77,7 +78,7 @@ let func ?ml ?result ?ignored_result fname params =
         Some { routput = PONone; rc; rfree = Option.map bind' rty.cty.free }
     | None, None -> None
   in
-  func_res ?ml ?result fname params
+  func_res ?ml ?result ?call_params fname params
 
 type with_length = { t : Type.param; len : Type.param }
 
@@ -261,7 +262,7 @@ let map_param_in_call ?(name = "arg") ~ty param fmt =
     (fun _ e -> (expr "%s" ty, expr "%(%a%)" fmt pp_expr e))
     param
 
-let do_nothing ml = func_id ~ml ?result:None (expr "")
+let do_nothing ml = func_id ~ml ~call_params:[] ?result:None (expr "")
 
 let convert ?c_to_mlc ?mlc_to_c ?(using = []) ~mlc ~c () =
   let mk =

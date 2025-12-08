@@ -952,8 +952,9 @@ let pp_scall proj { fmt } l =
   | [] -> ()
   | l -> fmt "%a@ " Fmt.(list ~sep:sp (box pp_expr)) l
 
-let code_c_fun ~params ~result ~name (fid : expr) =
+let code_c_fun ~params ~call_params ~result ~name (fid : expr) =
   let params = add_result params result in
+  let call_params = add_result call_params result in
   let var_pinput p =
     match p.pinput with
     | PINone -> None
@@ -1088,7 +1089,7 @@ let code_c_fun ~params ~result ~name (fid : expr) =
       pp_scall (fun p -> p.pinit) { fmt } params;
       (* function call *)
       fmt "@[%a@]@," pp_expr_binds
-        (fid, List.filter_map (fun p -> p.pused_in_call) params);
+        (fid, List.filter_map (fun p -> p.pused_in_call) call_params);
       (* convert output variable *)
       pp_scall c2a_poutput { fmt } params;
       (match kind_of_result with
@@ -1206,8 +1207,10 @@ let code_c_fun_bytecode ~params ~result fid_native =
       | MultipleValues -> ());
       fmt "@]@,@[}@]@]@.")
 
-let print_ml_fun ~params ?result ~mlname fid =
-  let code_c = code_c_fun ~params ~result ~name:("stub_" ^ mlname) fid in
+let print_ml_fun ~params ?(call_params = params) ?result ~mlname fid =
+  let code_c =
+    code_c_fun ~params ~call_params ~result ~name:("stub_" ^ mlname) fid
+  in
   let all = add_result params result in
   let inputs =
     List.filter_map
