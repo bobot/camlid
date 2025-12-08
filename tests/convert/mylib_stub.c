@@ -1,12 +1,13 @@
 // generated using generator.exe and camlid
 #include "mylib_stub.h"
+#include "defs.h"
+#define CAML_NAME_SPACE
 #include <caml/mlvalues.h>
 #include <caml/memory.h>
 #include <caml/alloc.h>
 #include <caml/custom.h>
 #include <stdio.h>
 #include <string.h>
-#include "defs.h"
 static void camlid_c2ml1(value * v, camlid_result * c){
   CAMLparam0();
   CAMLlocal1(tmp);

@@ -1,12 +1,13 @@
 // generated using generator.exe and camlid
 #include "mylib_stub.h"
+#include "./defs.h"
+#define CAML_NAME_SPACE
 #include <caml/mlvalues.h>
 #include <caml/memory.h>
 #include <caml/alloc.h>
 #include <caml/custom.h>
 #include <stdio.h>
 #include <string.h>
-#include "./defs.h"
 static void caml_cudd_init(DdManager* * i){ Cudd_Quit(*i); free(*i); }
 static void caml_cudd_finalize_op(value v){
   caml_cudd_init(((DdManager* *) Data_custom_val(v)));

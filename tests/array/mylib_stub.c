@@ -1,13 +1,14 @@
 // generated using generator.exe and camlid
 #include <stddef.h>
 #include <inttypes.h>
+#include "lib.h"
+#define CAML_NAME_SPACE
 #include <caml/mlvalues.h>
 #include <caml/memory.h>
 #include <caml/alloc.h>
 #include <caml/custom.h>
 #include <stdio.h>
 #include <string.h>
-#include "lib.h"
 struct camlid_array_s { intptr_t* t; size_t len; };
 typedef struct camlid_array_s camlid_array;
 static void camlid_ml2c(value * v, camlid_array * c){

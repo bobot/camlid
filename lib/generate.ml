@@ -5,6 +5,7 @@ let print_h cout =
   output_string cout "#include <inttypes.h>\n"
 
 let print_c cout =
+  output_string cout "#define CAML_NAME_SPACE\n";
   output_string cout "#include <caml/mlvalues.h>\n";
   output_string cout "#include <caml/memory.h>\n";
   output_string cout "#include <caml/alloc.h>\n";
@@ -32,13 +33,13 @@ let to_file ?(in_header = false) ?(prefix = "camlid_") ?(headers = [])
       (Printf.sprintf "#ifndef %s\n#define %s\n" basename basename);
     output_string cout_c (Printf.sprintf "#include \"%s\"\n" filename_h));
   print_h cout_h;
-  print_c cout_c;
   List.iter
     (fun header -> Printf.fprintf cout_h "#include \"%s\"\n" header)
     headers;
   List.iter
     (fun header -> Printf.fprintf cout_c "#include \"%s\"\n" header)
     definitions;
+  print_c cout_c;
   let cout_ml = open_out (basename ^ ".ml") in
   header_ml cout_ml;
   final_print ~prefix ~ml:cout_ml ~c:cout_c ~h:cout_h ML

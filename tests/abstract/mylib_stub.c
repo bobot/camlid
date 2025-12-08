@@ -1,13 +1,14 @@
 // generated using generator.exe and camlid
 #include <stddef.h>
 #include <inttypes.h>
+#include "lib.h"
+#define CAML_NAME_SPACE
 #include <caml/mlvalues.h>
 #include <caml/memory.h>
 #include <caml/alloc.h>
 #include <caml/custom.h>
 #include <stdio.h>
 #include <string.h>
-#include "lib.h"
 typedef int * camlid_abstract;
 static void camlid_c2ml(value * v, camlid_abstract * c){
   *v = caml_alloc((sizeof(camlid_abstract) + sizeof(value) - 1) / sizeof(value), Abstract_tag);

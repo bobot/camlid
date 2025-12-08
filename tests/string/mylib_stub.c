@@ -1,13 +1,14 @@
 // generated using generator.exe and camlid
 #include <stddef.h>
 #include <inttypes.h>
+#include "./lib.h"
+#define CAML_NAME_SPACE
 #include <caml/mlvalues.h>
 #include <caml/memory.h>
 #include <caml/alloc.h>
 #include <caml/custom.h>
 #include <stdio.h>
 #include <string.h>
-#include "./lib.h"
 typedef char * camlid_string_nt;
 static void camlid_ml2c(value * v, camlid_string_nt * c){
   size_t len=strlen(String_val(*v))+1;
