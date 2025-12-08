@@ -7,6 +7,7 @@
 (authors "François Bobot")
 (source (github bobot/camlid))
 (license "LGPL-2.1-only")
+(name camlid)
 
 (package
  (name camlid)
