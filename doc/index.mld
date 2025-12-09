@@ -14,7 +14,7 @@ In addition to the following starting example, standalone examples can be found 
 
 Camlid allows to define an executable that will generate here a `mylib_stub.c` and `mylib.ml` file.
 
-Lets suppose that you want to bind with to the following C functions, declared in {e alib.h}:
+Lets suppose that you want to bind to the following C functions, declared in {e alib.h}:
 
 {@c[
 void f_input(int);
@@ -46,7 +46,7 @@ open Helper
   ]
 ]}
 
-Each [func "name" l] describes the signature of one C function named "name" and its parameters. Each elements of [l] are usually arguments of the function that should become inputs or outputs of the OCaml function. It is usual for a C function to fill a [int * result] argument during its call, so an argument of the C function can be an output. Inputs or outputs are distintinguished using the function {!Camlid.Helper.input} or {!Camlid.Helper.output}, which takes as argument a description of the type. Parameters of the C function can also be ignored using instead {!Camlid.Helper.ignored}.
+Each [func "name" l] describes the signature of one C function named "name" and its parameters. Each elements of [l] are usually arguments of the function that should become inputs or outputs of the OCaml function. It is usual for a C function to fill an argument of type [int *] during its call, so an argument of the C function can be an output. Inputs or outputs are distintinguished using the function {!Camlid.Helper.input} or {!Camlid.Helper.output}, which takes as argument a description of the type. Parameters of the C function can also be ignored using instead {!Camlid.Helper.ignored}.
 
 The description of the type of the parameters describe the C type, the OCaml type, the convertion function to use and even in some case the initialisation or deallocation needed. Here the [!CamlId.Helper.int_trunc] is used for converting OCaml type [int] to ocaml C type [int]. It is called {e int_trunc} since the value is truncated on 64-bits platform. The OCaml [int] type corresponds to [intptr_t], and [!CamlId.Helper.int] can be used in this case.
 
