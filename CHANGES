@@ -1,3 +1,7 @@
+# 0.2 Initial release
+    - implement algdata as input
+    - fix tests in release mode for ocaml < 5.2
+
 # 0.1 Initial release
 
     - generic framework

@@ -54,7 +54,7 @@ Now in the directory of your OCaml library, you add in the dune file:
 
 {@dune[(rule (targets mylib_stub.c mylib.ml) (action (run %{exe:generator/generator.exe})))]}
 
-You can add to this stanza [(mode promote)] or [(mode (promote (until-clean)))], if you want to see the generated files in the source directory (c.f. {{:https://dune.readthedocs.io/en/stable/reference/dune/rule.html#modes}modes}).
+You can add to this stanza [(mode (promote (until-clean)))], if you want to see the generated files in the source directory (c.f. {{:https://dune.readthedocs.io/en/stable/reference/dune/rule.html#modes}modes}). Other promotion mode `(mode promote)` should be avoided because dune will not regenerate them in mode release and the generation is different with the version of OCaml.
 
 The compilation of the stubs is now done as {{:https://dune.readthedocs.io/en/stable/foreign-code.html}usual}, for example if {e alib.h} and {e alib.c} are in the current directory.
 
