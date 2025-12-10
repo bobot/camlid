@@ -265,9 +265,35 @@ let map_param_in_call ?(name = "arg") ~ty param fmt =
 let do_nothing ml = func_id ~ml ~call_params:[] ?result:None (expr "")
 
 let convert ?c_to_mlc ?mlc_to_c ?(using = []) ~mlc ~c () =
-  let mk =
+  let mk ~src ~dst =
     Option.map (fun name ->
-        Expert.mk_converter ~src:c ~dst:mlc.cty name ~vars:(fun ~dst ~src ->
+        Expert.mk_converter ~src ~dst name ~vars:(fun ~dst ~src ->
             [ dst; src ] @ using))
   in
-  Expert.convert ?c_to_mlc:(mk c_to_mlc) ?mlc_to_c:(mk mlc_to_c) ~mlc ~c ()
+  Expert.convert
+    ?c_to_mlc:(mk c_to_mlc ~dst:mlc.cty ~src:c)
+    ?mlc_to_c:(mk mlc_to_c ~dst:c ~src:mlc.cty)
+    ~mlc ~c ()
+
+let on_stack ?init_expr ?initialize ?clear cty =
+  let cty = expr "%s" cty in
+  let initialize = Option.map (mk_initialize ~cty) initialize in
+  let clear = Option.map (mk_initialize ~cty) clear in
+  let c = Var.mk "c" cty in
+  let pp_f f =
+    let pp_init fmt f =
+      Fmt.pf fmt "%a" pp_expr_binds (f.initialize, [ (f.c, e_addr c) ])
+    in
+    expro "%a" Fmt.(option pp_init) f
+  in
+  {
+    cty;
+    init = pp_f initialize;
+    init_expr =
+      (match init_expr with
+      | Some s -> expr "%s" s
+      | None -> expr "((%a) { 0 })" pp_expr cty);
+    free = pp_f clear;
+    in_call = None;
+    c;
+  }

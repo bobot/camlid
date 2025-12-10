@@ -1,0 +1,28 @@
+(rule
+ (targets mylib_stub.c mylib_stub.h mylib.ml)
+ (action
+  (run %{exe:generator/generator.exe}))
+ (mode promote))
+
+(test
+ (name app)
+ (foreign_stubs
+  (language c)
+  (names mylib_stub lib)
+  (flags
+   -Wall
+   -Werror
+   -Wconversion
+   -Wstrict-prototypes
+   --pedantic-errors
+   -std=c11))
+ (modes byte_complete exe))
+
+(rule
+ (alias runtest)
+ (action
+  (progn
+   (with-stdout-to
+    byte.result
+    (run %{exe:app.bc.exe}))
+   (diff? %{dep:app.expected} byte.result))))

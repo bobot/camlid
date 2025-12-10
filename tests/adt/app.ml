@@ -1,0 +1,5 @@
+let () = Mylib.f_print Mylib.(T2)
+let () = Mylib.f_print Mylib.(T1 (1, 2.0))
+let () = Mylib.f_print Mylib.(T1 (3, 6.0))
+let () = Mylib.f_print Mylib.(T3 2)
+let () = Mylib.f_print Mylib.(T3 5)

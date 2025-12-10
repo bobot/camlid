@@ -278,3 +278,9 @@ val convert :
   c:Type.c ->
   unit ->
   Type.mlc
+
+val on_stack :
+  ?init_expr:string -> ?initialize:string -> ?clear:string -> string -> Type.c
+(** Define a C type that is allocated on the stack. It is initialized and
+    cleared with the given functions.
+    @param init_expr is the initialization expression used *)

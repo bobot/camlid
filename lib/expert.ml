@@ -1303,13 +1303,13 @@ let convert ?mlc_to_c ?c_to_mlc ~(mlc : mlc) ~(c : c) () =
       match mlc_to_c with
       | None -> expr "#error(\"no_ mlc_to_c given\")"
       | Some (mlc_to_c : convert) ->
-          call_codef "c2ml" binds (fun { fmt } ->
+          call_codef "ml2c" binds (fun { fmt } ->
               fmt "%a tmp;@ " pp_expr mlc.cty.cty;
               fmt "%a@ " pp_expr_binds
                 (a_ml2c, ty_binds ~c:(expr "tmp") ~v:(e_deref v') mlc);
               fmt "%a;" pp_expr_binds
                 ( mlc_to_c.convert,
-                  [ (mlc_to_c.src, e_var c'); (mlc_to_c.dst, expr "&tmp") ] ))
+                  [ (mlc_to_c.dst, e_var c'); (mlc_to_c.src, expr "&tmp") ] ))
     in
     let mk_c2ml a_c2ml =
       match c_to_mlc with
@@ -1478,10 +1478,74 @@ module AlgData = struct
           fmt "switch(%a->tag){@,%a};@ " pp_var c' Fmt.(list ~sep:sp pp_case) l;
           fmt "CAMLreturn0;")
     in
+    let ml2c =
+      let pp_case_const fmt (name, id, nc) =
+        Fmt.pf fmt "@[<hv 2>case %i: /* %s */@ " nc name;
+        Fmt.pf fmt "%a->tag = %a;@ " pp_var c' pp_id id;
+        Fmt.pf fmt "break;@]"
+      in
+      let pp_case_non_const fmt (name, id, nc, fields) =
+        Fmt.pf fmt "@[<hv 2>case %i: /* %s */@ " nc name;
+        (Fmt.pf fmt "%a->tag=%a;@ " pp_var c' pp_id id;
+         let fields = List.mapi (fun i x -> (i, x)) fields in
+         let pp_field fmt (i, (fname, _, ty)) =
+           let ml2c, _ = get_boxing ty.conv in
+           Fmt.pf fmt "tmp=Field(*%a,%i);@ " pp_var v' i;
+           Fmt.pf fmt "%a" pp_expr_binds
+             ( ml2c,
+               ty_binds ~v:(expr "tmp")
+                 ~c:(expr "%a->u.%s.%s" pp_var c' name fname)
+                 ty )
+         in
+         Fmt.(list ~sep:sp pp_field) fmt fields);
+        Fmt.pf fmt "@ break;@]"
+      in
+      let consts =
+        List.filter_map
+          (function name, id, KConst nc -> Some (name, id, nc) | _ -> None)
+          l
+      in
+      let non_consts =
+        List.filter_map
+          (function
+            | name, id, KNonConst (nc, fields) -> Some (name, id, nc, fields)
+            | _ -> None)
+          l
+      in
+      let print_consts { fmt } =
+        fmt "switch(Long_val(*%a)){@,%a@,};@ " pp_var v'
+          Fmt.(list ~sep:sp pp_case_const)
+          consts;
+        fmt "return;"
+      in
+      let print_non_consts { fmt } =
+        fmt "CAMLparam0();@ ";
+        fmt "CAMLlocal1(tmp);@ ";
+        fmt "switch(Tag_val(*%a)){@,%a@,};@ " pp_var v'
+          Fmt.(list ~sep:sp pp_case_non_const)
+          non_consts;
+        fmt "CAMLreturn0;"
+      in
+      call_codef "ml2c"
+        [ (v', e_addr v); (c', e_addr c) ]
+        (fun { fmt } ->
+          match (consts, non_consts) with
+          | [], [] ->
+              failwith
+                "Really an empty types? Please report if really needed, thanks."
+          | _, [] -> print_consts { fmt }
+          | [], _ -> print_non_consts { fmt }
+          | _, _ ->
+              fmt "if(Is_long(*%a)){" pp_var v';
+              print_consts { fmt };
+              fmt "}else{";
+              print_non_consts { fmt };
+              fmt "}")
+    in
     let ty =
       {
         mlty = e_def mlty;
-        conv = Boxed { c2ml; ml2c = expr "#error(\"not_yet_implemented\")" };
+        conv = Boxed { c2ml; ml2c };
         cty =
           {
             cty = e_def cty;
