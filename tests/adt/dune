@@ -2,7 +2,8 @@
  (targets mylib_stub.c mylib_stub.h mylib.ml)
  (action
   (run %{exe:generator/generator.exe}))
- (mode (promote (until-clean))))
+ (mode
+  (promote (until-clean))))
 
 (test
  (name app)
