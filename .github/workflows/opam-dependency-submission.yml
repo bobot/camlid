@@ -1,25 +1,26 @@
 name: Opam Dependency Submission
 
 on:
-  - push
-  - pull_request
+  push:
+    branches:
+      - main
+
+concurrency:
+  group: opam-dependency-submission
+  cancel-in-progress: true
+
+permissions: read-all
 
 jobs:
   opam-dependency-submission:
     permissions:
       contents: write
-
     runs-on: ubuntu-latest
     steps:
       - name: Checkout tree
-        uses: actions/checkout@v5
-
-      - name: Set-up OCaml 5.4
+        uses: actions/checkout@v6
+      - name: Set-up OCaml
         uses: ocaml/setup-ocaml@v3
         with:
-          ocaml-compiler: 5.4
-          dune-cache: true
-          allow-prerelease-opam: true
-
-      - name: Opam Dependency Submission
-        uses: ocaml/setup-ocaml/analysis@v3
+          ocaml-compiler: 5
+      - uses: ocaml/setup-ocaml/analysis@v3
