@@ -756,20 +756,20 @@ let custom_ptr ?initialize ?finalize ?hash ?compare ?(malloc = true) ~ml ~cty ()
         (finalize.finalize, [ (finalize.i, expr "*%a" pp_var i) ])
     in
     match finalize with
-    | None when malloc -> Some { finalize = call_codef "init" [] ffree; i }
+    | None when malloc -> Some { finalize = call_codef "finalize" [] ffree; i }
     | None -> None
     | Some finalize when malloc ->
         Some
           {
             finalize =
-              call_codef "init" [] (fun fmt ->
+              call_codef "finalize" [] (fun fmt ->
                   ffinalize finalize fmt;
                   fmt.fmt "@ ";
                   ffree fmt);
             i;
           }
     | Some finalize ->
-        Some { finalize = call_codef "init" [] (ffinalize finalize); i }
+        Some { finalize = call_codef "finalize" [] (ffinalize finalize); i }
   in
   let hash =
     let i = Var.mk "i" (expr "%a *" pp_expr cty_ptr) in
@@ -843,7 +843,7 @@ let mk_initialize ~cty ?vars ?exprs initialize =
   let initialize = Unary.gen ~debug_name:"initialize" vars exprs initialize c in
   { initialize; c }
 
-let simple_param ?input_label ?(binds = []) ?(input = false) ?(output = false)
+let param ?input_label ?(binds = []) ?(input = false) ?(output = false)
     ?(used_in_call = true) ?(name = "p") pty =
   let pc = Var.mk name pty.cty.cty in
   let pc_call = Var.mk name pty.cty.cty in
@@ -936,7 +936,13 @@ let simple_param ?input_label ?(binds = []) ?(input = false) ?(output = false)
   in
   let pinit_expr = [ (pc, Some pty.cty.init_expr) ] in
   let pfree = Option.map bind pty.cty.free in
-  ({ pinput; pinit_expr; pinit; pused_in_call; pfree; poutput }, pc)
+  ({ pinput; pinit_expr; pinit; pused_in_call; pfree; poutput }, pc, pv)
+
+let simple_param ?input_label ?binds ?input ?output ?used_in_call ?name pty =
+  let param, c_var, _ =
+    param ?input_label ?binds ?input ?output ?used_in_call ?name pty
+  in
+  (param, c_var)
 
 let list_or_empty ~empty ~sep pp fmt = function
   | [] -> empty fmt ()
@@ -1333,7 +1339,11 @@ let convert ?mlc_to_c ?c_to_mlc ~(mlc : mlc) ~(c : c) () =
       | None -> expr "#error(\"no_ c_to_ml given\")"
       | Some (c_to_mlc : convert) ->
           call_codef "c2ml" binds (fun { fmt } ->
-              fmt "%a tmp;" pp_expr mlc.cty.cty;
+              fmt "%a tmp;@ " pp_expr mlc.cty.cty;
+              Option.iter
+                (fun init ->
+                  fmt "%a@ " pp_expr_binds (init, [ (mlc.cty.c, expr "tmp") ]))
+                mlc.cty.init;
               fmt "%a;@ " pp_expr_binds
                 ( c_to_mlc.convert,
                   [ (c_to_mlc.src, e_var c'); (c_to_mlc.dst, expr "&tmp") ] );
