@@ -171,7 +171,7 @@ let string_as_FILE_ptr =
         init =
           Some (call_codef "init" [ (v', e_addr v); (c', e_addr c) ] malloc);
         init_expr = expr "((%a) { 0 })" pp_def cty;
-        free = Some (expr "fclose(%a.file);" pp_var c);
+        free = Some (expr "fclose(%a.file); free(%a.t);" pp_var c pp_var c);
         in_call = Some (expr "%a.file" pp_var c);
         c;
       };
