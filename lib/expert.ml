@@ -1222,11 +1222,12 @@ let code_c_fun_bytecode ~params ~result fid_native =
       fmt "@[%a%a;@]@," pp_result kind_of_result pp_call
         (fid_native, List.filter_map (fun p -> p.pused_in_call) params);
       (* convert output variable *)
-      pp_scall u2ml_poutput { fmt } params;
       (match kind_of_result with
       | UnitResult -> ()
       | OneResultValue _ -> ()
-      | OneResultUnboxed { ml; _ } -> fmt "@[return %a;@]" pp_var ml
+      | OneResultUnboxed { ml; _ } ->
+          pp_scall u2ml_poutput { fmt } params;
+          fmt "@[return %a;@]" pp_var ml
       | MultipleValues -> ());
       fmt "@]@,@[}@]@]@.")
 
