@@ -144,6 +144,16 @@ val mk_initialize :
   string ->
   initialize
 
+val param :
+  ?input_label:string ->
+  ?binds:(Expr.var * Expr.expr) list ->
+  ?input:bool ->
+  ?output:bool ->
+  ?used_in_call:bool ->
+  ?name:string ->
+  Type.mlc ->
+  Type.param * Expr.var * Expr.var
+
 val simple_param :
   ?input_label:string ->
   ?binds:(Expr.var * Expr.expr) list ->

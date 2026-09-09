@@ -387,7 +387,24 @@ let array ?(init = true) ?(owned = true) ~len (ty : mlc) =
                             ty_binds ~c:(expr "((*%a)[cid_i])" pp_var c') ty )))
            else None);
         init_expr = expr "((%a) { 0 })" pp_expr cty;
-        free = (if owned then Some (expr "free(%a);" pp_var c) else None);
+        free =
+          (if owned then
+             Some
+               (match ty.cty.free with
+               | None -> expr "free(%a);" pp_var c
+               | Some free ->
+                   call_codef "free"
+                     [ (c', e_addr c) ]
+                     (fun { fmt } ->
+                       fmt
+                         "@[<hv 2>@[for(size_t cid_i=0;@ cid_i < %a;@ cid_i++@,\
+                          ){@]@,\
+                          %a@,\
+                          }@]@,"
+                         pp_var len pp_expr_binds
+                         (free, ty_binds ~c:(expr "((*%a)[cid_i])" pp_var c') ty);
+                       fmt "free(%a);" pp_var c))
+           else None);
         in_call = None;
         c;
       };
@@ -739,20 +756,20 @@ let custom_ptr ?initialize ?finalize ?hash ?compare ?(malloc = true) ~ml ~cty ()
         (finalize.finalize, [ (finalize.i, expr "*%a" pp_var i) ])
     in
     match finalize with
-    | None when malloc -> Some { finalize = call_codef "init" [] ffree; i }
+    | None when malloc -> Some { finalize = call_codef "finalize" [] ffree; i }
     | None -> None
     | Some finalize when malloc ->
         Some
           {
             finalize =
-              call_codef "init" [] (fun fmt ->
+              call_codef "finalize" [] (fun fmt ->
                   ffinalize finalize fmt;
                   fmt.fmt "@ ";
                   ffree fmt);
             i;
           }
     | Some finalize ->
-        Some { finalize = call_codef "init" [] (ffinalize finalize); i }
+        Some { finalize = call_codef "finalize" [] (ffinalize finalize); i }
   in
   let hash =
     let i = Var.mk "i" (expr "%a *" pp_expr cty_ptr) in
@@ -826,7 +843,7 @@ let mk_initialize ~cty ?vars ?exprs initialize =
   let initialize = Unary.gen ~debug_name:"initialize" vars exprs initialize c in
   { initialize; c }
 
-let simple_param ?input_label ?(binds = []) ?(input = false) ?(output = false)
+let param ?input_label ?(binds = []) ?(input = false) ?(output = false)
     ?(used_in_call = true) ?(name = "p") pty =
   let pc = Var.mk name pty.cty.cty in
   let pc_call = Var.mk name pty.cty.cty in
@@ -919,7 +936,13 @@ let simple_param ?input_label ?(binds = []) ?(input = false) ?(output = false)
   in
   let pinit_expr = [ (pc, Some pty.cty.init_expr) ] in
   let pfree = Option.map bind pty.cty.free in
-  ({ pinput; pinit_expr; pinit; pused_in_call; pfree; poutput }, pc)
+  ({ pinput; pinit_expr; pinit; pused_in_call; pfree; poutput }, pc, pv)
+
+let simple_param ?input_label ?binds ?input ?output ?used_in_call ?name pty =
+  let param, c_var, _ =
+    param ?input_label ?binds ?input ?output ?used_in_call ?name pty
+  in
+  (param, c_var)
 
 let list_or_empty ~empty ~sep pp fmt = function
   | [] -> empty fmt ()
@@ -1199,11 +1222,12 @@ let code_c_fun_bytecode ~params ~result fid_native =
       fmt "@[%a%a;@]@," pp_result kind_of_result pp_call
         (fid_native, List.filter_map (fun p -> p.pused_in_call) params);
       (* convert output variable *)
-      pp_scall u2ml_poutput { fmt } params;
       (match kind_of_result with
       | UnitResult -> ()
       | OneResultValue _ -> ()
-      | OneResultUnboxed { ml; _ } -> fmt "@[return %a;@]" pp_var ml
+      | OneResultUnboxed { ml; _ } ->
+          pp_scall u2ml_poutput { fmt } params;
+          fmt "@[return %a;@]" pp_var ml
       | MultipleValues -> ());
       fmt "@]@,@[}@]@]@.")
 
@@ -1316,7 +1340,11 @@ let convert ?mlc_to_c ?c_to_mlc ~(mlc : mlc) ~(c : c) () =
       | None -> expr "#error(\"no_ c_to_ml given\")"
       | Some (c_to_mlc : convert) ->
           call_codef "c2ml" binds (fun { fmt } ->
-              fmt "%a tmp;" pp_expr mlc.cty.cty;
+              fmt "%a tmp;@ " pp_expr mlc.cty.cty;
+              Option.iter
+                (fun init ->
+                  fmt "%a@ " pp_expr_binds (init, [ (mlc.cty.c, expr "tmp") ]))
+                mlc.cty.init;
               fmt "%a;@ " pp_expr_binds
                 ( c_to_mlc.convert,
                   [ (c_to_mlc.src, e_var c'); (c_to_mlc.dst, expr "&tmp") ] );
