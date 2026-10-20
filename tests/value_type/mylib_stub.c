@@ -92,7 +92,7 @@ static void camlid_init1(size_t array_len, vec* * c){
   for(size_t cid_i=0; cid_i < array_len; cid_i++){vec_init(&((*c)[cid_i]));}
   
   }
-static void camlid_c2ml2(value * v, vec * c){
+static void camlid_c2ml1(value * v, vec * c){
   vec* tmp = ((vec*) { 0 });
   camlid_init(&tmp);
   vec_set(
@@ -100,12 +100,12 @@ static void camlid_c2ml2(value * v, vec * c){
   c);;
   camlid_c2ml(&*v, &tmp);
   }
-static void camlid_c2ml1(size_t array_len, value * v, vec* * c){
+static void camlid_c2ml2(size_t array_len, value * v, vec* * c){
   CAMLparam0 ();
   CAMLlocal1(cid_temp);
   *v=caml_alloc(array_len,0);
   for(size_t cid_i=0; cid_i < array_len; cid_i++){
-    camlid_c2ml2(&cid_temp, &((*c)[cid_i]));
+    camlid_c2ml1(&cid_temp, &((*c)[cid_i]));
     Store_field(*v,cid_i,cid_temp);
     }
   CAMLreturn0;
@@ -124,7 +124,7 @@ extern value camlid_stub_vec_ranges(intptr_t array_len){
   array_len1 = (size_t)(array_len);
   camlid_init1(array_len1, &array);
   vec_ranges(array, array_len1);
-  camlid_c2ml1(array_len1, &array_r, &array);
+  camlid_c2ml2(array_len1, &array_r, &array);
   camlid_free(array_len1, array, &array);
   CAMLreturn(array_r);
 }
@@ -136,7 +136,7 @@ extern value camlid_stub_vec_ranges_byte(value array_len){
 }
 struct camlid_array_s { vec* t; size_t len; };
 typedef struct camlid_array_s camlid_array;
-static void camlid_ml2c1(value * v, vec * c){
+static void camlid_ml2c(value * v, vec * c){
   vec* tmp = ((vec*) { 0 });
   tmp = *(((vec* *) Data_custom_val(*v)));
   vec_init(&*c);
@@ -144,14 +144,14 @@ static void camlid_ml2c1(value * v, vec * c){
   c,
   *&tmp);;
   }
-static void camlid_ml2c(value * v, camlid_array * c){
+static void camlid_ml2c1(value * v, camlid_array * c){
   CAMLparam0 ();
   CAMLlocal1(cid_temp);
   c->len = Wosize_val(*v);
   c->t = malloc(sizeof(vec)*c->len);
   for(size_t cid_i=0; cid_i < c->len; cid_i++){
     cid_temp=Field(*v,cid_i);
-    camlid_ml2c1(&cid_temp, &c->t[cid_i]);
+    camlid_ml2c(&cid_temp, &c->t[cid_i]);
     }
   CAMLreturn0;
   }
@@ -164,7 +164,7 @@ extern intptr_t camlid_stub_vec_total(value array){
   intptr_t ures;
   intptr_t res;
   camlid_array array1 = ((camlid_array) { 0 });
-  camlid_ml2c(&array, &array1);
+  camlid_ml2c1(&array, &array1);
   res = vec_total(array1.t, array1.len);
   ures = (res);
   camlid_free1(&array1);
@@ -196,13 +196,9 @@ static void camlid_init2(size_t p, vec* * c){
   *c = malloc(sizeof(vec));
   vec_init_n(*c, p);
   }
-static void camlid_finalize1(vec* * i){ vec_clear(*i); free(*i); }
-static void camlid_finalize_op1(value v){
-  camlid_finalize1(((vec* *) Data_custom_val(v)));
-  }
 struct custom_operations camlid_cops1 = {
 NULL,
-camlid_finalize_op1,
+camlid_finalize_op,
 custom_compare_default,
 custom_hash_default,
 custom_serialize_default,

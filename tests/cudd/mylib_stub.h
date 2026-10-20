@@ -5,8 +5,8 @@
 #include <inttypes.h>
 #include "./cudd.h"
 typedef DdNode* caml_cudd_bdd_t;
-struct caml_cudd_bdd_wrapper1 {caml_cudd_bdd_t ptr;DdManager* manager;};
-typedef struct caml_cudd_bdd_wrapper1 caml_cudd_bdd_wrapper;
+struct caml_cudd_bdd_wrapper {caml_cudd_bdd_t ptr;DdManager* manager;};
+typedef struct caml_cudd_bdd_wrapper caml_cudd_bdd_wrapper1;
 typedef struct {
   enum {
     caml_cudd_result_False,

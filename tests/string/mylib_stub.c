@@ -26,15 +26,14 @@ extern value camlid_stub_f_in(value p){
   free(p1);
   CAMLreturn(Val_unit);
 }
-typedef char * camlid_string_nt1;
-static void camlid_ml2c1(value * v, camlid_string_nt1 * c){
+static void camlid_ml2c1(value * v, camlid_string_nt * c){
   size_t len=strlen(String_val(*v))+1;
   *c=malloc(len);
   memcpy(*c,String_val(*v),len);
   }
 extern value camlid_stub_f_in_prefix(value p){
   CAMLparam1(p);
-  camlid_string_nt1 p1 = ((camlid_string_nt1) { 0 });
+  camlid_string_nt p1 = ((camlid_string_nt) { 0 });
   camlid_ml2c1(&p, &p1);
   f_in(p1);
   free(p1);

@@ -2,6 +2,8 @@
     - rename module Type into Ty
     - add Helper.value_type for types handled like C++ classes (init,
       clear, copy), and Helper.extra_input
+    - identical C definitions with the same basename are printed once, so
+      types can be built many times without duplicating code
     - add Ty.mlc.owned_by_ml; a parameter of such a type can't be input
       and output (it was finalized twice)
     - string_nt fails if the string contains a null byte, the previous

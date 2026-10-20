@@ -9,7 +9,7 @@
 #include <caml/fail.h>
 #include <stdio.h>
 #include <string.h>
-static void camlid_ml2c1(value * v, camlid_t * c){
+static void camlid_ml2c(value * v, camlid_t * c){
   if(Is_long(*v)){switch(Long_val(*v)){
   case 0: /* T2 */ c->tag = camlid_t_T2; break;
   };
@@ -31,15 +31,15 @@ static void camlid_ml2c1(value * v, camlid_t * c){
   };
   CAMLreturn0;}
   }
-static void camlid_ml2c(value * v, lib_t * c){
+static void camlid_ml2c1(value * v, lib_t * c){
   camlid_algdata tmp = ((camlid_t) { 0 });
-  camlid_ml2c1(&*v, &tmp);
+  camlid_ml2c(&*v, &tmp);
   lib_t_of_adt(c, &tmp);;
   }
 extern value camlid_stub_f_print(value p){
   CAMLparam1(p);
   camlid_ref p1 = &(((struct { lib_t a; }) { ((lib_t) { { 0 } }) }).a);
-  camlid_ml2c(&p, &*p1);
+  camlid_ml2c1(&p, &*p1);
   f_print(p1);
   CAMLreturn(Val_unit);
 }

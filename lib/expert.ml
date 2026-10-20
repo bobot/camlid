@@ -116,13 +116,8 @@ let string_nt ~prefix ~owned =
     owned_by_ml = false;
   }
 
-let string_nt, string_nt_prefix =
-  let mk prefix =
-    let ty_owned = string_nt ~prefix ~owned:true in
-    let ty_not_owned = string_nt ~prefix ~owned:false in
-    fun ?(owned = true) () -> if owned then ty_owned else ty_not_owned
-  in
-  (mk false, mk true)
+let string_nt_prefix ?(owned = true) () = string_nt ~prefix:true ~owned
+let string_nt ?(owned = true) () = string_nt ~prefix:false ~owned
 
 let string_fixed_length ?(init = true) ?(owned = true) len =
   let cty = typedef "string_fs" "char *" in
@@ -1784,13 +1779,4 @@ let bigarray_array1_aux ~managed ~kind ~cty ~mlty ~mlelt () =
     owned_by_ml = true;
   }
 
-let bigarray_array1 =
-  let h = Hashtbl.create 10 in
-  fun ~managed ~kind ~cty ~mlty ~mlelt () ->
-    let key = (managed, kind, cty, mlty, mlelt) in
-    match Hashtbl.find_opt h key with
-    | Some s -> s
-    | None ->
-        let s = bigarray_array1_aux ~managed ~kind ~cty ~mlty ~mlelt () in
-        Hashtbl.add h key s;
-        s
+let bigarray_array1 = bigarray_array1_aux

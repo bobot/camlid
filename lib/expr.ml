@@ -174,6 +174,7 @@ type env = {
   vars : string Var.H.t;
   string_vars : int StringH.t;
   bindings : env_binding Stack.t;
+  aliases : ID.t ID.H.t;
 }
 
 let current_bindings env = Option.value ~default:[] (Stack.top_opt env.bindings)
@@ -187,6 +188,7 @@ let create_env () =
     vars = Var.H.create 16;
     string_vars = StringH.create 10;
     bindings = Stack.create ();
+    aliases = ID.H.create 16;
   }
 
 module PPGenID (H : Hashtbl.S) = struct
@@ -268,14 +270,17 @@ let run_aux ~pp_id env e fmt =
 let run ~kind ~prefix env e =
   let b = Buffer.create 16 in
   let fmt = Format.formatter_of_buffer b in
+  let alias id = Option.value ~default:id (ID.H.find_opt env.aliases id) in
   let pp_id =
     match kind with
     | C | H ->
         fun fmt id ->
+          let id = alias id in
           Fmt.string fmt
             (PPID.pp env.ids_c env.string_ids_c prefix id id.name id.keep_name)
     | ML ->
         fun fmt id ->
+          let id = alias id in
           Fmt.string fmt
             (PPID.pp env.ids_ml env.string_ids_ml prefix id id.name id.keep_name)
   in
@@ -324,27 +329,61 @@ let toplevel_callable ?(kind = C) id p =
 let toplevel ?(kind = C) id p =
   Format.kdprintf (fun k -> def ~kind id (fun fmt () -> k fmt)) p
 
+(* The dependencies of a definition are printed before it (depth first, each
+   definition once). A C definition with the same basename and the same text,
+   up to its own name, as an already printed one is not printed again: its
+   identifier is printed with the name of the first one. So the types and
+   functions created many times with the same arguments are printed once, while
+   definitions with different names (e.g. the stubs of two OCaml functions) are
+   kept. *)
 let final_print ~prefix ~ml ~c ~h kind expr =
   let open struct
     type t = Seen | Printed
   end in
   let env = create_env () in
   let printed = ID.H.create 16 in
-  let rec aux kind expr =
+  let texts = Hashtbl.create 16 in
+  let null_fmt = Format.make_formatter (fun _ _ _ -> ()) (fun () -> ()) in
+  let deps expr =
+    let q, _ =
+      run_aux ~pp_id:(fun _ _ -> ()) env (fun fmt -> pp_expr fmt expr) null_fmt
+    in
+    q
+  in
+  let render kind expr =
     Var.H.clear env.vars;
     StringH.clear env.string_vars;
-    let buf, codes = run ~kind ~prefix env expr in
-    Queue.iter aux_code codes;
+    fst (run ~kind ~prefix env expr)
+  in
+  let output kind buf =
     match kind with
     | ML -> Buffer.output_buffer ml buf
     | C -> Buffer.output_buffer c buf
     | H -> Buffer.output_buffer h buf
-  and aux_code c =
+  in
+  let rec aux kind expr =
+    Queue.iter aux_code (deps expr);
+    output kind (render kind expr)
+  and aux_code (c : definition) =
     match ID.H.find_opt printed c.id with
     | None ->
         ID.H.add printed c.id Seen;
-        aux c.kind c.toplevel;
-        ID.H.add printed c.id Printed
+        Queue.iter aux_code (deps c.toplevel);
+        let ids = match c.kind with C | H -> env.ids_c | ML -> env.ids_ml in
+        if c.kind = ML || c.id.keep_name || ID.H.mem ids c.id then
+          output c.kind (render c.kind c.toplevel)
+        else (
+          ID.H.add ids c.id "camlid__self__";
+          let key =
+            (c.kind, c.id.name, Buffer.contents (render c.kind c.toplevel))
+          in
+          ID.H.remove ids c.id;
+          match Hashtbl.find_opt texts key with
+          | Some id -> ID.H.add env.aliases c.id id
+          | None ->
+              Hashtbl.add texts key c.id;
+              output c.kind (render c.kind c.toplevel));
+        ID.H.replace printed c.id Printed
     | Some Seen -> failwith "Cycle in code"
     | Some Printed -> ()
   in
