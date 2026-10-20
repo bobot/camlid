@@ -1,4 +1,8 @@
-(** {1 Function description} *)
+(** Description of C functions with the common types.
+
+    The memory handled by each type is described in {!page-index.memory}. *)
+
+(** {1 Functions} *)
 
 val func :
   ?ml:string ->
@@ -8,131 +12,89 @@ val func :
   string ->
   Ty.param list ->
   Expr.expr
-(** Describe the signature of a C function and generate the stub. Three
-    variants:
-    - [func ~ml c_name params] : the C function has a [void] result (no result)
-    - [func ~ml ~result c_name params]: the C function has a result with
-      template [result], and it is part of the OCaml results
-    - [func ~ml ~ignored_result c_name params]: C function has a result with
-      template [result], and it is ignored for the OCaml function
+(** [func c_name params] is the OCaml external for the C function [c_name]. Its
+    stub is added to the C file by {!Generate.to_file}.
 
-    The resulting expression is the OCaml declaration for the external. Since it
-    mentions the {!type:Camlid.Expr.id} of the C stub function, it is
-    automatically added to the C file during the generation by
-    {!Camlid.Generate.to_file}.
+    The order of the inputs, of the outputs (result first), and of the arguments
+    of the C function is the order of [params].
 
-    The order of the inputs, outputs (result first), and arguments of the C
-    function all use the order given by [params].
-
-    @param ml name to use for the OCaml function
-    @param c_name is the name of the C function
-    @param params
-      usually parameters of the C function. More generally when using
-      {!Camlid.Expert}, it gives all the variables and their functions used for
-      the generation of the C stub function.
+    @param ml name of the OCaml function (default [c_name])
+    @param result the C function returns a value, part of the OCaml results
+    @param ignored_result the C function returns a value which is ignored
     @param call_params
-      allows to reorder the list of parameters for the call to the stubbed
-      function (by default params) *)
+      the parameters in the order of the C function arguments, when it is not
+      the order of [params] *)
 
-(** {1 Creating parameters from templates} *)
+(** The following functions create a parameter from a type with fresh
+    variables. A parameter can be used in many functions but only once by
+    function.
 
-(** The following functions create fresh variable, the same parameter should not
-    be used multiple times in the description of the same C function. However it
-    could be used in different descriptions *)
+    {t
+      | | OCaml argument | C argument | OCaml result |
+      |-|:-:|:-:|:-:|
+      | {!input} | x | x | |
+      | {!output} | | x | x |
+      | {!inout} | x | x | x |
+      | {!ignored} | | x | |
+      | {!extra_input} | x | | |
+    } *)
 
 val input : ?name:string -> Ty.mlc -> Ty.param
-(** [input ~name ty] create an input parameter using the typedef template [ty].
-    The parameter:
-    - appears in the arguments of the ML function
-    - is used in the C call
-    - is not present in the results.
-
-    @param name Basename used for the fresh generated variable
-    @param ty Template used for generatiing the parameter. *)
-
 val output : ?name:string -> Ty.mlc -> Ty.param
-(** [input ~name ty] create an input parameter using the typedef template [ty].
-    The parameter:
-    - does not appear in the arguments of the ML function
-    - is used in the C call
-    - is present in the results.
-
-    @param name Basename used for the fresh generated variable
-    @param ty template used for generatiing the parameter. *)
 
 val inout : ?name:string -> Ty.mlc -> Ty.param
-(** [input ~name ty] create an input parameter using the typedef template [ty].
-    The parameter:
-    - does not appear in the arguments of the ML function
-    - is used in the C call
-    - is present in the results.
-
-    @param name Basename used for the fresh generated variable
-    @param ty template used for generatiing the parameter. *)
+(** @raise Invalid_argument for types owned by OCaml *)
 
 val ignored : ?name:string -> Ty.mlc -> Ty.param
-(** [input ~name ty] create an input parameter using the typedef template [ty].
-    The parameter:
-    - does not appear in the arguments of the ML function
-    - is used in the C call
-    - is not present in the results.
 
-    @param name Basename used for the fresh generated variable
-    @param ty template used for generatiing the parameter. *)
+val extra_input : ?label:string -> ?name:string -> Ty.mlc -> Ty.param * Expr.var
+(** [extra_input ty] returns the parameter and its C variable, which can be used
+    by the other parameters, e.g. in the [init_args] of {!value_type}.
+    @param label label of the argument in the OCaml function *)
 
-(** Common OCaml values *)
+(** {1 Scalars}
+
+    No memory is allocated. They are unboxed or untagged when possible. *)
 
 val int : Ty.mlc
-(** It is {!int} in OCaml, and [intptr_t] in C. The highest bit is lost when
-    going from C to OCaml *)
+(** [int] in OCaml, [intptr_t] in C. The highest bit is lost from C to OCaml. *)
 
 val size_t : Ty.mlc
-(** It is {!int} in OCaml, and [size_t] in C. The highest bit is lost when going
-    from C to OCaml. Unsigned version of {!int} *)
+(** [int] in OCaml, [size_t] in C. The highest bit is lost from C to OCaml. *)
 
 val int_trunc : Ty.mlc
-(** It is {!int} in OCaml, and [int] in C. On 64bit, half of the highest bit are
-    lost (63 bit long in OCaml and 32 bit long in C). *)
+(** [int] in OCaml, [int] in C. On 64 bits, the 31 highest bits are lost from
+    OCaml to C. *)
 
 val double : Ty.mlc
-(** It is [float] in OCaml, and [double] in C. No loss during conversion. *)
+(** [float] in OCaml, [double] in C. *)
 
 val int32 : Ty.mlc
-(** It is {!int32} in OCaml, and [int32_t] in C. No loss during conversion. *)
+(** [int32] in OCaml, [int32_t] in C. *)
 
 val int64 : Ty.mlc
-(** It is {!int64} in OCaml, and [int64_t] in C. No loss during conversion. *)
+(** [int64] in OCaml, [int64_t] in C. *)
 
 val nativeint : Ty.mlc
-(** It is {!nativeint} in OCaml, and [intptr_t] in C. No loss during conversion.
-*)
+(** [nativeint] in OCaml, [intptr_t] in C. *)
 
 val bool : Ty.mlc
-(** It is {!bool} in OCaml, and [int] in C. No loss during conversion if the int
-    is considered as a boolean. *)
+(** [bool] in OCaml, [int] in C. *)
 
 val ptr_ref : Ty.mlc -> Ty.mlc
-(** [ptr_def ty] it change the C value used when calling the C function to a
-    pointer on the given type. It is useful with {!output}. The pointer is valid
-    for the duration og the call. The OCaml type is the same as for [ty]. *)
+(** [ptr_ref ty] gives to the C function a pointer to the C value of [ty],
+    typically for an {!output}. The OCaml type is the one of [ty]. *)
 
-(** Allocated C structure *)
+(** {1 Strings and arrays}
 
-(** In all the following section, [owned] indicates if the OCaml sides owns the
-    C allocated memory, and so it it should free it want it is not using it
-    anymore. An OCaml value (e.g. a [string]) is always owned by the OCaml side,
-    the question is if the memory allocated by the stub and given to the C
-    function, or the memory returned by the C function is owned by the OCaml
-    side and should be freed.
-
-    Except in the case of bigarrays, or user defined abstract and custom type
-    the allocated memory is freed at the end of the stub *)
-
-(** In all this section, [init] indicates if the stub need to allocate the
-    memory before calling the C function *)
+    The data is copied between OCaml and C. [owned] (default [true]) indicates
+    that the stub frees the C memory after the call. Use [~owned:false] when the
+    C function takes ownership of an input, or keeps ownership of an output.
+    [init] (default [true]) indicates that the stub allocates the memory of an
+    output before the call. *)
 
 val string_nt : ?owned:bool -> unit -> Ty.mlc
-(** It is [string] in OCaml, and [char *] in C. The conversion to C raises
+(** [string] in OCaml, null terminated [char *] in C. The conversion to C raises
     [Failure] if the OCaml string contains a null character. *)
 
 val string_nt_prefix : ?owned:bool -> unit -> Ty.mlc
@@ -140,8 +102,8 @@ val string_nt_prefix : ?owned:bool -> unit -> Ty.mlc
     null character. *)
 
 type with_length = {
-  t : Ty.param; (* array parameter *)
-  len : Ty.param; (* length of the array *)
+  t : Ty.param;  (** the data *)
+  len : Ty.param;  (** its length, only usable with [t] in the same function *)
 }
 
 val input_string :
@@ -151,8 +113,7 @@ val input_string :
   ?name:string ->
   unit ->
   with_length
-(** Parameter for a "char*" and its length. Given as such to the stubbed
-    function. Converted from/to a [string] in ocaml. *)
+(** A [string] given to C as [char *] and [size_t]. *)
 
 val output_string :
   ?owned:bool ->
@@ -161,8 +122,8 @@ val output_string :
   ?name:string ->
   unit ->
   with_length
-(** Parameter for a "char*" and its length. The address of those variables are
-    given to the stubbed function. Converted from/to a [string] in ocaml. *)
+(** A [string] given to C as [char **] and [size_t *], usually filled by the C
+    function. *)
 
 val fixed_length_string :
   ?init:bool ->
@@ -173,9 +134,9 @@ val fixed_length_string :
   ?name:string ->
   unit ->
   with_length
-(** Parameter for a "char*" converted (if input) or allocated (if output) with
-    the length given as input. [(fixed_length_string ()).len] is an input
-    parameter. Converted from/to a [string] in ocaml. *)
+(** A [string] given to C as [char *], allocated by the stub with the length
+    given by the OCaml argument [len].
+    @param len_used_in_call also give the length to the C function *)
 
 val input_array :
   ?owned:bool ->
@@ -184,9 +145,7 @@ val input_array :
   ?name:string ->
   Ty.mlc ->
   with_length
-(** [input_array mlc] Parameter for an array of [mlc] and its length. Given as
-    such to the stubbed function. Converted from/to an array of [mlc] in OCaml.
-*)
+(** [input_array ty] is an array of [ty] given to C as [ty *] and [size_t]. *)
 
 val output_array :
   ?owned:bool ->
@@ -195,9 +154,8 @@ val output_array :
   ?name:string ->
   Ty.mlc ->
   with_length
-(** [output_array mlc] Parameter for an array of [mlc] and its length. The
-    address of those variables are given to the stubbed function. Converted
-    from/to an array of [mlc] in OCaml. *)
+(** [output_array ty] is an array of [ty] given to C as [ty **] and [size_t *],
+    usually filled by the C function. *)
 
 val fixed_length_array :
   ?init:bool ->
@@ -208,62 +166,27 @@ val fixed_length_array :
   ?name:string ->
   Ty.mlc ->
   with_length
-(** [fixed_length_array mlc] Parameter for an array of [mlc] converted (if
-    input) or allocated (if output) with the length given as input.
-    [(fixed_length_array ()).len] is an input parameter. Converted from/to an
-    array of [mlc] in OCaml.*)
+(** [fixed_length_array ty] is an array of [ty] given to C as [ty *], allocated
+    (and its elements initialized) by the stub with the length given by the
+    OCaml argument [len].
+    @param len_used_in_call also give the length to the C function *)
 
-val abstract :
-  ?initialize:string ->
-  ?get:string ->
-  ?set:string ->
-  ?internal:string ->
-  ml:string ->
-  c:string ->
-  unit ->
-  Ty.mlc
-
-val custom :
-  ?initialize:string ->
-  ?finalize:string ->
-  ?hash:string ->
-  ?compare:string ->
-  ?get:string ->
-  ?set:string ->
-  ?internal:string ->
-  ml:string ->
-  c:string ->
-  unit ->
-  Ty.mlc
-
-val custom_ptr :
-  ?initialize:string ->
-  ?finalize:string ->
-  ?hash:string ->
-  ?compare:string ->
-  ?malloc:bool ->
-  ml:string ->
-  c:string ->
-  unit ->
-  Ty.mlc
-
-(** {1 C++-like types} *)
+(** {1 C values owned by OCaml} *)
 
 type value_type = {
   t : Ty.mlc;
-      (** [T *] in C. The OCaml value is a custom block that owns a [T]
-          allocated with [malloc] and initialized with [init]. The finalizer
-          calls [clear] then [free]. Input parameters borrow the [T], output
-          parameters move it into a new OCaml value. *)
+      (** [T *] in C. The OCaml value is a custom block that owns a [T]. An
+          input borrows it, an output is created with [init] and moved into a
+          new OCaml value. *)
   value : Ty.mlc;
-      (** [T] in C, for example for the elements of an array of [T]. The
-          conversions copy with [copy], the stub calls [clear] at the end. *)
+      (** [T] in C, e.g. for the elements of arrays. It is copied with [copy]
+          from or to a new [T] owned by OCaml, and cleared at the end of the
+          stub. *)
   borrowed : Ty.mlc;
-      (** [T *] in C, pointing to a [T] that the OCaml side does not own, for
-          example a pointer inside another structure. It is copied into a new
-          OCaml value when it is an output. *)
+      (** [T *] in C for an output owned by C, e.g. a pointer inside another
+          structure. It is copied into a new [T] owned by OCaml. *)
 }
-(** The same OCaml type for the three ways a C function can handle a [T]. *)
+(** The same OCaml type for the three ways a C function can use a [T]. *)
 
 val value_type :
   ?init_args:Expr.var list ->
@@ -277,51 +200,60 @@ val value_type :
   unit ->
   value_type
 (** [value_type ~init ~clear ~copy ~ml ~c ()] binds the C type [c] (named [T]
-    below), handled like a C++ class, to the abstract OCaml type [ml]. The C
+    below) handled like a C++ class to the abstract OCaml type [ml]. The C
     functions are:
     - [void init(T *t, init_args...)], the constructor;
     - [void clear(T *t)], the destructor;
     - [void copy(T *dst, T *src)], the copy assignment;
-    - [intnat hash(T *t)] and [int compare(T *t1, T *t2)], used by the
-      polymorphic hash and comparison of OCaml.
+    - [intnat hash(T *t)] and [int compare(T *t1, T *t2)] for [Hashtbl.hash] and
+      [compare].
 
-    [init_args] are C variables of other parameters of the function, often
-    created by {!extra_input}. *)
+    The [T] owned by OCaml is allocated with [malloc]. Its finalizer calls
+    [clear] then [free]. [init_args] are C variables of other parameters, often
+    created with {!extra_input}. *)
 
-val extra_input : ?label:string -> ?name:string -> Ty.mlc -> Ty.param * Expr.var
-(** [extra_input ty] is an argument of the OCaml function that is not given to
-    the C function. Its C variable can be used by the other parameters, e.g. in
-    the [init_args] of {!value_type}.
+val custom_ptr :
+  ?initialize:string ->
+  ?finalize:string ->
+  ?hash:string ->
+  ?compare:string ->
+  ml:string ->
+  c:string ->
+  unit ->
+  Ty.mlc
+(** Same as the [t] field of {!value_type}: the C functions take a [c *] and
+    [finalize] is called before [free]. *)
 
-    @param label label of the argument in the OCaml function *)
+val custom :
+  ?initialize:string ->
+  ?finalize:string ->
+  ?hash:string ->
+  ?compare:string ->
+  ml:string ->
+  c:string ->
+  unit ->
+  Ty.mlc
+(** The C value [c] is stored directly in the custom block, it should be small
+    (e.g. a pointer). The C functions take a [c *]. *)
+
+val abstract : ?initialize:string -> ml:string -> c:string -> unit -> Ty.mlc
+(** The C value [c] is stored directly in an OCaml block without finalizer. *)
 
 (** {1 Other types} *)
 
 val algdata : string -> (string * (string * Ty.mlc) list) list -> Ty.mlc
+(** [algdata name constrs] defines the OCaml algebraic datatype [name] and the
+    corresponding C tagged union. *)
+
 val string_as_FILE_ptr : Ty.mlc
+(** A [string] output written by the C function in a [FILE *]. *)
+
 val input_value : string -> Ty.param
+(** [input_value ty] gives the OCaml value of type [ty] as a [value]. *)
+
 val output_value : string -> Ty.param
-val module_ : string -> Expr.expr list -> Expr.expr
-val ml_alias : string -> Ty.mlc -> Expr.expr
-
-val copy :
-  Ty.mlc ->
-  ?vars:(dst:Expr.Var.t -> src:Expr.Var.t -> Expr.Var.t list) ->
-  ?exprs:(dst:Expr.Var.t -> src:Expr.Var.t -> Expr.expr list) ->
-  string ->
-  Ty.mlc
-
-val ret_option_if : Ty.mlc -> Ty.param * Ty.mlc
-val get_expression : name:string -> Ty.mlc -> string -> Expr.expr
-
-val map_param_in_call :
-  ?name:string ->
-  ty:string ->
-  Ty.param ->
-  (('a -> Expr.expr -> 'b) -> Expr.expr -> 'c, 'a, 'b, 'd, 'd, 'c) format6 ->
-  Ty.param
-
-val do_nothing : string -> Ty.param list -> Expr.expr
+(** [output_value ty] gives a [value *] to fill with an OCaml value of type
+    [ty]. *)
 
 val convert :
   ?c_to_mlc:string ->
@@ -331,9 +263,52 @@ val convert :
   c:Ty.c ->
   unit ->
   Ty.mlc
+(** [convert ~mlc ~c] has the OCaml type of [mlc] and the C type [c]. The C
+    conversion functions take a pointer to the destination, a pointer to the
+    source, and the variables [using].
+    @param c_to_mlc name of the conversion from [c] to the C type of [mlc]
+    @param mlc_to_c name of the conversion from the C type of [mlc] to [c] *)
 
 val on_stack :
   ?init_expr:string -> ?initialize:string -> ?clear:string -> string -> Ty.c
-(** Define a C type that is allocated on the stack. It is initialized and
-    cleared with the given functions.
-    @param init_expr is the initialization expression used *)
+(** [on_stack ty] is the C type [ty] (for {!convert}) initialized and cleared
+    with the given functions, which take a [ty *].
+    @param init_expr the initial value (default [{ 0 }]) *)
+
+val copy :
+  Ty.mlc ->
+  ?vars:(dst:Expr.Var.t -> src:Expr.Var.t -> Expr.Var.t list) ->
+  ?exprs:(dst:Expr.Var.t -> src:Expr.Var.t -> Expr.expr list) ->
+  string ->
+  Ty.mlc
+(** [copy ty f] is [ty] where an output owned by C is copied with the C function
+    [f] into a new value owned by OCaml. See [borrowed] in {!value_type}. *)
+
+val ret_option_if : Ty.mlc -> Ty.param * Ty.mlc
+(** [ret_option_if ty] returns a parameter [status] (an [int *] for the C
+    function) and the type [ty option], which is [None] if [status] is false. *)
+
+(** {1 Generated code} *)
+
+val module_ : string -> Expr.expr list -> Expr.expr
+(** [module_ name l] puts the OCaml declarations [l] in the module [name]. *)
+
+val ml_alias : string -> Ty.mlc -> Expr.expr
+(** [ml_alias name ty] declares [type name] equal to the OCaml type of [ty]. *)
+
+val get_expression : name:string -> Ty.mlc -> string -> Expr.expr
+(** [get_expression ~name ty e] defines the OCaml function [name] that returns
+    the value of the C expression [e]. *)
+
+val do_nothing : string -> Ty.param list -> Expr.expr
+(** [do_nothing name params] defines the OCaml function [name] that only
+    converts its parameters, e.g. to create a value with its [initialize]. *)
+
+val map_param_in_call :
+  ?name:string ->
+  ty:string ->
+  Ty.param ->
+  (('a -> Expr.expr -> 'b) -> Expr.expr -> 'c, 'a, 'b, 'd, 'd, 'c) format6 ->
+  Ty.param
+(** [map_param_in_call ~ty p "fmt"] gives to the C function the expression
+    ["fmt"] of type [ty], applied to the C argument of [p]. *)

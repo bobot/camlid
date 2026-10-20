@@ -184,13 +184,8 @@ let string_as_FILE_ptr =
 let input_value ml = input (value ml)
 let output_value ml = output (value ml) |> deref_in_call
 
-let abstract ?initialize ?get ?set ?internal ~ml ~c () : mlc =
+let abstract ?initialize ~ml ~c () : mlc =
   let cty = typedef "abstract" "%s" c in
-  let icty =
-    match internal with
-    | None -> cty
-    | Some internal -> typedef "abstract_intern" "%s" internal
-  in
   let initialize =
     Option.map
       (fun initialize ->
@@ -198,44 +193,26 @@ let abstract ?initialize ?get ?set ?internal ~ml ~c () : mlc =
         { initialize = calli_existing initialize [ c ]; c })
       initialize
   in
-  let get =
-    Option.map
-      (fun get ->
-        let c = Var.mk "c" (expr "%a *" pp_def cty) in
-        let i = Var.mk "i" (expr "%a *" pp_def icty) in
-        { get = calli_existing get [ c; i ]; c; i })
-      get
-  in
-  let set =
-    Option.map
-      (fun set ->
-        let c = Var.mk "c" (expr "%a *" pp_def cty) in
-        let i = Var.mk "i" (expr "%a *" pp_def icty) in
-        { set = calli_existing set [ i; c ]; c; i })
-      set
-  in
-  Expert.abstract ?initialize ?set ?get ~icty ~cty ~ml ()
+  Expert.abstract ?initialize ~icty:cty ~cty ~ml ()
 
 (** Encapsulate a c type into an custom ml type *)
-let custom ?initialize ?finalize ?hash ?compare ?get ?set ?internal ~ml ~c () =
-  let cty = expr "%s" c in
-  let icty = match internal with None -> cty | Some c -> expr "%s" c in
-  let get = Option.map (mk_get ~icty ~cty) get in
-  let set = Option.map (mk_set ~icty ~cty) set in
-  let finalize = Option.map (mk_finalize ~icty) finalize in
-  let hash = Option.map (mk_hash ~icty) hash in
-  let compare = Option.map (mk_compare ~icty) compare in
-  let initialize = Option.map (mk_initialize ~cty) initialize in
-  custom ?initialize ?finalize ?hash ?compare ?get ?set ~ml ~icty ~cty ()
-
-let custom_ptr ?initialize ?finalize ?hash ?compare ?malloc ~ml ~c () =
+let custom ?initialize ?finalize ?hash ?compare ~ml ~c () =
   let cty = expr "%s" c in
   let icty = cty in
   let finalize = Option.map (mk_finalize ~icty) finalize in
   let hash = Option.map (mk_hash ~icty) hash in
   let compare = Option.map (mk_compare ~icty) compare in
   let initialize = Option.map (mk_initialize ~cty) initialize in
-  custom_ptr ?initialize ?finalize ?hash ?compare ?malloc ~ml ~cty ()
+  custom ?initialize ?finalize ?hash ?compare ~ml ~icty ~cty ()
+
+let custom_ptr ?initialize ?finalize ?hash ?compare ~ml ~c () =
+  let cty = expr "%s" c in
+  let icty = cty in
+  let finalize = Option.map (mk_finalize ~icty) finalize in
+  let hash = Option.map (mk_hash ~icty) hash in
+  let compare = Option.map (mk_compare ~icty) compare in
+  let initialize = Option.map (mk_initialize ~cty) initialize in
+  custom_ptr ?initialize ?finalize ?hash ?compare ~ml ~cty ()
 
 type value_type = { t : mlc; value : mlc; borrowed : mlc }
 
