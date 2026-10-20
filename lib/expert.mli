@@ -1,9 +1,25 @@
+(** Building new types and parameters.
+
+    A type ({!Ty.mlc}) is a template: its fields mention the variables [v] (the
+    OCaml value) and [cty.c] (the C value), which are replaced by fresh
+    variables each time the type is used in a parameter. Every type must follow
+    the memory model described in {!page-index.memory}. *)
+
+(** {1 C and OCaml type names} *)
+
 val typedef : string -> ('a, Format.formatter, unit, Expr.defined) format4 -> 'a
+(** [typedef name "fmt" ...] defines a C type [typedef ... prefix_name]. *)
+
 val mlalias : string -> ('a, Format.formatter, unit, Expr.defined) format4 -> 'a
+(** [mlalias name "fmt" ...] defines an OCaml type [type name = ...]. *)
+
 val mlabstract : ?keep_name:bool -> string -> Expr.defined
-val existing : string -> Expr.var list -> Expr.code
-val calli_existing : string -> Expr.var list -> Expr.expr
-val get_boxing : Ty.conv -> Expr.expr * Expr.expr
+(** [mlabstract name] defines an abstract OCaml type [type name]. *)
+
+val declare_struct : string -> (string * Expr.expr) list -> Expr.defined
+(** [declare_struct name fields] defines a C structure. *)
+
+(** {1 Types} *)
 
 val builtin_mltypes :
   unbox_attribute:Ty.unbox_attribute ->
@@ -18,42 +34,46 @@ val builtin_mltypes :
   ?u2ml:string ->
   string ->
   Ty.mlc
+(** Scalar types, unboxed or untagged in native code from OCaml [unbox_version].
+    The arguments are names of C conversion functions or macros. *)
 
-val string_nt : ?owned:bool -> unit -> Ty.mlc
-val string_nt_prefix : ?owned:bool -> unit -> Ty.mlc
-val string_fixed_length : ?init:bool -> ?owned:bool -> Expr.var -> Ty.mlc
-val string_length_struct : Expr.defined
-val string_length : ?owned:bool -> unit -> Ty.mlc
-val ptr_ref : Ty.mlc -> Ty.mlc
+val value : string -> Ty.mlc
+(** [value ty] is the OCaml type [ty], given as a [value] to the C function. *)
 
-type copy = { copy : Expr.expr; c_from : Expr.Var.t; c_to : Expr.Var.t }
-
-val mk_copy :
-  cty:Expr.expr ->
-  ?vars:(dst:Expr.Var.t -> src:Expr.Var.t -> Expr.Var.t list) ->
-  ?exprs:(dst:Expr.Var.t -> src:Expr.Var.t -> Expr.expr list) ->
-  string ->
-  copy
-
-val copy : copy:copy -> Ty.mlc -> Ty.mlc
 val array : ?init:bool -> ?owned:bool -> len:Expr.var -> Ty.mlc -> Ty.mlc
-val array_length : ?owned:bool -> Ty.mlc -> Ty.mlc
+(** [array ~len ty] is an OCaml array of [ty] and a C array of [len] elements.
+    @param init allocate (and initialize the elements) when it is not an input
+*)
 
-val map_param_in_call :
-  ?name:string ->
-  (Expr.expr -> Expr.expr -> Expr.expr * Expr.expr) ->
-  Ty.param ->
-  Ty.param
+val string_fixed_length : ?init:bool -> ?owned:bool -> Expr.var -> Ty.mlc
+(** [string_fixed_length len] is an OCaml [string] and a C [char *] of [len]
+    bytes.
+    @param init allocate when it is not an input *)
 
-val deref_in_call : Ty.param -> Ty.param
-val use_new_param_only_in_call : Ty.param -> Ty.param
-val get_field : Expr.expr -> string -> Ty.param -> Ty.param
-val t_field : Ty.mlc -> Ty.param -> Ty.param
-val len_field : Ty.param -> Ty.param
+(** {2 Values owned by OCaml}
+
+    The C value is stored in an OCaml block ([owned_by_ml] is [true]). [icty] is
+    the C type stored in the block and [cty] the C type given to the stubbed
+    functions (usually the same). The record arguments are created with the
+    [mk_*] functions below. *)
+
+type initialize = { initialize : Expr.expr; c : Expr.var }
+(** Initialize [c : cty *], used when the type is not an input *)
 
 type get = { get : Expr.expr; c : Expr.var; i : Expr.var }
+(** Get [c : cty *] from [i : icty *] *)
+
 type set = { set : Expr.expr; c : Expr.var; i : Expr.var }
-type initialize = { initialize : Expr.expr; c : Expr.var }
+(** Set [i : icty *] from [c : cty *] *)
+
+type finalize = { finalize : Expr.expr; i : Expr.var }
+(** Called on [i : icty *] when the OCaml value is collected *)
+
+type hash = { hash : Expr.expr; i : Expr.var }
+(** Hash of [i : icty *] *)
+
+type compare = { compare : Expr.expr; i1 : Expr.var; i2 : Expr.var }
+(** Comparison of [i1 : icty *] and [i2 : icty *] *)
 
 val abstract :
   ?initialize:initialize ->
@@ -64,13 +84,7 @@ val abstract :
   cty:Expr.defined ->
   unit ->
   Ty.mlc
-
-type finalize = { finalize : Expr.expr; i : Expr.var }
-type finalize_op = { finalize_op : Expr.code; v : Expr.var }
-type hash = { hash : Expr.expr; i : Expr.var }
-type hash_op = { hash_op : Expr.code; v : Expr.var }
-type compare = { compare : Expr.expr; i1 : Expr.var; i2 : Expr.var }
-type compare_op = { compare_op : Expr.code; v1 : Expr.var; v2 : Expr.var }
+(** The C value is copied in an [Abstract_tag] block, it can't be finalized. *)
 
 val custom :
   ?initialize:initialize ->
@@ -84,6 +98,7 @@ val custom :
   cty:Expr.expr ->
   unit ->
   Ty.mlc
+(** The C value is moved in a custom block. *)
 
 val custom_ptr :
   ?initialize:initialize ->
@@ -95,9 +110,23 @@ val custom_ptr :
   cty:Expr.expr ->
   unit ->
   Ty.mlc
+(** The custom block contains a pointer, the stubbed functions get a [cty *].
+    The record arguments are created with [~icty:cty].
+    @param malloc
+      (default [true]) allocate with [malloc] before [initialize], and [free]
+      after [finalize]. *)
 
-val e_value : Expr.expr
-val value : string -> Ty.mlc
+(** The [mk_*] functions build the records above for the C function [name]. By
+    default it is called with the variables of the record, [vars] allows to add
+    other variables (e.g. the C variable of another parameter), and [exprs] to
+    give any expressions. *)
+
+val mk_initialize :
+  cty:Expr.expr ->
+  ?vars:(Expr.Var.t -> Expr.Var.t list) ->
+  ?exprs:(Expr.Var.t -> Expr.expr list) ->
+  string ->
+  initialize
 
 val mk_get :
   icty:Expr.expr ->
@@ -122,13 +151,6 @@ val mk_finalize :
   string ->
   finalize
 
-val mk_finalize_ptr :
-  icty:Expr.expr ->
-  ?vars:(Expr.Var.t -> Expr.Var.t list) ->
-  ?exprs:(Expr.Var.t -> Expr.expr list) ->
-  string ->
-  finalize
-
 val mk_hash :
   icty:Expr.expr ->
   ?vars:(Expr.Var.t -> Expr.Var.t list) ->
@@ -138,12 +160,89 @@ val mk_hash :
 
 val mk_compare : icty:Expr.expr -> string -> compare
 
-val mk_initialize :
+(** {2 Copies and conversions} *)
+
+type copy = { copy : Expr.expr; c_from : Expr.Var.t; c_to : Expr.Var.t }
+(** Copy from [c_from : cty *] to [c_to : cty *] *)
+
+val mk_copy :
   cty:Expr.expr ->
-  ?vars:(Expr.Var.t -> Expr.Var.t list) ->
-  ?exprs:(Expr.Var.t -> Expr.expr list) ->
+  ?vars:(dst:Expr.Var.t -> src:Expr.Var.t -> Expr.Var.t list) ->
+  ?exprs:(dst:Expr.Var.t -> src:Expr.Var.t -> Expr.expr list) ->
   string ->
-  initialize
+  copy
+
+val copy : copy:copy -> Ty.mlc -> Ty.mlc
+(** [copy ~copy ty] is [ty] where the C value of an output is borrowed: it is
+    copied into a new C value, which is moved into the OCaml value. *)
+
+type convert = { convert : Expr.expr; src : Expr.var; dst : Expr.var }
+(** Conversion from [src : src_type *] to [dst : dst_type *] *)
+
+val mk_converter :
+  src:Ty.c ->
+  dst:Ty.c ->
+  ?vars:(dst:Expr.var -> src:Expr.var -> Expr.var list) ->
+  ?exprs:(dst:Expr.var -> src:Expr.var -> Expr.expr list) ->
+  string ->
+  convert
+
+val convert :
+  ?mlc_to_c:convert ->
+  ?c_to_mlc:convert ->
+  mlc:Ty.mlc ->
+  c:Ty.c ->
+  unit ->
+  Ty.mlc
+(** [convert ~mlc ~c] has the OCaml type of [mlc] and the C type [c]. The
+    conversions go through a temporary C value of [mlc]; the destination is
+    initialized before the conversion and the temporary is freed after. *)
+
+(** {2 Other types} *)
+
+module AlgData : sig
+  type kind =
+    | KConst of int
+    | KNonConst of int * (string * Expr.var * Ty.mlc) list
+
+  type constr = {
+    name : string;
+    tag : Expr.id;
+    smart_constructor : Expr.code;
+    kind : kind;
+  }
+
+  type t = {
+    ty : Ty.mlc;
+    constrs : constr list;
+    dst_smart_constructors : Expr.var;
+  }
+
+  val algdata : string -> (string * (string * Ty.mlc) list) list -> t
+end
+
+val ret_option_if : Expr.expr -> Ty.mlc -> Ty.mlc
+(** [ret_option_if expr ty] the OCaml value returned is [Some v] if the C
+    expression [expr] is true, where [v] is returned by [ty], otherwise it is
+    [None] *)
+
+val bigarray_array1 :
+  managed:string ->
+  kind:string ->
+  cty:string ->
+  mlty:string ->
+  mlelt:string ->
+  unit ->
+  Ty.mlc
+(** The bigarray is mirrored by a structure with a field "len" of type size_t
+    and a field "t" of type "cty*"
+    @param managed C constant name for the managed flag
+    @param kind C constant name for the kind flag
+    @param cty the C type of the C elements
+    @param mlty the OCaml type of the OCaml elements
+    @param mlelt the OCaml type witness for the C elements *)
+
+(** {1 Parameters} *)
 
 val param :
   ?input_label:string ->
@@ -154,6 +253,12 @@ val param :
   ?name:string ->
   Ty.mlc ->
   Ty.param * Expr.var * Expr.var
+(** [param ty] creates a parameter from the template [ty] with fresh variables.
+    It returns the parameter, its C variable and its OCaml variable. They can be
+    used in the definition of the other parameters of the same function.
+
+    @raise Invalid_argument
+      for an input and output of a type with [owned_by_ml]. *)
 
 val simple_param :
   ?input_label:string ->
@@ -164,7 +269,41 @@ val simple_param :
   ?name:string ->
   Ty.mlc ->
   Ty.param * Expr.var
+(** Same as {!param} without the OCaml variable. *)
 
+val map_param_in_call :
+  ?name:string ->
+  (Expr.expr -> Expr.expr -> Expr.expr * Expr.expr) ->
+  Ty.param ->
+  Ty.param
+(** [map_param_in_call f p] changes the type and the expression given to the
+    stubbed function. *)
+
+val deref_in_call : Ty.param -> Ty.param
+(** Give the address of the C variable to the stubbed function. *)
+
+val get_expression : mlname:string -> Ty.mlc -> Expr.expr -> Expr.expr
+(** [get_expression ~mlname ty expr] defines the function [mlname] that returns
+    the value of the C expression [expr] of type [ty] *)
+
+(**/**)
+
+(* Used by Helper *)
+
+val existing : string -> Expr.var list -> Expr.code
+val calli_existing : string -> Expr.var list -> Expr.expr
+val get_boxing : Ty.conv -> Expr.expr * Expr.expr
+val e_value : Expr.expr
+val string_nt : ?owned:bool -> unit -> Ty.mlc
+val string_nt_prefix : ?owned:bool -> unit -> Ty.mlc
+val string_length_struct : Expr.defined
+val string_length : ?owned:bool -> unit -> Ty.mlc
+val ptr_ref : Ty.mlc -> Ty.mlc
+val array_length : ?owned:bool -> Ty.mlc -> Ty.mlc
+val use_new_param_only_in_call : Ty.param -> Ty.param
+val get_field : Expr.expr -> string -> Ty.param -> Ty.param
+val t_field : Ty.mlc -> Ty.param -> Ty.param
+val len_field : Ty.param -> Ty.param
 val simple_result : Ty.mlc -> Ty.result
 
 val list_or_empty :
@@ -196,70 +335,5 @@ val print_ml_fun :
   Expr.expr ->
   Expr.expr
 
-val declare_struct : string -> (string * Expr.expr) list -> Expr.defined
 val if_ : ?else_:Expr.expr -> Expr.expr -> then_:Expr.expr -> Expr.expr
 val seq : Expr.expr list -> Expr.expr
-
-type convert = { convert : Expr.expr; src : Expr.var; dst : Expr.var }
-
-val mk_converter :
-  src:Ty.c ->
-  dst:Ty.c ->
-  ?vars:(dst:Expr.var -> src:Expr.var -> Expr.var list) ->
-  ?exprs:(dst:Expr.var -> src:Expr.var -> Expr.expr list) ->
-  string ->
-  convert
-
-val convert :
-  ?mlc_to_c:convert ->
-  ?c_to_mlc:convert ->
-  mlc:Ty.mlc ->
-  c:Ty.c ->
-  unit ->
-  Ty.mlc
-
-module AlgData : sig
-  type kind =
-    | KConst of int
-    | KNonConst of int * (string * Expr.var * Ty.mlc) list
-
-  type constr = {
-    name : string;
-    tag : Expr.id;
-    smart_constructor : Expr.code;
-    kind : kind;
-  }
-
-  type t = {
-    ty : Ty.mlc;
-    constrs : constr list;
-    dst_smart_constructors : Expr.var;
-  }
-
-  val algdata : string -> (string * (string * Ty.mlc) list) list -> t
-end
-
-val ret_option_if : Expr.expr -> Ty.mlc -> Ty.mlc
-(** [ret_option_if expr ty] the ocaml calue returned is [Some v] if the C
-    expression [expr] is true, and [v] is returned by [ty], otherwise it is
-    [None]*)
-
-val get_expression : mlname:string -> Ty.mlc -> Expr.expr -> Expr.expr
-(** [get_expression ~mlname ty expr] defined the function [mlname] that return
-    the value of the C expression [expr] of type [ty] *)
-
-val bigarray_array1 :
-  managed:string ->
-  kind:string ->
-  cty:string ->
-  mlty:string ->
-  mlelt:string ->
-  unit ->
-  Ty.mlc
-(** The biggaray is mirrored by a structure with a field "len" of type size_t
-    and a field "t" of type "cty*"
-    @param managed C constant name for the managed flag
-    @param kind C constant name for the kind flag
-    @param cty the C type of the C elements
-    @param mlty the OCaml type of the OCaml elements
-    @param mlelt the OCaml type witness for the C elements *)

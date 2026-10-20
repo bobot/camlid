@@ -626,11 +626,8 @@ let abstract ?initialize ?get ?set ~icty ~ml ~cty () =
   }
 
 type finalize = { finalize : expr; i : var }
-type finalize_op = { finalize_op : code; v : var }
 type hash = { hash : expr; i : var }
-type hash_op = { hash_op : code; v : var }
 type compare = { compare : expr; i1 : var; i2 : var }
-type compare_op = { compare_op : code; v1 : var; v2 : var }
 
 (** Encapsulate a c type into an custom ml type *)
 let custom ?initialize ?finalize ?hash ?compare ?get ?set ~ml ~icty ~cty () =
@@ -645,28 +642,19 @@ let custom ?initialize ?finalize ?hash ?compare ?get ?set ~ml ~icty ~cty () =
     expr "((%a *) Data_custom_val(*%a))" pp_expr icty pp_var v
   in
   let finalize_op =
-    match finalize with
-    | None -> None
-    | Some finalize ->
+    Option.map
+      (fun finalize ->
         let v = Var.mk "v" e_value in
-        Some
-          {
-            finalize_op =
-              code "finalize_op" "%a" pp_expr_binds
-                (finalize.finalize, [ (finalize.i, data_custom_val icty v) ]);
-            v;
-          }
+        code "finalize_op" "%a" pp_expr_binds
+          (finalize.finalize, [ (finalize.i, data_custom_val icty v) ]))
+      finalize
   in
   let hash_op =
     Option.map
       (fun hash ->
         let v = Var.mk "v" e_value in
-        {
-          hash_op =
-            code ~ret:(expr "intnat") "hash_op" "return %a;" pp_expr_binds
-              (hash.hash, [ (hash.i, data_custom_val icty v) ]);
-          v;
-        })
+        code ~ret:(expr "intnat") "hash_op" "return %a;" pp_expr_binds
+          (hash.hash, [ (hash.i, data_custom_val icty v) ]))
       hash
   in
   let compare_op =
@@ -674,24 +662,19 @@ let custom ?initialize ?finalize ?hash ?compare ?get ?set ~ml ~icty ~cty () =
       (fun compare ->
         let v1 = Var.mk "v1" e_value in
         let v2 = Var.mk "v2" e_value in
-        {
-          compare_op =
-            code ~ret:(expr "int") "compare_op" "return %a;" pp_expr_binds
-              ( compare.compare,
-                [
-                  (compare.i1, data_custom_val icty v1);
-                  (compare.i2, data_custom_val icty v2);
-                ] );
-          v1;
-          v2;
-        })
+        code ~ret:(expr "int") "compare_op" "return %a;" pp_expr_binds
+          ( compare.compare,
+            [
+              (compare.i1, data_custom_val icty v1);
+              (compare.i2, data_custom_val icty v2);
+            ] ))
       compare
   in
   let custom_op =
     let id = ID.mk "cops" in
-    let pp_op op_name get fmt = function
+    let pp_op op_name fmt = function
       | None -> Fmt.pf fmt "custom_%s_default" op_name
-      | Some f -> Fmt.pf fmt "%a" pp_def (def_of_code @@ get f)
+      | Some f -> Fmt.pf fmt "%a" pp_def (def_of_code f)
     in
     toplevel id
       "struct custom_operations %a = {\n\
@@ -702,13 +685,8 @@ let custom ?initialize ?finalize ?hash ?compare ?get ?set ~ml ~icty ~cty () =
        custom_serialize_default,\n\
        custom_deserialize_default\n\
        };@."
-      pp_id id
-      (pp_op "finalize" (fun f -> f.finalize_op))
-      finalize_op
-      (pp_op "compare" (fun f -> f.compare_op))
-      compare_op
-      (pp_op "hash" (fun f -> f.hash_op))
-      hash_op
+      pp_id id (pp_op "finalize") finalize_op (pp_op "compare") compare_op
+      (pp_op "hash") hash_op
   in
   {
     mlty = e_def @@ mlabstract ~keep_name:true ml;
@@ -855,11 +833,6 @@ end)
 
 let mk_finalize ~icty ?vars ?exprs finalize =
   let i = Var.mk "i" (expr "%a *" pp_expr icty) in
-  let finalize = Unary.gen ~debug_name:"finalize" vars exprs finalize i in
-  { finalize; i }
-
-let mk_finalize_ptr ~icty ?vars ?exprs finalize =
-  let i = Var.mk "i" icty in
   let finalize = Unary.gen ~debug_name:"finalize" vars exprs finalize i in
   { finalize; i }
 
