@@ -9,3 +9,4 @@ let () =
   Fmt.pr "%a@." Fmt.(vbox (array int)) (Mylib.f_input_output [| 1; 2; 3; 4 |])
 
 let () = Fmt.pr "%a@." Fmt.(vbox (array int)) (Mylib.f4 4)
+let () = Fmt.pr "%d@." (Mylib.f_strings [| "a"; "bc"; "def" |])

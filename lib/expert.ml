@@ -484,7 +484,25 @@ let array_length ?(owned = true) (ty : mlc) =
         cty = e_def cty;
         init = None;
         init_expr = expr "((%a) { 0 })" pp_def cty;
-        free = (if owned then Some (expr "free(%a.t);" pp_var c) else None);
+        free =
+          (if owned then
+             Some
+               (match ty.cty.free with
+               | None -> expr "free(%a.t);" pp_var c
+               | Some free ->
+                   call_codef "free"
+                     [ (c', e_addr c) ]
+                     (fun { fmt } ->
+                       fmt
+                         "@[<hv 2>@[for(size_t cid_i=0;@ cid_i < %a->len;@ \
+                          cid_i++@,\
+                          ){@]@,\
+                          %a@,\
+                          }@]@,"
+                         pp_var c' pp_expr_binds
+                         (free, ty_binds ~c:(expr "%a->t[cid_i]" pp_var c') ty);
+                       fmt "free(%a->t);" pp_var c'))
+           else None);
         in_call = None;
         c;
       };
