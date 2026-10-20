@@ -13,11 +13,10 @@
 #include <stdio.h>
 #include <string.h>
 extern value camlid_stub_f(intptr_t p){
-  CAMLparam0();
   int p1 = ((int) { 0 });
   p1 = (int)(p);
   f(p1);
-  CAMLreturn(Val_unit);
+  return Val_unit;
 }
 extern value camlid_stub_f_byte(value p){
   intptr_t p1;
@@ -32,7 +31,6 @@ extern value camlid_stub_f7(intptr_t p,
   intptr_t p4,
   intptr_t p5,
   intptr_t p6){
-  CAMLparam0();
   int p7 = ((int) { 0 });
   int p8 = ((int) { 0 });
   int p9 = ((int) { 0 });
@@ -48,7 +46,7 @@ extern value camlid_stub_f7(intptr_t p,
   p12 = (int)(p5);
   p13 = (int)(p6);
   f7(p7, p8, p9, p10, p11, p12, p13);
-  CAMLreturn(Val_unit);
+  return Val_unit;
 }
 extern value camlid_stub_f7_byte(value * argv, int argn){
   value p = argv[0];

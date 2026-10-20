@@ -34,12 +34,11 @@ static void camlid_ml2c1(value * v, camlid_string_nt * c){
   memcpy(*c,String_val(*v),len);
   }
 extern value camlid_stub_f_in_prefix(value p){
-  CAMLparam1(p);
   camlid_string_nt p1 = ((camlid_string_nt) { 0 });
   camlid_ml2c1(&p, &p1);
   f_in(p1);
   free(p1);
-  CAMLreturn(Val_unit);
+  return Val_unit;
 }
 typedef camlid_string_nt * camlid_ref;
 extern value camlid_stub_f_out(void){

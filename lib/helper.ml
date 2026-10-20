@@ -48,9 +48,10 @@ let string_nt = Expert.string_nt
 let string_nt_prefix = Expert.string_nt_prefix
 let ptr_ref = ptr_ref
 
-let func_id ?release_lock ?error ~ml ?result ~call_params fid params =
+let func_id ?noalloc ?release_lock ?error ~ml ?result ~call_params fid params =
   (* C function declaration *)
-  print_ml_fun ?release_lock ?error ~call_params fid ~mlname:ml ~params ?result
+  print_ml_fun ?noalloc ?release_lock ?error ~call_params fid ~mlname:ml ~params
+    ?result
 
 type error = fname:string -> Var.t option -> Expert.error
 
@@ -66,7 +67,8 @@ let error ?exn ?msg ?(vars = []) is_error ~fname res =
   in
   { cond = call is_error; msg = Some msg; exn }
 
-let func_res ?release_lock ?error ?ml ?result ?call_params fname params =
+let func_res ?noalloc ?release_lock ?error ?ml ?result ?call_params fname params
+    =
   let call_params = Option.value call_params ~default:params in
   let ml = Option.value ~default:fname ml in
   let fid =
@@ -82,10 +84,10 @@ let func_res ?release_lock ?error ?ml ?result ?call_params fname params =
   let error =
     Option.map (fun e -> e ~fname (Option.map (fun r -> r.rc) result)) error
   in
-  func_id ?release_lock ?error ~ml ?result ~call_params fid params
+  func_id ?noalloc ?release_lock ?error ~ml ?result ~call_params fid params
 
-let func ?release_lock ?error ?ml ?result ?ignored_result ?call_params fname
-    params =
+let func ?noalloc ?release_lock ?error ?ml ?result ?ignored_result ?call_params
+    fname params =
   let result =
     match (result, ignored_result) with
     | Some _, Some _ ->
@@ -96,10 +98,16 @@ let func ?release_lock ?error ?ml ?result ?ignored_result ?call_params fname
     | None, Some rty ->
         let rc = Var.mk "res" rty.cty.cty in
         let bind' code = Expr.binds [ (rty.cty.c, e_addr rc) ] code in
-        Some { routput = PONone; rc; rfree = Option.map bind' rty.cty.free }
+        Some
+          {
+            routput = PONone;
+            rc;
+            rfree = Option.map bind' rty.cty.free;
+            rnoalloc = true;
+          }
     | None, None -> None
   in
-  func_res ?release_lock ?error ?ml ?result ?call_params fname params
+  func_res ?noalloc ?release_lock ?error ?ml ?result ?call_params fname params
 
 type with_length = { t : Ty.param; len : Ty.param }
 
@@ -198,6 +206,8 @@ let string_as_FILE_ptr =
     v;
     owned_by_ml = false;
     ml_heap = false;
+    ml2c_noalloc = false;
+    c2ml_noalloc = false;
   }
 
 let input_value ml = input (value ml)

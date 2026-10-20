@@ -149,7 +149,6 @@ extern value caml_cudd_stub_bdd_not(value man,
 }
 extern int caml_cudd_stub_bdd_is_equal(value p,
   value p1){
-  CAMLparam2(p, p1);
   int ures;
   int res;
   caml_cudd_bdd_t p2 = ((caml_cudd_bdd_t) { 0 });
@@ -158,7 +157,7 @@ extern int caml_cudd_stub_bdd_is_equal(value p,
   *&p3=((caml_cudd_bdd_wrapper1 *) Data_custom_val(p1))->ptr;
   res = equal_bdd(p2, p3);
   ures = (res);
-  CAMLreturnT(int,ures);
+  return ures;
 }
 extern value caml_cudd_stub_bdd_is_equal_byte(value p,
   value p1){
@@ -171,7 +170,6 @@ extern value caml_cudd_stub_bdd_is_equal_byte(value p,
 extern int caml_cudd_stub_bdd_leq(value man,
   value p,
   value p1){
-  CAMLparam3(man, p, p1);
   int ures;
   int res;
   DdManager* man1 = ((DdManager*) { 0 });
@@ -182,7 +180,7 @@ extern int caml_cudd_stub_bdd_leq(value man,
   *&p3=((caml_cudd_bdd_wrapper1 *) Data_custom_val(p1))->ptr;
   res = Cudd_bddLeq(man1, p2, p3);
   ures = (res);
-  CAMLreturnT(int,ures);
+  return ures;
 }
 extern value caml_cudd_stub_bdd_leq_byte(value man,
   value p,
@@ -195,13 +193,12 @@ extern value caml_cudd_stub_bdd_leq_byte(value man,
 }
 extern value caml_cudd_stub_print(value man,
   value p){
-  CAMLparam2(man, p);
   DdManager* man1 = ((DdManager*) { 0 });
   caml_cudd_bdd_t p1 = ((caml_cudd_bdd_t) { 0 });
   man1 = *(((DdManager* *) Data_custom_val(man)));
   *&p1=((caml_cudd_bdd_wrapper1 *) Data_custom_val(p))->ptr;
   bdd_print(man1, p1);
-  CAMLreturn(Val_unit);
+  return Val_unit;
 }
 static void caml_cudd_c2ml2(DdManager* man, value * v, caml_cudd_result * c){
   CAMLparam0();

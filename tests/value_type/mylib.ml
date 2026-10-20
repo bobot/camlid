@@ -9,11 +9,11 @@ external vec_push:
   vec ->
   (int [@untagged]) ->
   unit
-  = "camlid_stub_vec_push_byte" "camlid_stub_vec_push"
+  = "camlid_stub_vec_push_byte" "camlid_stub_vec_push" [@@noalloc]
 external vec_sum:
   vec ->
   (int [@untagged])
-  = "camlid_stub_vec_sum_byte" "camlid_stub_vec_sum"
+  = "camlid_stub_vec_sum_byte" "camlid_stub_vec_sum" [@@noalloc]
 external vec_ranges:
   (int [@untagged]) ->
   (vec array)
@@ -30,7 +30,7 @@ external zeros:
 external zeros_len:
   zeros ->
   (int [@untagged])
-  = "camlid_stub_zeros_len_byte" "camlid_stub_zeros_len"
+  = "camlid_stub_zeros_len_byte" "camlid_stub_zeros_len" [@@noalloc]
 external vec_live:
   unit -> (int [@untagged])
-  = "camlid_stub_vec_live_byte" "camlid_stub_vec_live"
+  = "camlid_stub_vec_live_byte" "camlid_stub_vec_live" [@@noalloc]

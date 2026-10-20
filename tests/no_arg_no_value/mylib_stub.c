@@ -12,5 +12,5 @@
 #include <caml/signals.h>
 #include <stdio.h>
 #include <string.h>
-extern value camlid_stub_f(void){CAMLparam0();f();CAMLreturn(Val_unit);}
+extern value camlid_stub_f(void){f();return Val_unit;}
 

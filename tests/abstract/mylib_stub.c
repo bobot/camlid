@@ -35,14 +35,13 @@ extern value camlid_stub_of_int_byte(value p){
   
 }
 extern intptr_t camlid_stub_to_int(value p){
-  CAMLparam1(p);
   intptr_t ures;
   int res;
   camlid_abstract p1 = ((camlid_abstract) { 0 });
   p1 = *((camlid_abstract *) Bp_val(p));
   res = to_int(p1);
   ures = (intptr_t)(res);
-  CAMLreturnT(intptr_t,ures);
+  return ures;
 }
 extern value camlid_stub_to_int_byte(value p){
   intptr_t ures;
@@ -52,10 +51,9 @@ extern value camlid_stub_to_int_byte(value p){
   return vres;
 }
 extern value camlid_stub_lib_free(value p){
-  CAMLparam1(p);
   camlid_abstract p1 = ((camlid_abstract) { 0 });
   p1 = *((camlid_abstract *) Bp_val(p));
   lib_free(p1);
-  CAMLreturn(Val_unit);
+  return Val_unit;
 }
 

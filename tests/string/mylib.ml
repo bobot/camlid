@@ -1,7 +1,10 @@
 (* generated using generator.exe and camlid *)
 type camlid_string_nt = string
 external f_in: camlid_string_nt -> unit = "camlid_stub_f_in"
-external f_in_prefix: camlid_string_nt -> unit = "camlid_stub_f_in_prefix"
+external f_in_prefix:
+  camlid_string_nt ->
+  unit
+  = "camlid_stub_f_in_prefix" [@@noalloc]
 external f_out: unit -> camlid_string_nt = "camlid_stub_f_out"
 external f_in3:
   (int [@untagged]) ->

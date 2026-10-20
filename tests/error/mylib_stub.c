@@ -119,6 +119,20 @@ extern value camlid_stub_slow_sum_byte(value p){
   return vres;
 }
 extern intptr_t camlid_stub_vec_live(void){
+  intptr_t ures;
+  intptr_t res;
+  res = vec_live();
+  ures = (res);
+  return ures;
+}
+extern value camlid_stub_vec_live_byte(void){
+  intptr_t ures;
+  value vres;
+  ures = camlid_stub_vec_live();
+  vres = Val_long(ures);
+  return vres;
+}
+extern intptr_t camlid_stub_vec_live_alloc(void){
   CAMLparam0();
   intptr_t ures;
   intptr_t res;
@@ -126,10 +140,10 @@ extern intptr_t camlid_stub_vec_live(void){
   ures = (res);
   CAMLreturnT(intptr_t,ures);
 }
-extern value camlid_stub_vec_live_byte(void){
+extern value camlid_stub_vec_live_alloc_byte(void){
   intptr_t ures;
   value vres;
-  ures = camlid_stub_vec_live();
+  ures = camlid_stub_vec_live_alloc();
   vres = Val_long(ures);
   return vres;
 }

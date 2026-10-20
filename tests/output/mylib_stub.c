@@ -14,12 +14,11 @@
 #include <string.h>
 typedef int * camlid_ref;
 extern intptr_t camlid_stub_f(void){
-  CAMLparam0();
   intptr_t p;
   camlid_ref p1 = &(((struct { int a; }) { ((int) { 0 }) }).a);
   f(p1);
   p = (intptr_t)(*p1);
-  CAMLreturnT(intptr_t,p);
+  return p;
 }
 extern value camlid_stub_f_byte(void){
   intptr_t p;

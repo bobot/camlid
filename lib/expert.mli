@@ -346,6 +346,7 @@ val list_or_empty :
   unit
 
 val code_c_fun :
+  ?noalloc:bool ->
   ?release_lock:bool ->
   ?error:error ->
   params:Ty.param list ->
@@ -364,6 +365,7 @@ val code_c_fun_bytecode :
   params:Ty.param list -> result:Ty.result option -> Expr.code -> Expr.code
 
 val print_ml_fun :
+  ?noalloc:bool ->
   ?release_lock:bool ->
   ?error:error ->
   params:Ty.param list ->

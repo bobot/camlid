@@ -58,13 +58,12 @@ extern value camlid_stub_vec_range_byte(value p){
 }
 extern value camlid_stub_vec_push(value p,
   intptr_t p1){
-  CAMLparam1(p);
   vec* p2 = ((vec*) { 0 });
   intptr_t p3 = ((intptr_t) { 0 });
   p2 = *(((vec* *) Data_custom_val(p)));
   p3 = (p1);
   vec_push(p2, p3);
-  CAMLreturn(Val_unit);
+  return Val_unit;
 }
 extern value camlid_stub_vec_push_byte(value p,
   value p1){
@@ -74,14 +73,13 @@ extern value camlid_stub_vec_push_byte(value p,
   
 }
 extern intptr_t camlid_stub_vec_sum(value p){
-  CAMLparam1(p);
   intptr_t ures;
   intptr_t res;
   vec* p1 = ((vec*) { 0 });
   p1 = *(((vec* *) Data_custom_val(p)));
   res = vec_sum(p1);
   ures = (res);
-  CAMLreturnT(intptr_t,ures);
+  return ures;
 }
 extern value camlid_stub_vec_sum_byte(value p){
   intptr_t ures;
@@ -229,14 +227,13 @@ extern value camlid_stub_zeros_byte(value p){
   
 }
 extern intptr_t camlid_stub_zeros_len(value p){
-  CAMLparam1(p);
   intptr_t ures;
   size_t res;
   vec* p1 = ((vec*) { 0 });
   p1 = *(((vec* *) Data_custom_val(p)));
   res = vec_len(p1);
   ures = (intptr_t)(res);
-  CAMLreturnT(intptr_t,ures);
+  return ures;
 }
 extern value camlid_stub_zeros_len_byte(value p){
   intptr_t ures;
@@ -246,12 +243,11 @@ extern value camlid_stub_zeros_len_byte(value p){
   return vres;
 }
 extern intptr_t camlid_stub_vec_live(void){
-  CAMLparam0();
   intptr_t ures;
   intptr_t res;
   res = vec_live();
   ures = (res);
-  CAMLreturnT(intptr_t,ures);
+  return ures;
 }
 extern value camlid_stub_vec_live_byte(void){
   intptr_t ures;

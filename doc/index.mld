@@ -131,7 +131,7 @@ let mat =
 let zero = func "mat_zero" ~ml:"zero" [ output mat.t; rows; cols ]
 ]}
 
-{2 Errors and the runtime lock}
+{2 Errors, runtime lock and noalloc}
 
 [~error] checks the result of the C function after the call. On failure the stub cleans up as usual (copies are freed, initialized outputs owned by OCaml are moved into OCaml values and finalized later) then raises the exception:
 
@@ -146,6 +146,8 @@ let make =
     ~error:(error ~exn:my_error ~msg:"msg" ~vars:[ n_var ] "is_error")
     [ output vec.t; output (ptr_ref (string_nt ())); n ]
 ]}
+
+When the conversions don't allocate in the OCaml heap (scalars, inputs owned by OCaml, ...) and there is at most one result, the external is declared [[@@noalloc]] and the stub doesn't register its values with [CAMLparam]. Use [~noalloc:false] if the C function calls the OCaml runtime itself.
 
 [~release_lock:true] releases the runtime lock during the call, so other threads can run. The arguments of the C function are C values that don't point into the OCaml heap, except for [value] types for which it is refused.
 

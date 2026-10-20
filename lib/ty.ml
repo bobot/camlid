@@ -52,6 +52,10 @@ type mlc = {
       (** [true] when the C value is or points into an OCaml value (e.g. a
           [value]), so the C function can't be called with the runtime lock
           released. *)
+  ml2c_noalloc : bool;
+      (** [true] when the boxed [ml2c] doesn't allocate in the OCaml heap,
+          doesn't raise, and doesn't use [CAMLparam] *)
+  c2ml_noalloc : bool;  (** Same for the boxed [c2ml] *)
 }
 (** An OCaml type, a C type, and the conversions between them. It is a template
     instantiated by each parameter with fresh variables. *)
@@ -93,6 +97,9 @@ type param = {
       (** When the C function fails, moves an output owned by OCaml into an
           OCaml value, which will be finalized *)
   pml_heap : bool;  (** The C argument is or points into an OCaml value *)
+  pnoalloc_in : bool;  (** The conversion of the input doesn't allocate *)
+  pnoalloc_out : bool;
+      (** The boxed conversion of the output doesn't allocate *)
 }
 (** A parameter is a set of variable linked by conversion expression. Possibly:
     - An input variable of type value and conversion functions
@@ -104,5 +111,11 @@ type param = {
     - An output variable of type value and conversion functions
     - An expression used usually for freeing memory *)
 
-type result = { routput : poutput; rfree : expr option; rc : var }
+type result = {
+  routput : poutput;
+  rfree : expr option;
+  rc : var;
+  rnoalloc : bool;  (** The boxed conversion doesn't allocate *)
+}
+
 type conf = Expr.expr list

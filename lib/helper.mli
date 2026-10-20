@@ -8,6 +8,7 @@ type error
 (** A check done after the call of the C function, see {!val:error} *)
 
 val func :
+  ?noalloc:bool ->
   ?release_lock:bool ->
   ?error:error ->
   ?ml:string ->
@@ -33,7 +34,13 @@ val func :
       release the runtime lock during the call, so that other threads can run.
       Raises [Invalid_argument] if an argument of the C function points into the
       OCaml heap (e.g. {!input_value}).
-    @param error checks the result of the C function, see {!val:error} *)
+    @param error checks the result of the C function, see {!val:error}
+    @param noalloc
+      by default the external is [[@@noalloc]] when the conversions don't
+      allocate in the OCaml heap (e.g. scalars and inputs owned by OCaml), and
+      there is at most one result, no [error] and no [release_lock]. Use
+      [~noalloc:false] when the C function itself uses the OCaml runtime (e.g.
+      raises an exception). [~noalloc:true] fails if it is not possible. *)
 
 (** {2 Errors} *)
 

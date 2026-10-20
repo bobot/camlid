@@ -73,6 +73,8 @@ let builtin_mltypes ~unbox_attribute ~unbox_version ?u_type ~c_type ~c2ml ~ml2c
     v;
     owned_by_ml = false;
     ml_heap = false;
+    ml2c_noalloc = true;
+    c2ml_noalloc = String.length c2ml >= 4 && String.sub c2ml 0 4 = "Val_";
   }
 
 let string_nt_alias = mlalias "string_nt" "string"
@@ -116,6 +118,8 @@ let string_nt ~prefix ~owned =
     v;
     owned_by_ml = false;
     ml_heap = false;
+    ml2c_noalloc = prefix;
+    c2ml_noalloc = false;
   }
 
 let string_nt_prefix ?(owned = true) () = string_nt ~prefix:true ~owned
@@ -161,6 +165,8 @@ let string_fixed_length ?(init = true) ?(owned = true) len =
     v;
     owned_by_ml = false;
     ml_heap = false;
+    ml2c_noalloc = true;
+    c2ml_noalloc = false;
   }
 
 let string_length_struct =
@@ -206,6 +212,8 @@ let string_length ?(owned = true) () =
     v;
     owned_by_ml = false;
     ml_heap = false;
+    ml2c_noalloc = true;
+    c2ml_noalloc = false;
   }
 
 let ptr_ref (ty : mlc) =
@@ -247,6 +255,8 @@ let ptr_ref (ty : mlc) =
     v = ty.v;
     owned_by_ml = ty.owned_by_ml;
     ml_heap = ty.ml_heap;
+    ml2c_noalloc = ty.ml2c_noalloc;
+    c2ml_noalloc = ty.c2ml_noalloc;
   }
 
 type copy = { copy : Expr.expr; c_from : Expr.Var.t; c_to : Expr.Var.t }
@@ -424,6 +434,8 @@ let array ?(init = true) ?(owned = true) ~len (ty : mlc) =
     v;
     owned_by_ml = ty.owned_by_ml;
     ml_heap = ty.ml_heap;
+    ml2c_noalloc = false;
+    c2ml_noalloc = false;
   }
 
 let array_length ?(owned = true) (ty : mlc) =
@@ -516,6 +528,8 @@ let array_length ?(owned = true) (ty : mlc) =
     v;
     owned_by_ml = ty.owned_by_ml;
     ml_heap = ty.ml_heap;
+    ml2c_noalloc = false;
+    c2ml_noalloc = false;
   }
 
 let map_param_in_call ?(name = "arg") map param =
@@ -545,6 +559,8 @@ let use_new_param_only_in_call param =
         pfree = None;
         pon_error = None;
         pml_heap = false;
+        pnoalloc_in = true;
+        pnoalloc_out = true;
       }
 
 let get_field ty field_name param =
@@ -579,6 +595,8 @@ let abstract ?init ?get ?set ~icty ~ml ~cty () =
     v;
     owned_by_ml = false;
     ml_heap = false;
+    ml2c_noalloc = true;
+    c2ml_noalloc = false;
     mlty = e_def @@ mlabstract ~keep_name:true ml;
     conv =
       Boxed
@@ -746,6 +764,8 @@ let custom ?init ?clear ?hash ?compare ?mem ?get ?set ~ml ~icty ~cty () =
     v;
     owned_by_ml = true;
     ml_heap = false;
+    ml2c_noalloc = true;
+    c2ml_noalloc = false;
   }
 
 (** Encapsulate a c pointer type into an custom ml type *)
@@ -984,6 +1004,11 @@ let param ?input_label ?(binds = []) ?(input = false) ?(output = false)
     | _ -> None
   in
   let pml_heap = used_in_call && pty.ml_heap in
+  let pnoalloc_in =
+    (not input)
+    || match pty.conv with Unboxable _ -> true | Boxed _ -> pty.ml2c_noalloc
+  in
+  let pnoalloc_out = (not output) || pty.c2ml_noalloc in
   ( {
       pinput;
       pinit_expr;
@@ -993,6 +1018,8 @@ let param ?input_label ?(binds = []) ?(input = false) ?(output = false)
       poutput;
       pon_error;
       pml_heap;
+      pnoalloc_in;
+      pnoalloc_out;
     },
     pc,
     pv )
@@ -1019,6 +1046,8 @@ let add_result params result =
         pinit_expr = [ (result.rc, None) ];
         pon_error = None;
         pml_heap = false;
+        pnoalloc_in = true;
+        pnoalloc_out = result.rnoalloc;
       }
       :: params
   | None -> params
@@ -1075,8 +1104,38 @@ let pp_error ~name ~params { fmt } error =
         pp_var err_var);
   fmt "@]@,}@,"
 
-let code_c_fun ?(release_lock = false) ?error ~params ~call_params ~result ~name
-    (fid : expr) =
+let is_noalloc ?noalloc ?(release_lock = false) ?error ~params ~result ~name ()
+    =
+  let params = add_result params result in
+  let outputs =
+    List.filter
+      (fun p -> match p.poutput with PONone -> false | _ -> true)
+      params
+  in
+  let single = List.length outputs = 1 in
+  let ok =
+    (not release_lock) && Option.is_none error
+    && List.length outputs <= 1
+    && List.for_all
+         (fun p ->
+           p.pnoalloc_in
+           && (p.pnoalloc_out
+              || single
+                 && match p.poutput with POUnboxable _ -> true | _ -> false))
+         params
+  in
+  match noalloc with
+  | None -> ok
+  | Some false -> false
+  | Some true when ok -> true
+  | Some true ->
+      Fmt.invalid_arg
+        "Camlid: %s can't be noalloc, a conversion allocates or the function \
+         has many results, an error check or releases the lock"
+        name
+
+let code_c_fun ?(noalloc = false) ?(release_lock = false) ?error ~params
+    ~call_params ~result ~name (fid : expr) =
   let params = add_result params result in
   let call_params = add_result call_params result in
   if release_lock && List.exists (fun p -> p.pml_heap) call_params then
@@ -1176,7 +1235,8 @@ let code_c_fun ?(release_lock = false) ?error ~params ~call_params ~result ~name
           | a1 :: a2 :: l -> ([ a1; a2 ], l)
           | a1 :: l -> ([ a1 ], l)
         in
-        if p = [] then (if first then fmt "@[CAMLparam0();@]@,")
+        if noalloc then ()
+        else if p = [] then (if first then fmt "@[CAMLparam0();@]@,")
         else (
           fmt "@[CAML%t%s%i(%a);@]@," add_x name (List.length p)
             Fmt.(list ~sep:comma pp_input)
@@ -1186,6 +1246,7 @@ let code_c_fun ?(release_lock = false) ?error ~params ~call_params ~result ~name
       camlParam ~is_param:true ~first:true (List.filter_map boxed_pinput params);
       (match kind_of_result with
       | UnitResult -> ()
+      | OneResultValue v when noalloc -> fmt "@[value %a;@]@," pp_var v
       | OneResultValue _ ->
           camlParam ~is_param:false ~first:false
             (List.filter_map boxed_poutput params)
@@ -1244,6 +1305,9 @@ let code_c_fun ?(release_lock = false) ?error ~params ~call_params ~result ~name
       pp_scall (fun p -> p.pfree) { fmt } params;
       (* return *)
       (match kind_of_result with
+      | UnitResult when noalloc -> fmt "@[return Val_unit;@]"
+      | OneResultValue v when noalloc -> fmt "@[return %a;@]" pp_var v
+      | OneResultUnboxed { u; _ } when noalloc -> fmt "@[return %a;@]" pp_var u
       | UnitResult -> fmt "@[CAMLreturn(Val_unit);@]"
       | OneResultValue v -> fmt "@[CAMLreturn(%a);@]" pp_var v
       | OneResultUnboxed { u; _ } ->
@@ -1342,10 +1406,13 @@ let code_c_fun_bytecode ~params ~result fid_native =
       | MultipleValues -> ());
       fmt "@]@,@[}@]@]@.")
 
-let print_ml_fun ?release_lock ?error ~params ?(call_params = params) ?result
-    ~mlname fid =
+let print_ml_fun ?noalloc ?release_lock ?error ~params ?(call_params = params)
+    ?result ~mlname fid =
+  let noalloc =
+    is_noalloc ?noalloc ?release_lock ?error ~params ~result ~name:mlname ()
+  in
   let code_c =
-    code_c_fun ?release_lock ?error ~params ~call_params ~result
+    code_c_fun ~noalloc ?release_lock ?error ~params ~call_params ~result
       ~name:("stub_" ^ mlname) fid
   in
   let all = add_result params result in
@@ -1401,11 +1468,12 @@ let print_ml_fun ?release_lock ?error ~params ?(call_params = params) ?result
       let code_c_byte = code_c_fun_bytecode ~params ~result code_c in
       Fmt.pf fmt "\"%a\" " pp_def (def_of_code code_c_byte)
   in
-  expr "@[<hv 2>external %s:@ %a@[<hv>%a@]@ = %a\"%a\"@]" mlname
+  expr "@[<hv 2>external %s:@ %a@[<hv>%a@]@ = %a\"%a\"%s@]" mlname
     Fmt.(list_or_empty ~empty:(any "unit -> ") ~sep:nop pp_param)
     inputs
     Fmt.(list_or_empty ~empty:(any "unit") ~sep:(any "@ *@ ") pp_result)
     results pp_byte () pp_def (def_of_code code_c)
+    (if noalloc then " [@@noalloc]" else "")
 
 let declare_struct name fields =
   let id = ID.mk name in
@@ -1508,6 +1576,8 @@ let convert ?mlc_to_c ?c_to_mlc ~(mlc : mlc) ~(c : c) () =
     v = mlc.v;
     owned_by_ml = false;
     ml_heap = false;
+    ml2c_noalloc = mlc.ml2c_noalloc;
+    c2ml_noalloc = mlc.c2ml_noalloc;
   }
 
 module AlgData = struct
@@ -1709,6 +1779,8 @@ module AlgData = struct
               | KConst _ -> false
               | KNonConst (_, l) -> List.exists (fun (_, _, ty) -> ty.ml_heap) l)
             l;
+        ml2c_noalloc = false;
+        c2ml_noalloc = false;
       }
     in
     let dst_smart_constructors = Var.mk "dst" (expr "%a*" pp_def cty) in
@@ -1784,6 +1856,8 @@ let value =
       v;
       owned_by_ml = false;
       ml_heap = true;
+      ml2c_noalloc = true;
+      c2ml_noalloc = true;
     }
 
 let ret_option_if expr typedef =
@@ -1851,7 +1925,12 @@ let simple_result rty =
             pmlty = rty.mlty;
           }
   in
-  { routput; rc; rfree = Option.map bind' rty.cty.free }
+  {
+    routput;
+    rc;
+    rfree = Option.map bind' rty.cty.free;
+    rnoalloc = rty.c2ml_noalloc;
+  }
 
 let get_expression ~mlname ty e =
   let result = simple_result ty in
@@ -1898,6 +1977,8 @@ let bigarray_array1_aux ~managed ~kind ~cty ~mlty ~mlelt () =
     v;
     owned_by_ml = true;
     ml_heap = false;
+    ml2c_noalloc = true;
+    c2ml_noalloc = false;
   }
 
 let bigarray_array1 = bigarray_array1_aux

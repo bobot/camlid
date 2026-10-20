@@ -21,6 +21,12 @@ let () =
   | _ -> Generate.to_file "should_not_exist" []
   | exception Invalid_argument _ -> ()
 
+(* noalloc is impossible when the result is allocated *)
+let () =
+  match func "f" ~noalloc:true [ output (ptr_ref (string_nt ())) ] with
+  | _ -> Generate.to_file "should_not_exist" []
+  | exception Invalid_argument _ -> ()
+
 let () =
   Generate.to_file ~headers:[ "lib.h" ] "mylib"
     [
@@ -29,4 +35,5 @@ let () =
       make;
       func "slow_sum" ~release_lock:true [ input int ] ~result:int;
       func "vec_live" [] ~result:int;
+      func ~ml:"vec_live_alloc" "vec_live" ~noalloc:false [] ~result:int;
     ]

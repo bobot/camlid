@@ -18,4 +18,7 @@ external slow_sum:
   = "camlid_stub_slow_sum_byte" "camlid_stub_slow_sum"
 external vec_live:
   unit -> (int [@untagged])
-  = "camlid_stub_vec_live_byte" "camlid_stub_vec_live"
+  = "camlid_stub_vec_live_byte" "camlid_stub_vec_live" [@@noalloc]
+external vec_live_alloc:
+  unit -> (int [@untagged])
+  = "camlid_stub_vec_live_alloc_byte" "camlid_stub_vec_live_alloc"

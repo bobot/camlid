@@ -54,14 +54,13 @@ extern value camlid_stub_of_int_byte(value p){
   
 }
 extern intptr_t camlid_stub_to_int(value p){
-  CAMLparam1(p);
   intptr_t ures;
   int res;
   int * p1 = ((int *) { 0 });
   p1 = *(((int * *) Data_custom_val(p)));
   res = to_int(p1);
   ures = (intptr_t)(res);
-  CAMLreturnT(intptr_t,ures);
+  return ures;
 }
 extern value camlid_stub_to_int_byte(value p){
   intptr_t ures;
