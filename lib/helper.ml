@@ -73,6 +73,7 @@ let func ?ml ?result ?ignored_result ?call_params fname params =
     | Some _, Some _ ->
         failwith "Camlid.Helper.func: can't set both result and ignored_result"
     | Some rty, None -> Some (Expert.simple_result rty)
+    | None, Some { cty = { free = None; _ }; _ } -> None
     | None, Some rty ->
         let rc = Var.mk "res" rty.cty.cty in
         let bind' code = Expr.binds [ (rty.cty.c, e_addr rc) ] code in
@@ -235,6 +236,56 @@ let custom_ptr ?initialize ?finalize ?hash ?compare ?malloc ~ml ~c () =
   let compare = Option.map (mk_compare ~icty) compare in
   let initialize = Option.map (mk_initialize ~cty) initialize in
   custom_ptr ?initialize ?finalize ?hash ?compare ?malloc ~ml ~cty ()
+
+type value_type = { t : mlc; value : mlc; borrowed : mlc }
+
+let value_type ?(init_args = []) ?hash ?compare ~init ~clear ~copy ~ml ~c () =
+  let cty = expr "%s" c in
+  let mk_init = mk_initialize ~cty init ~vars:(fun v -> v :: init_args) in
+  let mk_clear = mk_initialize ~cty clear in
+  let t =
+    Expert.custom_ptr ~initialize:mk_init
+      ~finalize:(mk_finalize ~icty:cty clear)
+      ?hash:(Option.map (mk_hash ~icty:cty) hash)
+      ?compare:(Option.map (mk_compare ~icty:cty) compare)
+      ~malloc:true ~ml ~cty ()
+  in
+  let value =
+    let c = Var.mk "c" cty in
+    let on_c (f : initialize) =
+      Some (expr "%a" pp_expr_binds (f.initialize, [ (f.c, e_addr c) ]))
+    in
+    let value_c =
+      {
+        cty;
+        init = on_c mk_init;
+        init_expr = expr "((%a) { 0 })" pp_expr cty;
+        free = on_c mk_clear;
+        in_call = None;
+        c;
+      }
+    in
+    let mk ~src ~dst ~exprs = mk_converter ~src ~dst copy ~exprs in
+    Expert.convert ~mlc:t ~c:value_c
+      ~c_to_mlc:
+        (mk ~src:value_c ~dst:t.cty ~exprs:(fun ~dst ~src ->
+             [ e_deref dst; e_var src ]))
+      ~mlc_to_c:
+        (mk ~src:t.cty ~dst:value_c ~exprs:(fun ~dst ~src ->
+             [ e_var dst; e_deref src ]))
+      ()
+  in
+  let borrowed =
+    Expert.copy t
+      ~copy:
+        (mk_copy ~cty:t.cty.cty copy ~exprs:(fun ~dst ~src ->
+             [ e_deref dst; e_deref src ]))
+  in
+  { t; value; borrowed }
+
+let extra_input ?label ?name ty =
+  Expert.simple_param ?input_label:label ?name ~input:true ~used_in_call:false
+    ty
 
 let algdata ml_type l =
   let t = AlgData.algdata ml_type l in

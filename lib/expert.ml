@@ -990,7 +990,7 @@ let list_or_empty ~empty ~sep pp fmt = function
 
 let add_result params result =
   match result with
-  | Some ({ routput = POBoxed _ | POUnboxable _; _ } as result) ->
+  | Some result ->
       {
         pinput = PINone;
         poutput = result.routput;
@@ -1000,7 +1000,7 @@ let add_result params result =
         pinit_expr = [ (result.rc, None) ];
       }
       :: params
-  | _ -> params
+  | None -> params
 
 let return_var = Var.mk "ret" e_value
 

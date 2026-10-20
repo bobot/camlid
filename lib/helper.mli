@@ -247,6 +247,56 @@ val custom_ptr :
   unit ->
   Ty.mlc
 
+(** {1 C++-like types} *)
+
+type value_type = {
+  t : Ty.mlc;
+      (** [T *] in C. The OCaml value is a custom block that owns a [T]
+          allocated with [malloc] and initialized with [init]. The finalizer
+          calls [clear] then [free]. Input parameters borrow the [T], output
+          parameters move it into a new OCaml value. *)
+  value : Ty.mlc;
+      (** [T] in C, for example for the elements of an array of [T]. The
+          conversions copy with [copy], the stub calls [clear] at the end. *)
+  borrowed : Ty.mlc;
+      (** [T *] in C, pointing to a [T] that the OCaml side does not own, for
+          example a pointer inside another structure. It is copied into a new
+          OCaml value when it is an output. *)
+}
+(** The same OCaml type for the three ways a C function can handle a [T]. *)
+
+val value_type :
+  ?init_args:Expr.var list ->
+  ?hash:string ->
+  ?compare:string ->
+  init:string ->
+  clear:string ->
+  copy:string ->
+  ml:string ->
+  c:string ->
+  unit ->
+  value_type
+(** [value_type ~init ~clear ~copy ~ml ~c ()] binds the C type [c] (named [T]
+    below), handled like a C++ class, to the abstract OCaml type [ml]. The C
+    functions are:
+    - [void init(T *t, init_args...)], the constructor;
+    - [void clear(T *t)], the destructor;
+    - [void copy(T *dst, T *src)], the copy assignment;
+    - [intnat hash(T *t)] and [int compare(T *t1, T *t2)], used by the
+      polymorphic hash and comparison of OCaml.
+
+    [init_args] are C variables of other parameters of the function, often
+    created by {!extra_input}. *)
+
+val extra_input : ?label:string -> ?name:string -> Ty.mlc -> Ty.param * Expr.var
+(** [extra_input ty] is an argument of the OCaml function that is not given to
+    the C function. Its C variable can be used by the other parameters, e.g. in
+    the [init_args] of {!value_type}.
+
+    @param label label of the argument in the OCaml function *)
+
+(** {1 Other types} *)
+
 val algdata : string -> (string * (string * Ty.mlc) list) list -> Ty.mlc
 val string_as_FILE_ptr : Ty.mlc
 val input_value : string -> Ty.param
