@@ -97,7 +97,7 @@ static void camlid_c2ml2(value * v, vec * c){
   camlid_init(&tmp);
   vec_set(
   *&tmp,
-  c);
+  c);;
   camlid_c2ml(&*v, &tmp);
   }
 static void camlid_c2ml1(size_t array_len, value * v, vec* * c){
@@ -142,7 +142,7 @@ static void camlid_ml2c1(value * v, vec * c){
   vec_init(&*c);
   vec_set(
   c,
-  *&tmp);
+  *&tmp);;
   }
 static void camlid_ml2c(value * v, camlid_array * c){
   CAMLparam0 ();

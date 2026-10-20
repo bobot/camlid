@@ -1384,7 +1384,7 @@ let convert ?mlc_to_c ?c_to_mlc ~(mlc : mlc) ~(c : c) () =
               (fun init ->
                 fmt "%a@ " pp_expr_binds (init, [ (c.c, e_deref c') ]))
               c.init;
-            fmt "%a" pp_expr_binds
+            fmt "%a;" pp_expr_binds
               ( mlc_to_c.convert,
                 [ (mlc_to_c.dst, e_var c'); (mlc_to_c.src, e_addr tmp) ] );
             free_tmp { fmt })
@@ -1399,7 +1399,7 @@ let convert ?mlc_to_c ?c_to_mlc ~(mlc : mlc) ~(c : c) () =
             Option.iter
               (fun init -> fmt "%a@ " pp_expr (on_tmp init))
               mlc.cty.init;
-            fmt "%a@ " pp_expr_binds
+            fmt "%a;@ " pp_expr_binds
               ( c_to_mlc.convert,
                 [ (c_to_mlc.src, e_var c'); (c_to_mlc.dst, e_addr tmp) ] );
             fmt "%a" pp_expr (on_tmp store);
