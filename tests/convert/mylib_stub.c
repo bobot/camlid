@@ -26,9 +26,9 @@ static void camlid_c2ml1(value * v, camlid_result * c){
   CAMLreturn0;
   }
 static void camlid_c2ml(camlid_ref data, value * v, intptr_t * c){
-  camlid_algdata tmp;
-  combine_data_or_status(&tmp, c, data);;
-   camlid_c2ml1(&*v, &tmp);
+  camlid_algdata tmp = ((camlid_result) { 0 });
+  combine_data_or_status(&tmp, c, data);
+  camlid_c2ml1(&*v, &tmp);
   }
 extern value camlid_stub_f(intptr_t p){
   CAMLparam0();

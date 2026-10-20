@@ -1358,84 +1358,74 @@ let mk_converter ~(src : c) ~(dst : c) ?vars ?exprs name =
   let convert = DstSrc.gen ~debug_name:"convert" vars exprs name (dst, src) in
   { dst; src; convert }
 
+(* The conversion goes through a temporary [tmp] of the C type of [mlc]. Like
+   any C value, [tmp] and the destination are initialized before being
+   assigned, and [tmp] is freed after use. *)
 let convert ?mlc_to_c ?c_to_mlc ~(mlc : mlc) ~(c : c) () =
   let v' = Var.mk "v" (expr "value *") in
   let c' = Var.mk "c" (expr "%a *" pp_expr c.cty) in
+  let tmp = Var.mk "tmp" mlc.cty.cty in
+  let on_tmp e = binds [ (mlc.cty.c, e_var tmp) ] e in
+  let declare_tmp { fmt } =
+    fmt "%a %a = %a;@ " pp_expr mlc.cty.cty pp_var tmp pp_expr mlc.cty.init_expr
+  in
+  let free_tmp { fmt } =
+    Option.iter (fun free -> fmt "@ %a" pp_expr (on_tmp free)) mlc.cty.free
+  in
+  (* [load] fills [tmp] from the OCaml value *)
+  let to_c binds load =
+    match mlc_to_c with
+    | None -> expr "#error(\"mlc_to_c not given\")"
+    | Some (mlc_to_c : convert) ->
+        call_codef "ml2c" binds ~locals:[ tmp ] (fun { fmt } ->
+            declare_tmp { fmt };
+            fmt "%a@ " pp_expr (on_tmp load);
+            Option.iter
+              (fun init ->
+                fmt "%a@ " pp_expr_binds (init, [ (c.c, e_deref c') ]))
+              c.init;
+            fmt "%a" pp_expr_binds
+              ( mlc_to_c.convert,
+                [ (mlc_to_c.dst, e_var c'); (mlc_to_c.src, e_addr tmp) ] );
+            free_tmp { fmt })
+  in
+  (* [store] converts [tmp] to the OCaml value *)
+  let to_ml binds store =
+    match c_to_mlc with
+    | None -> expr "#error(\"c_to_mlc not given\")"
+    | Some (c_to_mlc : convert) ->
+        call_codef "c2ml" binds ~locals:[ tmp ] (fun { fmt } ->
+            declare_tmp { fmt };
+            Option.iter
+              (fun init -> fmt "%a@ " pp_expr (on_tmp init))
+              mlc.cty.init;
+            fmt "%a@ " pp_expr_binds
+              ( c_to_mlc.convert,
+                [ (c_to_mlc.src, e_var c'); (c_to_mlc.dst, e_addr tmp) ] );
+            fmt "%a" pp_expr (on_tmp store);
+            free_tmp { fmt })
+  in
   let binds = [ (v', e_addr mlc.v); (c', e_addr c.c) ] in
+  let on_v e = Expr.binds [ (mlc.v, e_deref v') ] e in
   let conv =
-    let mk_ml2c a_ml2c =
-      match mlc_to_c with
-      | None -> expr "#error(\"no_ mlc_to_c given\")"
-      | Some (mlc_to_c : convert) ->
-          call_codef "ml2c" binds (fun { fmt } ->
-              fmt "%a tmp;@ " pp_expr mlc.cty.cty;
-              fmt "%a@ " pp_expr_binds
-                (a_ml2c, ty_binds ~c:(expr "tmp") ~v:(e_deref v') mlc);
-              fmt "%a;" pp_expr_binds
-                ( mlc_to_c.convert,
-                  [ (mlc_to_c.dst, e_var c'); (mlc_to_c.src, expr "&tmp") ] ))
-    in
-    let mk_c2ml a_c2ml =
-      match c_to_mlc with
-      | None -> expr "#error(\"no_ c_to_ml given\")"
-      | Some (c_to_mlc : convert) ->
-          call_codef "c2ml" binds (fun { fmt } ->
-              fmt "%a tmp;@ " pp_expr mlc.cty.cty;
-              Option.iter
-                (fun init ->
-                  fmt "%a@ " pp_expr_binds (init, [ (mlc.cty.c, expr "tmp") ]))
-                mlc.cty.init;
-              fmt "%a;@ " pp_expr_binds
-                ( c_to_mlc.convert,
-                  [ (c_to_mlc.src, e_var c'); (c_to_mlc.dst, expr "&tmp") ] );
-              fmt " %a" pp_expr_binds
-                (a_c2ml, ty_binds ~c:(expr "tmp") mlc ~v:(e_deref v')))
-    in
     match mlc.conv with
-    | Boxed { ml2c = a_ml2c; c2ml = a_c2ml } ->
-        Boxed { ml2c = mk_ml2c a_ml2c; c2ml = mk_c2ml a_c2ml }
+    | Boxed { ml2c; c2ml } ->
+        Boxed { ml2c = to_c binds (on_v ml2c); c2ml = to_ml binds (on_v c2ml) }
     | Unboxable { unbox_attribute; uty; ml2u; u2ml; u2c; c2u; u; ml2c; c2ml } ->
         let u' = Var.mk "u" (expr "%a *" pp_expr uty) in
-        let binds = [ (v', e_addr mlc.v); (c', e_addr c.c); (u', e_addr u) ] in
+        let ubinds = [ (u', e_addr u); (c', e_addr c.c) ] in
+        let on_u e = Expr.binds [ (u, e_deref u') ] e in
         Unboxable
           {
             unbox_attribute;
             uty;
             ml2u;
             u2ml;
-            u2c =
-              (match mlc_to_c with
-              | None ->
-                  expr "#error(\"mlc_to_c not given for %a to %a conversion\");"
-                    pp_expr mlc.cty.cty pp_expr c.cty
-              | Some (mlc_to_c : convert) ->
-                  call_codef "c2ml" binds (fun { fmt } ->
-                      fmt "%a tmp;" pp_expr mlc.cty.cty;
-                      fmt "%a@ " pp_expr_binds
-                        (u2c, [ (mlc.cty.c, expr "tmp"); (u, e_deref u') ]);
-                      fmt "%a;" pp_expr_binds
-                        ( mlc_to_c.convert,
-                          [
-                            (mlc_to_c.src, e_var c'); (mlc_to_c.dst, expr "&tmp");
-                          ] )));
-            c2u =
-              (match c_to_mlc with
-              | None ->
-                  expr "#error(\"c_to_mlc not given for %a to %a conversion\");"
-                    pp_expr mlc.cty.cty pp_expr c.cty
-              | Some (c_to_mlc : convert) ->
-                  call_codef "c2ml" binds (fun { fmt } ->
-                      fmt "%a tmp;@ " pp_expr mlc.cty.cty;
-                      fmt "%a;@ " pp_expr_binds
-                        ( c_to_mlc.convert,
-                          [
-                            (c_to_mlc.src, e_var c'); (c_to_mlc.dst, expr "&tmp");
-                          ] );
-                      fmt "%a" pp_expr_binds
-                        (c2u, [ (mlc.cty.c, expr "tmp"); (u, e_deref u') ])));
+            u2c = to_c ubinds (on_u u2c);
+            c2u = to_ml ubinds (on_u c2u);
             u;
-            ml2c = mk_ml2c ml2c;
-            c2ml = mk_ml2c c2ml;
+            ml2c = to_c binds (on_v ml2c);
+            c2ml = to_ml binds (on_v c2ml);
           }
   in
   { mlty = mlc.mlty; conv; cty = c; v = mlc.v; owned_by_ml = false }

@@ -32,9 +32,9 @@ static void camlid_ml2c1(value * v, camlid_t * c){
   CAMLreturn0;}
   }
 static void camlid_ml2c(value * v, lib_t * c){
-  camlid_algdata tmp;
+  camlid_algdata tmp = ((camlid_t) { 0 });
   camlid_ml2c1(&*v, &tmp);
-  lib_t_of_adt(c, &tmp);;
+  lib_t_of_adt(c, &tmp);
   }
 extern value camlid_stub_f_print(value p){
   CAMLparam1(p);
