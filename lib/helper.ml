@@ -1,5 +1,5 @@
 open Expr
-open Type
+open Ty
 open Expert
 
 let simple_param ?input ?output ?name pty =
@@ -80,7 +80,7 @@ let func ?ml ?result ?ignored_result ?call_params fname params =
   in
   func_res ?ml ?result ?call_params fname params
 
-type with_length = { t : Type.param; len : Type.param }
+type with_length = { t : Ty.param; len : Ty.param }
 
 let input_array ?owned ?(output = false) ?(input = true) ?(name = "array") ty =
   let a_len = array_length ?owned ty in

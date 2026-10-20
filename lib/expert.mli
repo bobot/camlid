@@ -3,10 +3,10 @@ val mlalias : string -> ('a, Format.formatter, unit, Expr.defined) format4 -> 'a
 val mlabstract : ?keep_name:bool -> string -> Expr.defined
 val existing : string -> Expr.var list -> Expr.code
 val calli_existing : string -> Expr.var list -> Expr.expr
-val get_boxing : Type.conv -> Expr.expr * Expr.expr
+val get_boxing : Ty.conv -> Expr.expr * Expr.expr
 
 val builtin_mltypes :
-  unbox_attribute:Type.unbox_attribute ->
+  unbox_attribute:Ty.unbox_attribute ->
   unbox_version:int * int ->
   ?u_type:string ->
   c_type:string ->
@@ -17,13 +17,13 @@ val builtin_mltypes :
   ?ml2u:string ->
   ?u2ml:string ->
   string ->
-  Type.mlc
+  Ty.mlc
 
-val string_nt : ?owned:bool -> unit -> Type.mlc
-val string_fixed_length : ?init:bool -> ?owned:bool -> Expr.var -> Type.mlc
+val string_nt : ?owned:bool -> unit -> Ty.mlc
+val string_fixed_length : ?init:bool -> ?owned:bool -> Expr.var -> Ty.mlc
 val string_length_struct : Expr.defined
-val string_length : ?owned:bool -> unit -> Type.mlc
-val ptr_ref : Type.mlc -> Type.mlc
+val string_length : ?owned:bool -> unit -> Ty.mlc
+val ptr_ref : Ty.mlc -> Ty.mlc
 
 type copy = { copy : Expr.expr; c_from : Expr.Var.t; c_to : Expr.Var.t }
 
@@ -34,21 +34,21 @@ val mk_copy :
   string ->
   copy
 
-val copy : copy:copy -> Type.mlc -> Type.mlc
-val array : ?init:bool -> ?owned:bool -> len:Expr.var -> Type.mlc -> Type.mlc
-val array_length : ?owned:bool -> Type.mlc -> Type.mlc
+val copy : copy:copy -> Ty.mlc -> Ty.mlc
+val array : ?init:bool -> ?owned:bool -> len:Expr.var -> Ty.mlc -> Ty.mlc
+val array_length : ?owned:bool -> Ty.mlc -> Ty.mlc
 
 val map_param_in_call :
   ?name:string ->
   (Expr.expr -> Expr.expr -> Expr.expr * Expr.expr) ->
-  Type.param ->
-  Type.param
+  Ty.param ->
+  Ty.param
 
-val deref_in_call : Type.param -> Type.param
-val use_new_param_only_in_call : Type.param -> Type.param
-val get_field : Expr.expr -> string -> Type.param -> Type.param
-val t_field : Type.mlc -> Type.param -> Type.param
-val len_field : Type.param -> Type.param
+val deref_in_call : Ty.param -> Ty.param
+val use_new_param_only_in_call : Ty.param -> Ty.param
+val get_field : Expr.expr -> string -> Ty.param -> Ty.param
+val t_field : Ty.mlc -> Ty.param -> Ty.param
+val len_field : Ty.param -> Ty.param
 
 type get = { get : Expr.expr; c : Expr.var; i : Expr.var }
 type set = { set : Expr.expr; c : Expr.var; i : Expr.var }
@@ -62,7 +62,7 @@ val abstract :
   ml:string ->
   cty:Expr.defined ->
   unit ->
-  Type.mlc
+  Ty.mlc
 
 type finalize = { finalize : Expr.expr; i : Expr.var }
 type finalize_op = { finalize_op : Expr.code; v : Expr.var }
@@ -82,7 +82,7 @@ val custom :
   icty:Expr.expr ->
   cty:Expr.expr ->
   unit ->
-  Type.mlc
+  Ty.mlc
 
 val custom_ptr :
   ?initialize:initialize ->
@@ -93,10 +93,10 @@ val custom_ptr :
   ml:string ->
   cty:Expr.expr ->
   unit ->
-  Type.mlc
+  Ty.mlc
 
 val e_value : Expr.expr
-val value : string -> Type.mlc
+val value : string -> Ty.mlc
 
 val mk_get :
   icty:Expr.expr ->
@@ -151,8 +151,8 @@ val param :
   ?output:bool ->
   ?used_in_call:bool ->
   ?name:string ->
-  Type.mlc ->
-  Type.param * Expr.var * Expr.var
+  Ty.mlc ->
+  Ty.param * Expr.var * Expr.var
 
 val simple_param :
   ?input_label:string ->
@@ -161,10 +161,10 @@ val simple_param :
   ?output:bool ->
   ?used_in_call:bool ->
   ?name:string ->
-  Type.mlc ->
-  Type.param * Expr.var
+  Ty.mlc ->
+  Ty.param * Expr.var
 
-val simple_result : Type.mlc -> Type.result
+val simple_result : Ty.mlc -> Ty.result
 
 val list_or_empty :
   empty:(Format.formatter -> unit -> unit) ->
@@ -175,9 +175,9 @@ val list_or_empty :
   unit
 
 val code_c_fun :
-  params:Type.param list ->
-  call_params:Type.param list ->
-  result:Type.result option ->
+  params:Ty.param list ->
+  call_params:Ty.param list ->
+  result:Ty.result option ->
   name:string ->
   Expr.expr ->
   Expr.code
@@ -185,12 +185,12 @@ val code_c_fun :
       should be a reordered subset of params (usually it is [params]) *)
 
 val code_c_fun_bytecode :
-  params:Type.param list -> result:Type.result option -> Expr.code -> Expr.code
+  params:Ty.param list -> result:Ty.result option -> Expr.code -> Expr.code
 
 val print_ml_fun :
-  params:Type.param list ->
-  ?call_params:Type.param list ->
-  ?result:Type.result ->
+  params:Ty.param list ->
+  ?call_params:Ty.param list ->
+  ?result:Ty.result ->
   mlname:string ->
   Expr.expr ->
   Expr.expr
@@ -202,8 +202,8 @@ val seq : Expr.expr list -> Expr.expr
 type convert = { convert : Expr.expr; src : Expr.var; dst : Expr.var }
 
 val mk_converter :
-  src:Type.c ->
-  dst:Type.c ->
+  src:Ty.c ->
+  dst:Ty.c ->
   ?vars:(dst:Expr.var -> src:Expr.var -> Expr.var list) ->
   ?exprs:(dst:Expr.var -> src:Expr.var -> Expr.expr list) ->
   string ->
@@ -212,15 +212,15 @@ val mk_converter :
 val convert :
   ?mlc_to_c:convert ->
   ?c_to_mlc:convert ->
-  mlc:Type.mlc ->
-  c:Type.c ->
+  mlc:Ty.mlc ->
+  c:Ty.c ->
   unit ->
-  Type.mlc
+  Ty.mlc
 
 module AlgData : sig
   type kind =
     | KConst of int
-    | KNonConst of int * (string * Expr.var * Type.mlc) list
+    | KNonConst of int * (string * Expr.var * Ty.mlc) list
 
   type constr = {
     name : string;
@@ -230,20 +230,20 @@ module AlgData : sig
   }
 
   type t = {
-    ty : Type.mlc;
+    ty : Ty.mlc;
     constrs : constr list;
     dst_smart_constructors : Expr.var;
   }
 
-  val algdata : string -> (string * (string * Type.mlc) list) list -> t
+  val algdata : string -> (string * (string * Ty.mlc) list) list -> t
 end
 
-val ret_option_if : Expr.expr -> Type.mlc -> Type.mlc
+val ret_option_if : Expr.expr -> Ty.mlc -> Ty.mlc
 (** [ret_option_if expr ty] the ocaml calue returned is [Some v] if the C
     expression [expr] is true, and [v] is returned by [ty], otherwise it is
     [None]*)
 
-val get_expression : mlname:string -> Type.mlc -> Expr.expr -> Expr.expr
+val get_expression : mlname:string -> Ty.mlc -> Expr.expr -> Expr.expr
 (** [get_expression ~mlname ty expr] defined the function [mlname] that return
     the value of the C expression [expr] of type [ty] *)
 
@@ -254,7 +254,7 @@ val bigarray_array1 :
   mlty:string ->
   mlelt:string ->
   unit ->
-  Type.mlc
+  Ty.mlc
 (** The biggaray is mirrored by a structure with a field "len" of type size_t
     and a field "t" of type "cty*"
     @param managed C constant name for the managed flag

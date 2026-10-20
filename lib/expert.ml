@@ -1,5 +1,5 @@
 open Expr
-open Type
+open Ty
 
 let ty_binds ?(binds = []) ?v ?c ty =
   let bv = match v with None -> [] | Some v -> [ (ty.v, v) ] in

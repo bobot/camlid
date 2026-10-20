@@ -2,11 +2,11 @@
 
 val func :
   ?ml:string ->
-  ?result:Type.mlc ->
-  ?ignored_result:Type.mlc ->
-  ?call_params:Type.param list ->
+  ?result:Ty.mlc ->
+  ?ignored_result:Ty.mlc ->
+  ?call_params:Ty.param list ->
   string ->
-  Type.param list ->
+  Ty.param list ->
   Expr.expr
 (** Describe the signature of a C function and generate the stub. Three
     variants:
@@ -40,7 +40,7 @@ val func :
     be used multiple times in the description of the same C function. However it
     could be used in different descriptions *)
 
-val input : ?name:string -> Type.mlc -> Type.param
+val input : ?name:string -> Ty.mlc -> Ty.param
 (** [input ~name ty] create an input parameter using the typedef template [ty].
     The parameter:
     - appears in the arguments of the ML function
@@ -50,7 +50,7 @@ val input : ?name:string -> Type.mlc -> Type.param
     @param name Basename used for the fresh generated variable
     @param ty Template used for generatiing the parameter. *)
 
-val output : ?name:string -> Type.mlc -> Type.param
+val output : ?name:string -> Ty.mlc -> Ty.param
 (** [input ~name ty] create an input parameter using the typedef template [ty].
     The parameter:
     - does not appear in the arguments of the ML function
@@ -60,7 +60,7 @@ val output : ?name:string -> Type.mlc -> Type.param
     @param name Basename used for the fresh generated variable
     @param ty template used for generatiing the parameter. *)
 
-val inout : ?name:string -> Type.mlc -> Type.param
+val inout : ?name:string -> Ty.mlc -> Ty.param
 (** [input ~name ty] create an input parameter using the typedef template [ty].
     The parameter:
     - does not appear in the arguments of the ML function
@@ -70,7 +70,7 @@ val inout : ?name:string -> Type.mlc -> Type.param
     @param name Basename used for the fresh generated variable
     @param ty template used for generatiing the parameter. *)
 
-val ignored : ?name:string -> Type.mlc -> Type.param
+val ignored : ?name:string -> Ty.mlc -> Ty.param
 (** [input ~name ty] create an input parameter using the typedef template [ty].
     The parameter:
     - does not appear in the arguments of the ML function
@@ -82,36 +82,36 @@ val ignored : ?name:string -> Type.mlc -> Type.param
 
 (** Common OCaml values *)
 
-val int : Type.mlc
+val int : Ty.mlc
 (** It is {!int} in OCaml, and [intptr_t] in C. The highest bit is lost when
     going from C to OCaml *)
 
-val size_t : Type.mlc
+val size_t : Ty.mlc
 (** It is {!int} in OCaml, and [size_t] in C. The highest bit is lost when going
     from C to OCaml. Unsigned version of {!int} *)
 
-val int_trunc : Type.mlc
+val int_trunc : Ty.mlc
 (** It is {!int} in OCaml, and [int] in C. On 64bit, half of the highest bit are
     lost (63 bit long in OCaml and 32 bit long in C). *)
 
-val double : Type.mlc
+val double : Ty.mlc
 (** It is [float] in OCaml, and [double] in C. No loss during conversion. *)
 
-val int32 : Type.mlc
+val int32 : Ty.mlc
 (** It is {!int32} in OCaml, and [int32_t] in C. No loss during conversion. *)
 
-val int64 : Type.mlc
+val int64 : Ty.mlc
 (** It is {!int64} in OCaml, and [int64_t] in C. No loss during conversion. *)
 
-val nativeint : Type.mlc
+val nativeint : Ty.mlc
 (** It is {!nativeint} in OCaml, and [intptr_t] in C. No loss during conversion.
 *)
 
-val bool : Type.mlc
+val bool : Ty.mlc
 (** It is {!bool} in OCaml, and [int] in C. No loss during conversion if the int
     is considered as a boolean. *)
 
-val ptr_ref : Type.mlc -> Type.mlc
+val ptr_ref : Ty.mlc -> Ty.mlc
 (** [ptr_def ty] it change the C value used when calling the C function to a
     pointer on the given type. It is useful with {!output}. The pointer is valid
     for the duration og the call. The OCaml type is the same as for [ty]. *)
@@ -131,14 +131,14 @@ val ptr_ref : Type.mlc -> Type.mlc
 (** In all this section, [init] indicates if the stub need to allocate the
     memory before calling the C function *)
 
-val string_nt : ?owned:bool -> unit -> Type.mlc
+val string_nt : ?owned:bool -> unit -> Ty.mlc
 (** It is [string] in OCaml, and [char *] in C. In both side the conversion
     stops at the first null character. If there is no null character in the
     OCaml string it stops at the end. *)
 
 type with_length = {
-  t : Type.param; (* array parameter *)
-  len : Type.param; (* length of the array *)
+  t : Ty.param; (* array parameter *)
+  len : Ty.param; (* length of the array *)
 }
 
 val input_string :
@@ -179,7 +179,7 @@ val input_array :
   ?output:bool ->
   ?input:bool ->
   ?name:string ->
-  Type.mlc ->
+  Ty.mlc ->
   with_length
 (** [input_array mlc] Parameter for an array of [mlc] and its length. Given as
     such to the stubbed function. Converted from/to an array of [mlc] in OCaml.
@@ -190,7 +190,7 @@ val output_array :
   ?output:bool ->
   ?input:bool ->
   ?name:string ->
-  Type.mlc ->
+  Ty.mlc ->
   with_length
 (** [output_array mlc] Parameter for an array of [mlc] and its length. The
     address of those variables are given to the stubbed function. Converted
@@ -203,7 +203,7 @@ val fixed_length_array :
   ?output:bool ->
   ?len_used_in_call:bool ->
   ?name:string ->
-  Type.mlc ->
+  Ty.mlc ->
   with_length
 (** [fixed_length_array mlc] Parameter for an array of [mlc] converted (if
     input) or allocated (if output) with the length given as input.
@@ -218,7 +218,7 @@ val abstract :
   ml:string ->
   c:string ->
   unit ->
-  Type.mlc
+  Ty.mlc
 
 val custom :
   ?initialize:string ->
@@ -231,7 +231,7 @@ val custom :
   ml:string ->
   c:string ->
   unit ->
-  Type.mlc
+  Ty.mlc
 
 val custom_ptr :
   ?initialize:string ->
@@ -242,45 +242,45 @@ val custom_ptr :
   ml:string ->
   c:string ->
   unit ->
-  Type.mlc
+  Ty.mlc
 
-val algdata : string -> (string * (string * Type.mlc) list) list -> Type.mlc
-val string_as_FILE_ptr : Type.mlc
-val input_value : string -> Type.param
-val output_value : string -> Type.param
+val algdata : string -> (string * (string * Ty.mlc) list) list -> Ty.mlc
+val string_as_FILE_ptr : Ty.mlc
+val input_value : string -> Ty.param
+val output_value : string -> Ty.param
 val module_ : string -> Expr.expr list -> Expr.expr
-val ml_alias : string -> Type.mlc -> Expr.expr
+val ml_alias : string -> Ty.mlc -> Expr.expr
 
 val copy :
-  Type.mlc ->
+  Ty.mlc ->
   ?vars:(dst:Expr.Var.t -> src:Expr.Var.t -> Expr.Var.t list) ->
   ?exprs:(dst:Expr.Var.t -> src:Expr.Var.t -> Expr.expr list) ->
   string ->
-  Type.mlc
+  Ty.mlc
 
-val ret_option_if : Type.mlc -> Type.param * Type.mlc
-val get_expression : name:string -> Type.mlc -> string -> Expr.expr
+val ret_option_if : Ty.mlc -> Ty.param * Ty.mlc
+val get_expression : name:string -> Ty.mlc -> string -> Expr.expr
 
 val map_param_in_call :
   ?name:string ->
   ty:string ->
-  Type.param ->
+  Ty.param ->
   (('a -> Expr.expr -> 'b) -> Expr.expr -> 'c, 'a, 'b, 'd, 'd, 'c) format6 ->
-  Type.param
+  Ty.param
 
-val do_nothing : string -> Type.param list -> Expr.expr
+val do_nothing : string -> Ty.param list -> Expr.expr
 
 val convert :
   ?c_to_mlc:string ->
   ?mlc_to_c:string ->
   ?using:Expr.Var.t list ->
-  mlc:Type.mlc ->
-  c:Type.c ->
+  mlc:Ty.mlc ->
+  c:Ty.c ->
   unit ->
-  Type.mlc
+  Ty.mlc
 
 val on_stack :
-  ?init_expr:string -> ?initialize:string -> ?clear:string -> string -> Type.c
+  ?init_expr:string -> ?initialize:string -> ?clear:string -> string -> Ty.c
 (** Define a C type that is allocated on the stack. It is initialized and
     cleared with the given functions.
     @param init_expr is the initialization expression used *)
