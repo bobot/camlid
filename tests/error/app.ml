@@ -14,6 +14,16 @@ let () =
   done;
   Gc.full_major ();
   Printf.printf "live after errors %i\n" (Mylib.vec_live () - before);
+  let v, _ = Mylib.make 4 in
+  Gc.full_major ();
+  let before = Mylib.vec_live () in
+  Printf.printf "length %i\n" (Mylib.vec_length v);
+  Mylib.vec_dispose v;
+  Mylib.vec_dispose v;
+  Printf.printf "disposed %i\n" (before - Mylib.vec_live ());
+  (match Mylib.vec_length v with
+  | _ -> print_endline "no error"
+  | exception Invalid_argument msg -> Printf.printf "Invalid_argument %S\n" msg);
   let t = Thread.create (fun () -> Mylib.slow_sum 1000) () in
   Printf.printf "sum %i\n" (Mylib.slow_sum 1000);
   Thread.join t

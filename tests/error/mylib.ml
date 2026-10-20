@@ -1,5 +1,6 @@
 (* generated using generator.exe and camlid *)
 type vec
+external vec_dispose : vec -> unit = "camlid_vec_dispose" [@@noalloc]
 type camlid_string_nt = string
 exception My_error of string
 let () = Callback.register_exception "Mylib.My_error" (My_error "")
@@ -19,6 +20,10 @@ external slow_sum:
 external vec_live:
   unit -> (int [@untagged])
   = "camlid_stub_vec_live_byte" "camlid_stub_vec_live" [@@noalloc]
+external vec_length:
+  vec ->
+  (int [@untagged])
+  = "camlid_stub_vec_length_byte" "camlid_stub_vec_length"
 external vec_live_alloc:
   unit -> (int [@untagged])
   = "camlid_stub_vec_live_alloc_byte" "camlid_stub_vec_live_alloc"

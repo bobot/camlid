@@ -19,3 +19,4 @@ const char *error_msg(int rc, intptr_t n);
 
 /* computation run without the runtime lock */
 intptr_t slow_sum(intptr_t n);
+size_t vec_length(vec *v);

@@ -234,6 +234,7 @@ val value_type :
   ?hash:string ->
   ?compare:string ->
   ?mem:string ->
+  ?dispose:string ->
   init:string ->
   clear:string ->
   copy:string ->
@@ -253,6 +254,10 @@ val value_type :
       itself, so that the GC takes it into account (with
       [caml_alloc_custom_mem], like [sizeof(T)] which is always counted).
 
+    [~dispose:"f"] adds to the OCaml file the function [f : ml -> unit], which
+    clears and frees the value before it is collected (e.g. to close a file
+    early). Using a disposed value raises [Invalid_argument].
+
     The [T] owned by OCaml is allocated with [malloc]. Its finalizer calls
     [clear] then [free]. [init_args] are C variables of other parameters, often
     created with {!extra_input}. *)
@@ -263,6 +268,7 @@ val custom_ptr :
   ?hash:string ->
   ?compare:string ->
   ?mem:string ->
+  ?dispose:string ->
   ?malloc:bool ->
   ml:string ->
   c:string ->

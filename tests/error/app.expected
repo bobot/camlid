@@ -5,4 +5,7 @@ My_error "error -2 for n=-1"
 My_error "error -2 for n=-1"
 My_error "error -2 for n=-1"
 live after errors 0
+length 4
+disposed 1
+Invalid_argument "vec: used after vec_dispose"
 sum 499500

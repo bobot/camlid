@@ -674,7 +674,8 @@ let custom_ops ?finalize ?compare ?hash () =
 type mem = { mem : expr; c : var }
 (** Encapsulate a c type into an custom ml type *)
 
-let custom ?init ?clear ?hash ?compare ?mem ?get ?set ~ml ~icty ~cty () =
+let custom_gen ?(ml_extra = fun _ -> []) ?init ?clear ?hash ?compare ?mem ?get
+    ?set ~ml ~icty ~cty () =
   let v = Var.mk "v" (expr "value") in
   let c = Var.mk "c" cty in
   let v' = Var.mk "v" (expr "value *") in
@@ -718,7 +719,9 @@ let custom ?init ?clear ?hash ?compare ?mem ?get ?set ~ml ~icty ~cty () =
     custom_ops ?finalize:finalize_op ?compare:compare_op ?hash:hash_op ()
   in
   {
-    mlty = e_def @@ mlabstract ~keep_name:true ml;
+    mlty =
+      (let abs = mlabstract ~keep_name:true ml in
+       match ml_extra abs with [] -> e_def abs | l -> e_def (dimplicit abs l));
     conv =
       Boxed
         {
@@ -772,7 +775,11 @@ let custom ?init ?clear ?hash ?compare ?mem ?get ?set ~ml ~icty ~cty () =
   }
 
 (** Encapsulate a c pointer type into an custom ml type *)
-let custom_ptr ?init ?clear ?hash ?compare ?mem ?(malloc = true) ~ml ~cty () =
+let custom ?init ?clear ?hash ?compare ?mem ?get ?set ~ml ~icty ~cty () =
+  custom_gen ?init ?clear ?hash ?compare ?mem ?get ?set ~ml ~icty ~cty ()
+
+let custom_ptr ?init ?clear ?hash ?compare ?mem ?dispose ?(malloc = true) ~ml
+    ~cty () =
   let cty_ptr = expr "%a*" pp_expr cty in
   let init =
     let c = Var.mk "c" (expr "%a *" pp_expr cty_ptr) in
@@ -856,7 +863,64 @@ let custom_ptr ?init ?clear ?hash ?compare ?mem ?(malloc = true) ~ml ~cty () =
         Some { mem = expr "sizeof(%a) + %a" pp_expr cty pp_expr (user mem); c }
     | Some mem -> Some { mem = user mem; c }
   in
-  custom ?init ?clear ?hash ?compare ?mem ~ml ~cty:cty_ptr ~icty:cty_ptr ()
+  match dispose with
+  | None ->
+      custom ?init ?clear ?hash ?compare ?mem ~ml ~cty:cty_ptr ~icty:cty_ptr ()
+  | Some dispose ->
+      (* the pointer is set to NULL by dispose *)
+      let clear =
+        Option.map
+          (fun (clear : clear) ->
+            {
+              clear with
+              clear =
+                expr "@[if(*%a != NULL){@ %a@ }@]" pp_var clear.i pp_expr
+                  clear.clear;
+            })
+          clear
+      in
+      let get =
+        let c = Var.mk "c" (expr "%a *" pp_expr cty_ptr) in
+        let i = Var.mk "i" (expr "%a *" pp_expr cty_ptr) in
+        {
+          get =
+            expr "@[if(*%a == NULL) caml_invalid_argument(%S);@]@ *%a = *%a;"
+              pp_var i
+              (ml ^ ": used after " ^ dispose)
+              pp_var c pp_var i;
+          c;
+          i;
+        }
+      in
+      let ml_extra abs =
+        let v = Var.mk "v" e_value in
+        let p = Var.mk "p" (expr "%a *" pp_expr cty_ptr) in
+        let id = ID.mk dispose in
+        let stub =
+          fp ~kind:C ~params:[ v ] id (fun { fmt } ->
+              fmt "@[<v 2>extern value %a(value %a){@," pp_id id pp_var v;
+              fmt "%a %a = (%a) Data_custom_val(%a);@," pp_expr p.ty pp_var p
+                pp_expr p.ty pp_var v;
+              (match clear with
+              | None -> ()
+              | Some clear ->
+                  fmt "@[%a@]@," pp_expr_binds
+                    (clear.clear, [ (clear.i, e_var p) ]));
+              fmt "*%a = NULL;@," pp_var p;
+              fmt "return Val_unit;@]@,}@.")
+        in
+        let ml_id = ID.mk ~keep_name:true dispose in
+        [
+          toplevel_callable ~kind:ML ml_id
+            "@[external %a : %a -> unit = \"%a\" [@@@@noalloc]@]@." pp_id ml_id
+            pp_def abs pp_def (def_of_code stub);
+        ]
+      in
+      let t =
+        custom_gen ~ml_extra ?init ?clear ?hash ?compare ?mem ~get ~ml
+          ~cty:cty_ptr ~icty:cty_ptr ()
+      in
+      { t with ml2c_noalloc = false }
 
 let mk_mem ~cty name =
   let c = Var.mk "c" (expr "%a *" pp_expr cty) in

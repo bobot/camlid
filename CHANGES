@@ -14,6 +14,8 @@
       freeing the C values
     - Helper.func ~release_lock releases the runtime lock during the call;
       Ty.mlc.ml_heap marks the types that forbid it
+    - ?dispose for value_type and custom_ptr: an OCaml function to clear
+      the value before it is collected
     - Helper.keep_alive, Helper.parent and Helper.child for C values
       depending on others (kept alive, or reference counted when the
       parent is needed to destroy the child)

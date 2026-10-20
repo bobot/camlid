@@ -45,3 +45,4 @@ intptr_t slow_sum(intptr_t n) {
   for (intptr_t i = 0; i < n; i++) s += i;
   return s;
 }
+size_t vec_length(vec *v) { return v->len; }

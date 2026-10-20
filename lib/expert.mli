@@ -111,6 +111,7 @@ val custom_ptr :
   ?hash:hash ->
   ?compare:compare ->
   ?mem:mem ->
+  ?dispose:string ->
   ?malloc:bool ->
   ml:string ->
   cty:Expr.expr ->
@@ -120,7 +121,11 @@ val custom_ptr :
     The record arguments are created with [~icty:cty].
     @param malloc
       (default [true]) allocate with [malloc] before [init], and [free] after
-      [clear]. *)
+      [clear]. The size of the allocation is given to the GC with [mem].
+    @param dispose
+      name of an OCaml function [dispose : t -> unit] added to the OCaml file,
+      which clears the value before it is collected. A disposed value raises
+      [Invalid_argument] when it is used. *)
 
 (** The [mk_*] functions build the records above for the C function [name]. By
     default it is called with the variables of the record, [vars] allows to add

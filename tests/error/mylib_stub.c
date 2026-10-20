@@ -44,12 +44,19 @@ extern value camlid_stub_checked_div_byte(value p,
   p_r = Val_long(p2);
   return p_r;
 }
+static void camlid_finalize(vec* * i){ vec_clear(*i); free(*i); }
+extern value camlid_vec_dispose(value v){
+  vec* * p = (vec* *) Data_custom_val(v);
+  if(*p != NULL){ camlid_finalize(p); }
+  *p = NULL;
+  return Val_unit;
+}
 typedef char * camlid_string_nt;
 typedef camlid_string_nt * camlid_ref1;
 static void camlid_init(vec* * c){ *c = malloc(sizeof(vec)); vec_init(*c); }
-static void camlid_finalize(vec* * i){ vec_clear(*i); free(*i); }
 static void camlid_finalize_op(value v){
-  camlid_finalize(((vec* *) Data_custom_val(v)));
+  if(*((vec* *) Data_custom_val(v)) != NULL){
+  camlid_finalize(((vec* *) Data_custom_val(v))); }
   }
 struct custom_operations camlid_cops = {
 NULL,
@@ -129,6 +136,24 @@ extern value camlid_stub_vec_live_byte(void){
   intptr_t ures;
   value vres;
   ures = camlid_stub_vec_live();
+  vres = Val_long(ures);
+  return vres;
+}
+extern intptr_t camlid_stub_vec_length(value p){
+  CAMLparam1(p);
+  intptr_t ures;
+  size_t res;
+  vec* p1 = ((vec*) { 0 });
+  if(*((vec* *) Data_custom_val(p)) == NULL) caml_invalid_argument("vec: used after vec_dispose");
+  *&p1 = *((vec* *) Data_custom_val(p));
+  res = vec_length(p1);
+  ures = (intptr_t)(res);
+  CAMLreturnT(intptr_t,ures);
+}
+extern value camlid_stub_vec_length_byte(value p){
+  intptr_t ures;
+  value vres;
+  ures = camlid_stub_vec_length(p);
   vres = Val_long(ures);
   return vres;
 }
