@@ -291,6 +291,42 @@ val custom :
 val abstract : ?init:string -> ml:string -> c:string -> unit -> Ty.mlc
 (** The C value [c] is stored directly in an OCaml block without finalizer. *)
 
+(** {2 Parents and children}
+
+    When a C value (the child) depends on another one (the parent), e.g. a
+    statement on its database:
+    - if the parent must only stay alive while the child is used, use
+      {!keep_alive} on the type of the child;
+    - if the parent is needed to destroy the child, use {!parent} and {!child},
+      which count the references to the parent.
+
+    In both cases the OCaml variable of the parent input is needed to create a
+    child; {!Expert.param} returns it. *)
+
+val keep_alive : Ty.mlc -> Expert.child
+(** [keep_alive ty] is [ty] where an output also keeps alive the OCaml value of
+    the parent. Use the field [t] for inputs and [with_parent p] for outputs. *)
+
+val parent :
+  ?clear:string -> ml:string -> c:string -> unit -> Ty.mlc * Expert.parent
+(** [parent ~clear ~ml ~c ()] is a pointer [c] allocated by the C library.
+    [void clear(c)] is called when the OCaml value and all its children are
+    collected. *)
+
+val child :
+  Expert.parent ->
+  ?clear:string ->
+  ?clear_with_parent:string ->
+  ml:string ->
+  c:string ->
+  unit ->
+  Expert.child
+(** [child parent ~ml ~c ()] is a pointer [c] allocated by the C library, which
+    keeps a reference on its parent. When it is collected [void clear(c)] or
+    [void clear_with_parent(parent_c, c)] is called, then the reference on the
+    parent is released. Use the field [t] for inputs and [with_parent p] for
+    outputs. *)
+
 (** {1 Other types} *)
 
 val algdata : string -> (string * (string * Ty.mlc) list) list -> Ty.mlc

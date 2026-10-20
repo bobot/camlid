@@ -653,6 +653,24 @@ type clear = { clear : expr; i : var }
 type hash = { hash : expr; i : var }
 type compare = { compare : expr; i1 : var; i2 : var }
 
+let custom_ops ?finalize ?compare ?hash () =
+  let id = ID.mk "cops" in
+  let pp_op op_name fmt = function
+    | None -> Fmt.pf fmt "custom_%s_default" op_name
+    | Some f -> Fmt.pf fmt "%a" pp_def (def_of_code f)
+  in
+  toplevel id
+    "struct custom_operations %a = {\n\
+     NULL,\n\
+     %a,\n\
+     %a,\n\
+     %a,\n\
+     custom_serialize_default,\n\
+     custom_deserialize_default\n\
+     };@."
+    pp_id id (pp_op "finalize") finalize (pp_op "compare") compare
+    (pp_op "hash") hash
+
 type mem = { mem : expr; c : var }
 (** Encapsulate a c type into an custom ml type *)
 
@@ -697,22 +715,7 @@ let custom ?init ?clear ?hash ?compare ?mem ?get ?set ~ml ~icty ~cty () =
       compare
   in
   let custom_op =
-    let id = ID.mk "cops" in
-    let pp_op op_name fmt = function
-      | None -> Fmt.pf fmt "custom_%s_default" op_name
-      | Some f -> Fmt.pf fmt "%a" pp_def (def_of_code f)
-    in
-    toplevel id
-      "struct custom_operations %a = {\n\
-       NULL,\n\
-       %a,\n\
-       %a,\n\
-       %a,\n\
-       custom_serialize_default,\n\
-       custom_deserialize_default\n\
-       };@."
-      pp_id id (pp_op "finalize") finalize_op (pp_op "compare") compare_op
-      (pp_op "hash") hash_op
+    custom_ops ?finalize:finalize_op ?compare:compare_op ?hash:hash_op ()
   in
   {
     mlty = e_def @@ mlabstract ~keep_name:true ml;
@@ -1982,3 +1985,183 @@ let bigarray_array1_aux ~managed ~kind ~cty ~mlty ~mlelt () =
   }
 
 let bigarray_array1 = bigarray_array1_aux
+
+(* The OCaml value of [ty] is a block containing the OCaml value of [ty] and
+   the OCaml value [parent], which is kept alive. *)
+type child = { t : mlc; with_parent : var -> mlc }
+
+let keep_alive_with ~parent (ty : mlc) =
+  let ml2c, c2ml = get_boxing ty.conv in
+  let v = Var.mk "v" e_value in
+  let v' = Var.mk "v" (expr "value *") in
+  let c' = Var.mk "c" (expr "%a *" pp_expr ty.cty.cty) in
+  let parent' = Var.mk "parent" (expr "value *") in
+  {
+    ty with
+    conv =
+      Boxed
+        {
+          ml2c = binds [ (ty.v, expr "Field(%a,0)" pp_var v) ] ml2c;
+          c2ml =
+            call_codef "c2ml"
+              [
+                (v', e_addr v); (c', e_addr ty.cty.c); (parent', e_addr parent);
+              ]
+              (fun { fmt } ->
+                fmt "CAMLparam0 ();@,";
+                fmt "CAMLlocal1(cid_temp);@,";
+                fmt "@[%a@]@," pp_expr_binds
+                  ( c2ml,
+                    ty_binds ~v:(expr "cid_temp") ~c:(expr "(*%a)" pp_var c') ty
+                  );
+                fmt "*%a = caml_alloc_small(2, 0);@," pp_var v';
+                fmt "Field(*%a, 0) = cid_temp;@," pp_var v';
+                fmt "Field(*%a, 1) = *%a;@," pp_var v' pp_var parent';
+                fmt "CAMLreturn0;");
+        };
+    v;
+    c2ml_noalloc = false;
+  }
+
+let keep_alive (ty : mlc) =
+  let no_parent = Var.mk "no_parent" e_value in
+  let t = keep_alive_with ~parent:no_parent ty in
+  { t; with_parent = (fun parent -> keep_alive_with ~parent ty) }
+
+type parent = { rc : defined; release : code; release_r : var }
+
+(* The custom block contains a pointer to a structure with the C pointer
+   [cty] and a reference counter, shared with the children. *)
+let parent ?clear ~ml ~cty () =
+  let rc_id = ID.mk "rc" in
+  let rc =
+    toplevel ~kind:H rc_id
+      "#include <stdatomic.h>@.@[<hv 2>typedef struct {@ %a ptr;@ _Atomic \
+       intptr_t count;@ } %a;@]@."
+      pp_expr cty pp_id rc_id
+  in
+  let r = Var.mk "r" (expr "%a *" pp_def rc) in
+  let release =
+    code "release"
+      "@[if(atomic_fetch_sub(&%a->count, 1) == 1){@ %a@ free(%a);@ }@]" pp_var r
+      Fmt.(option (fun fmt clear -> pf fmt "%s(%a->ptr);" clear pp_var r))
+      clear pp_var r
+  in
+  let data v = expr "(*((%a **) Data_custom_val(%a)))" pp_def rc pp_var v in
+  let finalize =
+    let v = Var.mk "v" e_value in
+    code "finalize_op" "%a" pp_calli (release, [ (r, data v) ])
+  in
+  let ops = custom_ops ~finalize () in
+  let v = Var.mk "v" e_value in
+  let c = Var.mk "c" cty in
+  let v' = Var.mk "v" (expr "value *") in
+  let c' = Var.mk "c" (expr "%a *" pp_expr cty) in
+  let t =
+    {
+      mlty = e_def @@ mlabstract ~keep_name:true ml;
+      conv =
+        Boxed
+          {
+            ml2c = expr "%a = %a->ptr;" pp_var c pp_expr (data v);
+            c2ml =
+              call_codef "c2ml"
+                [ (v', e_addr v); (c', e_addr c) ]
+                (fun { fmt } ->
+                  fmt "%a *r = malloc(sizeof(%a));@," pp_def rc pp_def rc;
+                  fmt "r->ptr = *%a;@," pp_var c';
+                  fmt "atomic_init(&r->count, 1);@,";
+                  fmt "*%a = caml_alloc_custom(&%a, sizeof(%a *), 0, 1);@,"
+                    pp_var v' pp_def ops pp_def rc;
+                  fmt "*((%a **) Data_custom_val(*%a)) = r;" pp_def rc pp_var v');
+          };
+      cty =
+        {
+          cty;
+          init = None;
+          init_expr = expr "((%a) { 0 })" pp_expr cty;
+          free = None;
+          in_call = None;
+          c;
+        };
+      v;
+      owned_by_ml = true;
+      ml_heap = false;
+      ml2c_noalloc = true;
+      c2ml_noalloc = false;
+    }
+  in
+  (t, { rc; release; release_r = r })
+
+let child (parent : parent) ?clear ?clear_with_parent ~ml ~cty () =
+  let st_id = ID.mk "child" in
+  let st =
+    toplevel ~kind:H st_id
+      "@[<hv 2>typedef struct {@ %a ptr;@ %a *parent;@ } %a;@]@." pp_expr cty
+      pp_def parent.rc pp_id st_id
+  in
+  let data v = expr "((%a *) Data_custom_val(%a))" pp_def st pp_var v in
+  let data_star v = expr "((%a *) Data_custom_val(*%a))" pp_def st pp_var v in
+  let finalize =
+    let v = Var.mk "v" e_value in
+    let s_var = Var.mk "s" (expr "%a *" pp_def st) in
+    let release_r = parent.release_r in
+    code ~locals:[ s_var ] "finalize_op" "%a *%a = %a;@ %a%a%a" pp_def st pp_var
+      s_var pp_expr (data v)
+      Fmt.(option (fun fmt clear -> pf fmt "%s(%a->ptr);@ " clear pp_var s_var))
+      clear
+      Fmt.(
+        option (fun fmt clear ->
+            pf fmt "%s(%a->parent->ptr, %a->ptr);@ " clear pp_var s_var pp_var
+              s_var))
+      clear_with_parent pp_calli
+      (parent.release, [ (release_r, expr "%a->parent" pp_var s_var) ])
+  in
+  let ops = custom_ops ~finalize () in
+  let v = Var.mk "v" e_value in
+  let c = Var.mk "c" cty in
+  let v' = Var.mk "v" (expr "value *") in
+  let c' = Var.mk "c" (expr "%a *" pp_expr cty) in
+  let parent' = Var.mk "parent" (expr "value *") in
+  let mlty = e_def @@ mlabstract ~keep_name:true ml in
+  let mk c2ml =
+    {
+      mlty;
+      conv =
+        Boxed { ml2c = expr "%a = %a->ptr;" pp_var c pp_expr (data v); c2ml };
+      cty =
+        {
+          cty;
+          init = None;
+          init_expr = expr "((%a) { 0 })" pp_expr cty;
+          free = None;
+          in_call = None;
+          c;
+        };
+      v;
+      owned_by_ml = true;
+      ml_heap = false;
+      ml2c_noalloc = true;
+      c2ml_noalloc = false;
+    }
+  in
+  let with_parent parent_v =
+    mk
+      (call_codef "c2ml"
+         [ (v', e_addr v); (c', e_addr c); (parent', e_addr parent_v) ]
+         (fun { fmt } ->
+           fmt "%a *r = *((%a **) Data_custom_val(*%a));@," pp_def parent.rc
+             pp_def parent.rc pp_var parent';
+           fmt "atomic_fetch_add(&r->count, 1);@,";
+           fmt "*%a = caml_alloc_custom(&%a, sizeof(%a), 0, 1);@," pp_var v'
+             pp_def ops pp_def st;
+           fmt "%a->ptr = *%a;@," pp_expr (data_star v') pp_var c';
+           fmt "%a->parent = r;" pp_expr (data_star v')))
+  in
+  let t =
+    mk
+      (expr
+         "#error(\"camlid: the output of a child needs the OCaml value of its \
+          parent, use with_parent\")")
+  in
+  { t; with_parent }

@@ -169,6 +169,47 @@ val mk_compare : icty:Expr.expr -> string -> compare
 val mk_mem : cty:Expr.expr -> string -> mem
 (** [mk_mem ~cty f] calls [size_t f(cty *c)] *)
 
+(** {2 Parents and children}
+
+    A C value (the child) can depend on another one (the parent), e.g. a
+    statement on its database. *)
+
+type child = {
+  t : Ty.mlc;  (** for the inputs *)
+  with_parent : Expr.var -> Ty.mlc;
+      (** [with_parent p] for the outputs, where [p] is the OCaml variable of
+          the parent input, e.g. returned by {!param} *)
+}
+
+val keep_alive : Ty.mlc -> child
+(** [keep_alive ty] is [ty] where the OCaml value of an output also keeps alive
+    the OCaml value of the parent. Use it when the parent must stay alive while
+    the child is used, but is not needed to destroy the child: the finalizers of
+    two values collected together run in any order. *)
+
+type parent
+(** A C pointer shared by the parent and its children with a reference counter
+*)
+
+val parent :
+  ?clear:string -> ml:string -> cty:Expr.expr -> unit -> Ty.mlc * parent
+(** [parent ~clear ~ml ~cty ()] is a pointer [cty] allocated by the C library.
+    [void clear(cty)] is called when the OCaml value and all the children are
+    collected. *)
+
+val child :
+  parent ->
+  ?clear:string ->
+  ?clear_with_parent:string ->
+  ml:string ->
+  cty:Expr.expr ->
+  unit ->
+  child
+(** [child parent ~ml ~cty ()] is a pointer [cty] allocated by the C library,
+    which keeps a reference on its parent. When it is collected
+    [void clear(cty)] or [void clear_with_parent(parent_cty, cty)] is called,
+    then the reference is released. *)
+
 (** {2 Copies and conversions} *)
 
 type copy = { copy : Expr.expr; c_from : Expr.Var.t; c_to : Expr.Var.t }

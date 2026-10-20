@@ -131,6 +131,20 @@ let mat =
 let zero = func "mat_zero" ~ml:"zero" [ output mat.t; rows; cols ]
 ]}
 
+{2 Parents and children}
+
+A C value often depends on another one: a statement on its database, a node on its manager. {!Camlid.Helper.keep_alive} stores the OCaml value of the parent with the child, so the parent stays alive while the child is used. When the parent is also needed to destroy the child, {!Camlid.Helper.parent} and {!Camlid.Helper.child} count the references to the parent, which is destroyed after its last child:
+
+{[
+(* node *node_new(db *, intptr_t); void node_free(db *, node *); *)
+let db, db_parent = parent ~clear:"db_close" ~ml:"db" ~c:"db *" ()
+let node = child db_parent ~clear_with_parent:"node_free" ~ml:"node" ~c:"node *" ()
+
+let node_new =
+  let d, _, d_ml = Expert.param ~input:true ~name:"d" db in
+  func "node_new" [ d; input int ] ~result:(node.with_parent d_ml)
+]}
+
 {2 Errors, runtime lock and noalloc}
 
 [~error] checks the result of the C function after the call. On failure the stub cleans up as usual (copies are freed, initialized outputs owned by OCaml are moved into OCaml values and finalized later) then raises the exception:
