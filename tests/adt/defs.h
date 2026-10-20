@@ -1,16 +1,13 @@
 #include "mylib_stub.h"
 
 static inline void lib_t_of_adt(lib_t * dst, camlid_t * src){
-    switch(src->tag){
-        case camlid_t_T1:
-            dst->b.a = src->u.T1.a;
-            dst->b.b = src->u.T1.b;
-            break;
-        case camlid_t_T2:
-            break;
-        case camlid_t_T3:
-            dst->b.a = src->u.T3.c;
-            break;
+    camlid_t_match(src) {
+        camlid_t_of_T1(a, b) {
+            dst->b.a = *a;
+            dst->b.b = *b;
+        }
+        camlid_t_of_T2() {}
+        camlid_t_of_T3(c) { dst->b.a = *c; }
     }
 }
 

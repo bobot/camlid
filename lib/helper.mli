@@ -337,7 +337,20 @@ val child :
 
 val algdata : string -> (string * (string * Ty.mlc) list) list -> Ty.mlc
 (** [algdata name constrs] defines the OCaml algebraic datatype [name] and the
-    corresponding C tagged union. *)
+    corresponding C tagged union [t] (prefixed, e.g. [camlid_t]). It is
+    usually converted with {!convert} to the C type of the library, by C
+    functions that can use:
+    - [t_mk_C(t *dst, fields...)] to build the constructor [C] (the fields are
+      given by pointers);
+    - the macros [t_match(t *x)], [t_of_C(fields...)] and [t_otherwise], in
+      the style of datatype99, where the fields are bound to pointers:
+    {[
+      camlid_t_match(src) {
+        camlid_t_of_T1(a, b) { dst->x = *a; dst->y = *b; }
+        camlid_t_of_T2() { dst->x = 0; }
+        camlid_t_otherwise { abort(); }
+      }
+    ]} *)
 
 val enum : ?c:string -> string -> (string * string) list -> Ty.mlc
 (** [enum name [ (constr, cst); ... ]] defines the OCaml type

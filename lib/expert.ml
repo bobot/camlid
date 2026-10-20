@@ -1697,13 +1697,44 @@ module AlgData = struct
       in
       let pp_enum fmt (_, id, _) = Fmt.pf fmt "%a" pp_id id in
       let id = ID.mk ml_type in
+      (* pattern matching macros, similar to datatype99 *)
+      let pp_macros fmt () =
+        Fmt.pf fmt
+          "#define %a_match(x) for(%a *cid_m = (x); cid_m != NULL; cid_m = \
+           NULL) switch((int)cid_m->tag) case -1:@\n"
+          pp_id id pp_id id;
+        Fmt.pf fmt "#define %a_otherwise break; default:@\n" pp_id id;
+        List.iter
+          (fun (name, tag, fields) ->
+            match fields with
+            | KConst _ ->
+                Fmt.pf fmt "#define %a_of_%s() break; case %a:@\n" pp_id id
+                  name pp_id tag
+            | KNonConst (_, fields) ->
+                Fmt.pf fmt
+                  "#define %a_of_%s(%a) break; case %a: \\@\n\
+                   \  for(int cid_once = 1; cid_once; cid_once = 0)"
+                  pp_id id name
+                  Fmt.(
+                    list ~sep:(const string ", ") (using (fun (n, _, _) -> n) string))
+                  fields pp_id tag;
+                List.iter
+                  (fun (n, _, ty) ->
+                    Fmt.pf fmt
+                      " \\@\n\
+                      \  for(%a *%s = &cid_m->u.%s.%s; cid_once; cid_once = 0)"
+                      pp_expr ty.cty.cty n name n)
+                  fields;
+                Fmt.pf fmt "@\n")
+          l
+      in
       toplevel ~kind:H id
         "@[<hv 2>@[typedef struct {@]@ @[<hv 2>enum {@ %a} tag;@]@ @[<hv \
-         2>union {@ %a} u;@] @[}@] %a;@]@,"
+         2>union {@ %a} u;@] @[}@] %a;@]@\n%a"
         Fmt.(list ~sep:comma pp_enum)
         l
         Fmt.(list ~sep:sp pp_constr)
-        l pp_id id
+        l pp_id id pp_macros ()
     in
     let mlty =
       let pp_field fmt (_, _, ty) = pp_expr fmt ty.mlty in

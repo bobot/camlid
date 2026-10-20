@@ -9,6 +9,16 @@ typedef struct {
   enum { camlid_t_T1, camlid_t_T2, camlid_t_T3} tag;
   union { struct { int a; double b; } T1;  struct { int c; } T3;} u; 
   } camlid_t;
+#define camlid_t_match(x) for(camlid_t *cid_m = (x); cid_m != NULL; cid_m = NULL) switch((int)cid_m->tag) case -1:
+#define camlid_t_otherwise break; default:
+#define camlid_t_of_T1(a, b) break; case camlid_t_T1: \
+  for(int cid_once = 1; cid_once; cid_once = 0) \
+  for(int *a = &cid_m->u.T1.a; cid_once; cid_once = 0) \
+  for(double *b = &cid_m->u.T1.b; cid_once; cid_once = 0)
+#define camlid_t_of_T2() break; case camlid_t_T2:
+#define camlid_t_of_T3(c) break; case camlid_t_T3: \
+  for(int cid_once = 1; cid_once; cid_once = 0) \
+  for(int *c = &cid_m->u.T3.c; cid_once; cid_once = 0)
 // @brief Fill [dst] with the constructor T1 of t
 // @param dst structure to fill
 // @param a reference is assigned to the constructor field
