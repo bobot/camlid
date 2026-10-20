@@ -38,6 +38,10 @@ type mlc = {
   cty : c;
   v : var;
       (* variable for the ml version used in the expression of the previous fields *)
+  owned_by_ml : bool;
+      (** [true] when the C value is owned by the OCaml value (custom blocks,
+          bigarrays): [ml2c] borrows it and [c2ml] moves it into a new OCaml
+          value. [false] when [ml2c] and [c2ml] copy the data. *)
 }
 (** The conversion between an ML and C type *)
 

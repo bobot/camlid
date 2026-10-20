@@ -71,6 +71,7 @@ let builtin_mltypes ~unbox_attribute ~unbox_version ?u_type ~c_type ~c2ml ~ml2c
         c;
       };
     v;
+    owned_by_ml = false;
   }
 
 let string_nt_alias = mlalias "string_nt" "string"
@@ -112,6 +113,7 @@ let string_nt ~prefix ~owned =
         c;
       };
     v;
+    owned_by_ml = false;
   }
 
 let string_nt, string_nt_prefix =
@@ -160,6 +162,7 @@ let string_fixed_length ?(init = true) ?(owned = true) len =
         c;
       };
     v;
+    owned_by_ml = false;
   }
 
 let string_length_struct =
@@ -203,6 +206,7 @@ let string_length ?(owned = true) () =
         c;
       };
     v;
+    owned_by_ml = false;
   }
 
 let ptr_ref (ty : mlc) =
@@ -242,6 +246,7 @@ let ptr_ref (ty : mlc) =
         c;
       };
     v = ty.v;
+    owned_by_ml = ty.owned_by_ml;
   }
 
 type copy = { copy : Expr.expr; c_from : Expr.Var.t; c_to : Expr.Var.t }
@@ -313,7 +318,7 @@ let copy ~copy (ty : mlc) =
           }
     | Unboxable _ -> invalid_arg "not implemented"
   in
-  { ty with conv }
+  { ty with conv; owned_by_ml = false }
 
 let array ?(init = true) ?(owned = true) ~len (ty : mlc) =
   let cty = expr "%a*" pp_expr ty.cty.cty in
@@ -417,6 +422,7 @@ let array ?(init = true) ?(owned = true) ~len (ty : mlc) =
         c;
       };
     v;
+    owned_by_ml = ty.owned_by_ml;
   }
 
 let array_length ?(owned = true) (ty : mlc) =
@@ -507,6 +513,7 @@ let array_length ?(owned = true) (ty : mlc) =
         c;
       };
     v;
+    owned_by_ml = ty.owned_by_ml;
   }
 
 let map_param_in_call ?(name = "arg") map param =
@@ -566,6 +573,7 @@ let abstract ?initialize ?get ?set ~icty ~ml ~cty () =
   let c' = Var.mk "c" (expr "%a *" pp_def cty) in
   {
     v;
+    owned_by_ml = false;
     mlty = e_def @@ mlabstract ~keep_name:true ml;
     conv =
       Boxed
@@ -743,6 +751,7 @@ let custom ?initialize ?finalize ?hash ?compare ?get ?set ~ml ~icty ~cty () =
         c;
       };
     v;
+    owned_by_ml = true;
   }
 
 (** Encapsulate a c pointer type into an custom ml type *)
@@ -871,6 +880,11 @@ let mk_initialize ~cty ?vars ?exprs initialize =
 
 let param ?input_label ?(binds = []) ?(input = false) ?(output = false)
     ?(used_in_call = true) ?(name = "p") pty =
+  if input && output && pty.owned_by_ml then
+    invalid_arg
+      "Camlid: a parameter can't be both an input and an output when its C \
+       value is owned by the OCaml value (it would be owned by two OCaml \
+       values). Use an input: in-place modifications are visible.";
   let pc = Var.mk name pty.cty.cty in
   let pc_call = Var.mk name pty.cty.cty in
   let pv = Var.mk name e_value in
@@ -1424,7 +1438,7 @@ let convert ?mlc_to_c ?c_to_mlc ~(mlc : mlc) ~(c : c) () =
             c2ml = mk_ml2c c2ml;
           }
   in
-  { mlty = mlc.mlty; conv; cty = c; v = mlc.v }
+  { mlty = mlc.mlty; conv; cty = c; v = mlc.v; owned_by_ml = false }
 
 module AlgData = struct
   type kind =
@@ -1610,6 +1624,14 @@ module AlgData = struct
             c;
           };
         v;
+        owned_by_ml =
+          List.exists
+            (fun (_, _, k) ->
+              match k with
+              | KConst _ -> false
+              | KNonConst (_, l) ->
+                  List.exists (fun (_, _, ty) -> ty.owned_by_ml) l)
+            l;
       }
     in
     let dst_smart_constructors = Var.mk "dst" (expr "%a*" pp_def cty) in
@@ -1683,6 +1705,7 @@ let value =
       conv;
       cty = { cty; init = None; init_expr; free = None; in_call = None; c };
       v;
+      owned_by_ml = false;
     }
 
 let ret_option_if expr typedef =
@@ -1778,7 +1801,7 @@ let bigarray_array1_aux ~managed ~kind ~cty ~mlty ~mlelt () =
               (fun { fmt } ->
                 fmt "%a->len=Caml_ba_array_val(*%a)->dim[0];@ " pp_var c' pp_var
                   v';
-                fmt "%a->t=Caml_ba_array_val(*%a)->data;@ " pp_var c' pp_var c');
+                fmt "%a->t=Caml_ba_array_val(*%a)->data;@ " pp_var c' pp_var v');
           c2ml =
             expr
               "%a = caml_ba_alloc_dims@[(%s|CAML_BA_C_LAYOUT|%s,@ 1,@ %a->t,@ \
@@ -1795,6 +1818,7 @@ let bigarray_array1_aux ~managed ~kind ~cty ~mlty ~mlelt () =
         c;
       };
     v;
+    owned_by_ml = true;
   }
 
 let bigarray_array1 =

@@ -177,6 +177,7 @@ let string_as_FILE_ptr =
         c;
       };
     v;
+    owned_by_ml = false;
   }
 
 let input_value ml = input (value ml)
