@@ -1,5 +1,12 @@
 ## unreleased ##
     - rename module Type into Ty
+    - the constructor and destructor arguments are named init and clear
+      everywhere (Helper.abstract, custom, custom_ptr, on_stack, and Expert);
+      Expert.mk_initialize and mk_finalize become mk_init and mk_clear
+    - rename int_trunc into c_int, input_string/output_string into
+      string_len/string_len_ref, input_array/output_array into
+      array_len/array_len_ref (the old names are deprecated)
+    - Expert.abstract takes expressions for icty and cty, like Expert.custom
     - add Helper.value_type for types handled like C++ classes (init,
       clear, copy), and Helper.extra_input
     - identical C definitions with the same basename are printed once, so

@@ -57,7 +57,7 @@ val string_fixed_length : ?init:bool -> ?owned:bool -> Expr.var -> Ty.mlc
     functions (usually the same). The record arguments are created with the
     [mk_*] functions below. *)
 
-type initialize = { initialize : Expr.expr; c : Expr.var }
+type init = { init : Expr.expr; c : Expr.var }
 (** Initialize [c : cty *], used when the type is not an input *)
 
 type get = { get : Expr.expr; c : Expr.var; i : Expr.var }
@@ -66,7 +66,7 @@ type get = { get : Expr.expr; c : Expr.var; i : Expr.var }
 type set = { set : Expr.expr; c : Expr.var; i : Expr.var }
 (** Set [i : icty *] from [c : cty *] *)
 
-type finalize = { finalize : Expr.expr; i : Expr.var }
+type clear = { clear : Expr.expr; i : Expr.var }
 (** Called on [i : icty *] when the OCaml value is collected *)
 
 type hash = { hash : Expr.expr; i : Expr.var }
@@ -76,19 +76,19 @@ type compare = { compare : Expr.expr; i1 : Expr.var; i2 : Expr.var }
 (** Comparison of [i1 : icty *] and [i2 : icty *] *)
 
 val abstract :
-  ?initialize:initialize ->
+  ?init:init ->
   ?get:get ->
   ?set:set ->
-  icty:Expr.defined ->
+  icty:Expr.expr ->
   ml:string ->
-  cty:Expr.defined ->
+  cty:Expr.expr ->
   unit ->
   Ty.mlc
 (** The C value is copied in an [Abstract_tag] block, it can't be finalized. *)
 
 val custom :
-  ?initialize:initialize ->
-  ?finalize:finalize ->
+  ?init:init ->
+  ?clear:clear ->
   ?hash:hash ->
   ?compare:compare ->
   ?get:get ->
@@ -101,8 +101,8 @@ val custom :
 (** The C value is moved in a custom block. *)
 
 val custom_ptr :
-  ?initialize:initialize ->
-  ?finalize:finalize ->
+  ?init:init ->
+  ?clear:clear ->
   ?hash:hash ->
   ?compare:compare ->
   ?malloc:bool ->
@@ -113,20 +113,20 @@ val custom_ptr :
 (** The custom block contains a pointer, the stubbed functions get a [cty *].
     The record arguments are created with [~icty:cty].
     @param malloc
-      (default [true]) allocate with [malloc] before [initialize], and [free]
-      after [finalize]. *)
+      (default [true]) allocate with [malloc] before [init], and [free] after
+      [clear]. *)
 
 (** The [mk_*] functions build the records above for the C function [name]. By
     default it is called with the variables of the record, [vars] allows to add
     other variables (e.g. the C variable of another parameter), and [exprs] to
     give any expressions. *)
 
-val mk_initialize :
+val mk_init :
   cty:Expr.expr ->
   ?vars:(Expr.Var.t -> Expr.Var.t list) ->
   ?exprs:(Expr.Var.t -> Expr.expr list) ->
   string ->
-  initialize
+  init
 
 val mk_get :
   icty:Expr.expr ->
@@ -144,12 +144,12 @@ val mk_set :
   string ->
   set
 
-val mk_finalize :
+val mk_clear :
   icty:Expr.expr ->
   ?vars:(Expr.Var.t -> Expr.Var.t list) ->
   ?exprs:(Expr.Var.t -> Expr.expr list) ->
   string ->
-  finalize
+  clear
 
 val mk_hash :
   icty:Expr.expr ->

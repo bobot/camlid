@@ -5,9 +5,9 @@ let adt =
   let mlc =
     algdata "t"
       [
-        ("T1", [ ("a", int_trunc); ("b", double) ]);
+        ("T1", [ ("a", c_int); ("b", double) ]);
         ("T2", []);
-        ("T3", [ ("c", int_trunc) ]);
+        ("T3", [ ("c", c_int) ]);
       ]
   in
   let c = on_stack ~init_expr:"((lib_t) { { 0 } })" "lib_t" in

@@ -30,14 +30,14 @@ open Helper
 let () =
   Generate.to_file "mylib" ~headers:[ "alib.h" ]
     [
-      func "f_input" [ input int_trunc ];
-      func "f_output" [ output (ptr_ref int_trunc) ];
-      func "f_with_res" [] ~result:int_trunc;
+      func "f_input" [ input c_int ];
+      func "f_output" [ output (ptr_ref c_int) ];
+      func "f_with_res" [] ~result:c_int;
       func "f_no_arg_no_result" [];
     ]
 ]}
 
-[func "name" params] describes the C function [name]. Each parameter says whether the argument of the C function is an {!Camlid.Helper.input} or an {!Camlid.Helper.output} of the OCaml function, and gives its type. A type describes the OCaml type, the C type, the conversions, and the memory to allocate and free. Here {!Camlid.Helper.int_trunc} is an OCaml [int] and a C [int]; {!Camlid.Helper.ptr_ref} gives to [f_output] a pointer to an [int] to fill. The generated OCaml functions are:
+[func "name" params] describes the C function [name]. Each parameter says whether the argument of the C function is an {!Camlid.Helper.input} or an {!Camlid.Helper.output} of the OCaml function, and gives its type. A type describes the OCaml type, the C type, the conversions, and the memory to allocate and free. Here {!Camlid.Helper.c_int} is an OCaml [int] and a C [int]; {!Camlid.Helper.ptr_ref} gives to [f_output] a pointer to an [int] to fill. The generated OCaml functions are:
 
 {[
 val f_input : int -> unit
@@ -144,11 +144,11 @@ When the C function takes the length of a string or an array as a separate argum
 
 {[
 (* void f(char *, size_t); *)
-let a = input_string () in
+let a = string_len () in
 func "f" [ a.t; a.len ]
 ]}
 
-Only [a.t] is an argument of the OCaml function. {!Camlid.Helper.output_string} gives [char **] and [size_t *] to the C function, and {!Camlid.Helper.fixed_length_string} allocates the string with a length given as an OCaml argument.
+Only [a.t] is an argument of the OCaml function. {!Camlid.Helper.string_len_ref} gives [char **] and [size_t *] to the C function, and {!Camlid.Helper.fixed_length_string} allocates the string with a length given as an OCaml argument.
 
 {1:expert Expert}
 

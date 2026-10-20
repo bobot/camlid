@@ -2,12 +2,12 @@ open Camlid
 open Helper
 
 let pointer =
-  custom ~finalize:"finalize_ptr" ~compare:"compare_ptr" ~hash:"hash_ptr"
-    ~initialize:"initialize_ptr" ~ml:"myptr" ~c:"int *" ()
+  custom ~clear:"finalize_ptr" ~compare:"compare_ptr" ~hash:"hash_ptr"
+    ~init:"initialize_ptr" ~ml:"myptr" ~c:"int *" ()
 
 let () =
   Generate.to_file "mylib" ~headers:[ "lib.h" ]
     [
-      func "of_int" [ input int_trunc; output pointer ];
-      func "to_int" [ input pointer ] ~result:int_trunc;
+      func "of_int" [ input c_int; output pointer ];
+      func "to_int" [ input pointer ] ~result:c_int;
     ]

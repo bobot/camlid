@@ -19,7 +19,7 @@ let size_t : mlc =
     ~ml2u:"Long_val" ~c2ml:"Val_long" ~ml2c:"(size_t)Long_val" ~c2u:"(intptr_t)"
     ~unbox_attribute:Untagged ~unbox_version:(4, 3)
 
-let int_trunc : mlc =
+let c_int : mlc =
   builtin_mltypes "int" ~u_type:"intptr_t" ~c_type:"int" ~c2ml:"Val_int"
     ~ml2c:"Int_val" ~u2c:"(int)" ~c2u:"(intptr_t)" ~unbox_attribute:Untagged
     ~unbox_version:(4, 3)
@@ -84,7 +84,7 @@ let func ?ml ?result ?ignored_result ?call_params fname params =
 
 type with_length = { t : Ty.param; len : Ty.param }
 
-let input_array ?owned ?(output = false) ?(input = true) ?(name = "array") ty =
+let array_len ?owned ?(input = true) ?(output = false) ?(name = "array") ty =
   let a_len = array_length ?owned ty in
   let io_a_len, _ = Expert.simple_param ~input ~output a_len ~name in
 
@@ -92,8 +92,8 @@ let input_array ?owned ?(output = false) ?(input = true) ?(name = "array") ty =
   let len_ptr = len_field io_a_len |> use_new_param_only_in_call in
   { t = a; len = len_ptr }
 
-let output_array ?owned ?(output = true) ?(input = false) ?name ty =
-  let a = input_array ?owned ~output ~input ?name ty in
+let array_len_ref ?owned ?(input = false) ?(output = true) ?name ty =
+  let a = array_len ?owned ~output ~input ?name ty in
   { t = deref_in_call a.t; len = deref_in_call a.len }
 
 let fixed_length_array ?init ?owned ?(input = false) ?(output = true)
@@ -107,17 +107,16 @@ let fixed_length_array ?init ?owned ?(input = false) ?(output = true)
   in
   { t = a_len; len }
 
-let input_string ?owned ?(input = true) ?(output = false) ?(name = "string") ()
-    =
+let string_len ?owned ?(input = true) ?(output = false) ?(name = "string") () =
   let a_len = string_length ?owned () in
   let io_a_len, _ = Expert.simple_param ~input ~output a_len ~name in
   let a = get_field (expr "char *") "t" io_a_len in
   let len_ptr = len_field io_a_len |> use_new_param_only_in_call in
   { t = a; len = len_ptr }
 
-let output_string ?owned ?(input = false) ?(output = true) ?(name = "string") ()
-    =
-  let a = input_string ?owned ~input ~output ~name () in
+let string_len_ref ?owned ?(input = false) ?(output = true) ?(name = "string")
+    () =
+  let a = string_len ?owned ~input ~output ~name () in
   { t = deref_in_call a.t; len = deref_in_call a.len }
 
 let fixed_length_string ?init ?owned ?(input = false) ?(output = true)
@@ -184,60 +183,59 @@ let string_as_FILE_ptr =
 let input_value ml = input (value ml)
 let output_value ml = output (value ml) |> deref_in_call
 
-let abstract ?initialize ~ml ~c () : mlc =
+let abstract ?init ~ml ~c () : mlc =
   let cty = typedef "abstract" "%s" c in
-  let initialize =
+  let init =
     Option.map
-      (fun initialize ->
+      (fun init ->
         let c = Var.mk "c" (expr "%a *" pp_def cty) in
-        { initialize = calli_existing initialize [ c ]; c })
-      initialize
+        { init = calli_existing init [ c ]; c })
+      init
   in
-  Expert.abstract ?initialize ~icty:cty ~cty ~ml ()
+  Expert.abstract ?init ~icty:(e_def cty) ~cty:(e_def cty) ~ml ()
 
 (** Encapsulate a c type into an custom ml type *)
-let custom ?initialize ?finalize ?hash ?compare ~ml ~c () =
+let custom ?init ?clear ?hash ?compare ~ml ~c () =
   let cty = expr "%s" c in
   let icty = cty in
-  let finalize = Option.map (mk_finalize ~icty) finalize in
+  let clear = Option.map (mk_clear ~icty) clear in
   let hash = Option.map (mk_hash ~icty) hash in
   let compare = Option.map (mk_compare ~icty) compare in
-  let initialize = Option.map (mk_initialize ~cty) initialize in
-  custom ?initialize ?finalize ?hash ?compare ~ml ~icty ~cty ()
+  let init = Option.map (mk_init ~cty) init in
+  custom ?init ?clear ?hash ?compare ~ml ~icty ~cty ()
 
-let custom_ptr ?initialize ?finalize ?hash ?compare ~ml ~c () =
+let custom_ptr ?init ?clear ?hash ?compare ~ml ~c () =
   let cty = expr "%s" c in
   let icty = cty in
-  let finalize = Option.map (mk_finalize ~icty) finalize in
+  let clear = Option.map (mk_clear ~icty) clear in
   let hash = Option.map (mk_hash ~icty) hash in
   let compare = Option.map (mk_compare ~icty) compare in
-  let initialize = Option.map (mk_initialize ~cty) initialize in
-  custom_ptr ?initialize ?finalize ?hash ?compare ~ml ~cty ()
+  let init = Option.map (mk_init ~cty) init in
+  custom_ptr ?init ?clear ?hash ?compare ~ml ~cty ()
 
 type value_type = { t : mlc; value : mlc; copy_of_ptr : mlc }
 
 let value_type ?(init_args = []) ?hash ?compare ~init ~clear ~copy ~ml ~c () =
   let cty = expr "%s" c in
-  let mk_init = mk_initialize ~cty init ~vars:(fun v -> v :: init_args) in
-  let mk_clear = mk_initialize ~cty clear in
+  let init_c = mk_init ~cty init ~vars:(fun v -> v :: init_args) in
+  let clear_c = mk_init ~cty clear in
   let t =
-    Expert.custom_ptr ~initialize:mk_init
-      ~finalize:(mk_finalize ~icty:cty clear)
+    Expert.custom_ptr ~init:init_c ~clear:(mk_clear ~icty:cty clear)
       ?hash:(Option.map (mk_hash ~icty:cty) hash)
       ?compare:(Option.map (mk_compare ~icty:cty) compare)
       ~malloc:true ~ml ~cty ()
   in
   let value =
     let c = Var.mk "c" cty in
-    let on_c (f : initialize) =
-      Some (expr "%a" pp_expr_binds (f.initialize, [ (f.c, e_addr c) ]))
+    let on_c (f : init) =
+      Some (expr "%a" pp_expr_binds (f.init, [ (f.c, e_addr c) ]))
     in
     let value_c =
       {
         cty;
-        init = on_c mk_init;
+        init = on_c init_c;
         init_expr = expr "((%a) { 0 })" pp_expr cty;
-        free = on_c mk_clear;
+        free = on_c clear_c;
         in_call = None;
         c;
       }
@@ -305,20 +303,20 @@ let convert ?c_to_mlc ?mlc_to_c ?(using = []) ~mlc ~c () =
     ?mlc_to_c:(mk mlc_to_c ~dst:c ~src:mlc.cty)
     ~mlc ~c ()
 
-let on_stack ?init_expr ?initialize ?clear cty =
+let on_stack ?init_expr ?init ?clear cty =
   let cty = expr "%s" cty in
-  let initialize = Option.map (mk_initialize ~cty) initialize in
-  let clear = Option.map (mk_initialize ~cty) clear in
+  let init = Option.map (mk_init ~cty) init in
+  let clear = Option.map (mk_init ~cty) clear in
   let c = Var.mk "c" cty in
   let pp_f f =
     let pp_init fmt f =
-      Fmt.pf fmt "%a" pp_expr_binds (f.initialize, [ (f.c, e_addr c) ])
+      Fmt.pf fmt "%a" pp_expr_binds (f.init, [ (f.c, e_addr c) ])
     in
     expro "%a" Fmt.(option pp_init) f
   in
   {
     cty;
-    init = pp_f initialize;
+    init = pp_f init;
     init_expr =
       (match init_expr with
       | Some s -> expr "%s" s
@@ -327,3 +325,9 @@ let on_stack ?init_expr ?initialize ?clear cty =
     in_call = None;
     c;
   }
+
+let int_trunc = c_int
+let input_string = string_len
+let output_string = string_len_ref
+let input_array = array_len
+let output_array = array_len_ref

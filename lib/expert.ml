@@ -558,14 +558,14 @@ type set = {
   i : var;  (** internal type *)
 }
 
-type initialize = { initialize : expr; c : var }
+type init = { init : expr; c : var }
 
 (** Encapsulate a c type into an abstract ml type *)
-let abstract ?initialize ?get ?set ~icty ~ml ~cty () =
+let abstract ?init ?get ?set ~icty ~ml ~cty () =
   let v = Var.mk "v" (expr "value") in
-  let c = Var.mk "c" (expr "%a" pp_def cty) in
+  let c = Var.mk "c" (expr "%a" pp_expr cty) in
   let v' = Var.mk "v" (expr "value *") in
-  let c' = Var.mk "c" (expr "%a *" pp_def cty) in
+  let c' = Var.mk "c" (expr "%a *" pp_expr cty) in
   {
     v;
     owned_by_ml = false;
@@ -576,13 +576,13 @@ let abstract ?initialize ?get ?set ~icty ~ml ~cty () =
           ml2c =
             (match get with
             | None ->
-                expr "%a = *((%a *) Bp_val(%a));" pp_var c pp_def icty pp_var v
+                expr "%a = *((%a *) Bp_val(%a));" pp_var c pp_expr icty pp_var v
             | Some f ->
                 expr "%a" pp_expr_binds
                   ( f.get,
                     [
                       (f.c, e_addr c);
-                      (f.i, expr "((%a *) Bp_val(%a))" pp_def icty pp_var v);
+                      (f.i, expr "((%a *) Bp_val(%a))" pp_expr icty pp_var v);
                     ] ));
           c2ml =
             call_codef "c2ml"
@@ -591,10 +591,10 @@ let abstract ?initialize ?get ?set ~icty ~ml ~cty () =
                 fmt
                   "@[*%a = caml_alloc((sizeof(%a) + sizeof(value) - 1) / \
                    sizeof(value), Abstract_tag);@]@,"
-                  pp_var v' pp_def icty;
+                  pp_var v' pp_expr icty;
                 match set with
                 | None ->
-                    fmt "*((%a *) Bp_val(*%a)) = *%a;" pp_def icty pp_var v'
+                    fmt "*((%a *) Bp_val(*%a)) = *%a;" pp_expr icty pp_var v'
                       pp_var c'
                 | Some f ->
                     fmt "%a" pp_expr_binds
@@ -602,30 +602,30 @@ let abstract ?initialize ?get ?set ~icty ~ml ~cty () =
                         [
                           (f.c, e_var c');
                           ( f.i,
-                            expr "((%a *) Bp_val(*%a))" pp_def icty pp_var v' );
+                            expr "((%a *) Bp_val(*%a))" pp_expr icty pp_var v' );
                         ] ));
         };
     cty =
       {
-        cty = e_def cty;
+        cty;
         c;
         init =
           (let pp_init fmt f =
-             Fmt.pf fmt "%a" pp_expr_binds (f.initialize, [ (f.c, e_addr c) ])
+             Fmt.pf fmt "%a" pp_expr_binds (f.init, [ (f.c, e_addr c) ])
            in
-           expro "%a" Fmt.(option pp_init) initialize);
-        init_expr = expr "((%a) { 0 })" pp_def cty;
+           expro "%a" Fmt.(option pp_init) init);
+        init_expr = expr "((%a) { 0 })" pp_expr cty;
         in_call = None;
         free = None;
       };
   }
 
-type finalize = { finalize : expr; i : var }
+type clear = { clear : expr; i : var }
 type hash = { hash : expr; i : var }
 type compare = { compare : expr; i1 : var; i2 : var }
 
 (** Encapsulate a c type into an custom ml type *)
-let custom ?initialize ?finalize ?hash ?compare ?get ?set ~ml ~icty ~cty () =
+let custom ?init ?clear ?hash ?compare ?get ?set ~ml ~icty ~cty () =
   let v = Var.mk "v" (expr "value") in
   let c = Var.mk "c" cty in
   let v' = Var.mk "v" (expr "value *") in
@@ -638,11 +638,11 @@ let custom ?initialize ?finalize ?hash ?compare ?get ?set ~ml ~icty ~cty () =
   in
   let finalize_op =
     Option.map
-      (fun finalize ->
+      (fun clear ->
         let v = Var.mk "v" e_value in
         code "finalize_op" "%a" pp_expr_binds
-          (finalize.finalize, [ (finalize.i, data_custom_val icty v) ]))
-      finalize
+          (clear.clear, [ (clear.i, data_custom_val icty v) ]))
+      clear
   in
   let hash_op =
     Option.map
@@ -715,9 +715,9 @@ let custom ?initialize ?finalize ?hash ?compare ?get ?set ~ml ~icty ~cty () =
         cty;
         init =
           (let pp_init fmt f =
-             Fmt.pf fmt "%a" pp_expr_binds (f.initialize, [ (f.c, e_addr c) ])
+             Fmt.pf fmt "%a" pp_expr_binds (f.init, [ (f.c, e_addr c) ])
            in
-           expro "%a" Fmt.(option pp_init) initialize);
+           expro "%a" Fmt.(option pp_init) init);
         init_expr = expr "((%a) { 0 })" pp_expr cty;
         free = None;
         in_call = None;
@@ -728,56 +728,52 @@ let custom ?initialize ?finalize ?hash ?compare ?get ?set ~ml ~icty ~cty () =
   }
 
 (** Encapsulate a c pointer type into an custom ml type *)
-let custom_ptr ?initialize ?finalize ?hash ?compare ?(malloc = true) ~ml ~cty ()
-    =
+let custom_ptr ?init ?clear ?hash ?compare ?(malloc = true) ~ml ~cty () =
   let cty_ptr = expr "%a*" pp_expr cty in
-  let initialize =
+  let init =
     let c = Var.mk "c" (expr "%a *" pp_expr cty_ptr) in
     let fmalloc { fmt } =
       fmt "*%a = malloc(sizeof(%a));" pp_var c pp_expr cty
     in
-    let finit initialize { fmt } =
-      fmt "%a" pp_expr_binds
-        (initialize.initialize, [ (initialize.c, expr "*%a" pp_var c) ])
+    let finit init { fmt } =
+      fmt "%a" pp_expr_binds (init.init, [ (init.c, expr "*%a" pp_var c) ])
     in
-    match initialize with
-    | None when malloc -> Some { initialize = call_codef "init" [] fmalloc; c }
+    match init with
+    | None when malloc -> Some { init = call_codef "init" [] fmalloc; c }
     | None -> None
-    | Some initialize when malloc ->
+    | Some init when malloc ->
         Some
           {
-            initialize =
+            init =
               call_codef "init" [] (fun fmt ->
                   fmalloc fmt;
                   fmt.fmt "@ ";
-                  finit initialize fmt);
+                  finit init fmt);
             c;
           }
-    | Some initialize ->
-        Some { initialize = call_codef "init" [] (finit initialize); c }
+    | Some init -> Some { init = call_codef "init" [] (finit init); c }
   in
-  let finalize =
+  let clear =
     let i = Var.mk "i" (expr "%a *" pp_expr cty_ptr) in
     let ffree { fmt } = fmt "free(*%a);" pp_var i in
-    let ffinalize finalize { fmt } =
-      fmt "%a" pp_expr_binds
-        (finalize.finalize, [ (finalize.i, expr "*%a" pp_var i) ])
+    let ffinalize clear { fmt } =
+      fmt "%a" pp_expr_binds (clear.clear, [ (clear.i, expr "*%a" pp_var i) ])
     in
-    match finalize with
-    | None when malloc -> Some { finalize = call_codef "finalize" [] ffree; i }
+    match clear with
+    | None when malloc -> Some { clear = call_codef "finalize" [] ffree; i }
     | None -> None
-    | Some finalize when malloc ->
+    | Some clear when malloc ->
         Some
           {
-            finalize =
+            clear =
               call_codef "finalize" [] (fun fmt ->
-                  ffinalize finalize fmt;
+                  ffinalize clear fmt;
                   fmt.fmt "@ ";
                   ffree fmt);
             i;
           }
-    | Some finalize ->
-        Some { finalize = call_codef "finalize" [] (ffinalize finalize); i }
+    | Some clear ->
+        Some { clear = call_codef "finalize" [] (ffinalize clear); i }
   in
   let hash =
     let i = Var.mk "i" (expr "%a *" pp_expr cty_ptr) in
@@ -804,7 +800,7 @@ let custom_ptr ?initialize ?finalize ?hash ?compare ?(malloc = true) ~ml ~cty ()
         })
       compare
   in
-  custom ?initialize ?finalize ?hash ?compare ~ml ~cty:cty_ptr ~icty:cty_ptr ()
+  custom ?init ?clear ?hash ?compare ~ml ~cty:cty_ptr ~icty:cty_ptr ()
 
 let mk_get ~icty ~cty ?vars ?exprs get =
   let c = Var.mk "c" (expr "%a *" pp_expr cty) in
@@ -826,10 +822,10 @@ module Unary = App (struct
   let none c = [ c ]
 end)
 
-let mk_finalize ~icty ?vars ?exprs finalize =
+let mk_clear ~icty ?vars ?exprs clear =
   let i = Var.mk "i" (expr "%a *" pp_expr icty) in
-  let finalize = Unary.gen ~debug_name:"finalize" vars exprs finalize i in
-  { finalize; i }
+  let clear = Unary.gen ~debug_name:"clear" vars exprs clear i in
+  { clear; i }
 
 let mk_hash ~icty ?vars ?exprs hash =
   let i = Var.mk "i" (expr "%a *" pp_expr icty) in
@@ -841,10 +837,10 @@ let mk_compare ~icty compare =
   let i2 = Var.mk "i" (expr "%a *" pp_expr icty) in
   { compare = expr "%a" pp_call (existing compare [ i1; i2 ], []); i1; i2 }
 
-let mk_initialize ~cty ?vars ?exprs initialize =
+let mk_init ~cty ?vars ?exprs init =
   let c = Var.mk "c" (expr "%a *" pp_expr cty) in
-  let initialize = Unary.gen ~debug_name:"initialize" vars exprs initialize c in
-  { initialize; c }
+  let init = Unary.gen ~debug_name:"init" vars exprs init c in
+  { init; c }
 
 let param ?input_label ?(binds = []) ?(input = false) ?(output = false)
     ?(used_in_call = true) ?(name = "p") pty =

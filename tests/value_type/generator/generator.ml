@@ -20,7 +20,7 @@ let () =
       func "vec_sum" [ input vec.t ] ~result:int;
       (let a = fixed_length_array ~len_used_in_call:true vec.value in
        func "vec_ranges" [ a.t; a.len ] ~ml:"vec_ranges");
-      (let a = input_array vec.value in
+      (let a = array_len vec.value in
        func "vec_total" [ a.t; a.len ] ~result:int);
       func "vec_global" [] ~result:vec.copy_of_ptr;
       func "vec_len" ~ml:"zeros" [ output zeros.t; size ] ~ignored_result:size_t;

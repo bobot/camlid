@@ -61,7 +61,7 @@ val int : Ty.mlc
 val size_t : Ty.mlc
 (** [int] in OCaml, [size_t] in C. The highest bit is lost from C to OCaml. *)
 
-val int_trunc : Ty.mlc
+val c_int : Ty.mlc
 (** [int] in OCaml, [int] in C. On 64 bits, the 31 highest bits are lost from
     OCaml to C. *)
 
@@ -90,7 +90,13 @@ val ptr_ref : Ty.mlc -> Ty.mlc
     that the stub frees the C memory after the call. Use [~owned:false] when the
     C function takes ownership of an input, or keeps ownership of an output.
     [init] (default [true]) indicates that the stub allocates the memory of an
-    output before the call. *)
+    output before the call.
+
+    The functions returning {!with_length} are named after how the C function
+    receives the data: [_len] for a pointer and a length, [_len_ref] for
+    pointers to both (e.g. filled by the C function), [fixed_length_] for a
+    buffer allocated by the stub. [input] and [output] tell if the data is an
+    argument or a result of the OCaml function. *)
 
 val string_nt : ?owned:bool -> unit -> Ty.mlc
 (** [string] in OCaml, null terminated [char *] in C. The conversion to C raises
@@ -105,24 +111,23 @@ type with_length = {
   len : Ty.param;  (** its length, only usable with [t] in the same function *)
 }
 
-val input_string :
+val string_len :
   ?owned:bool ->
   ?input:bool ->
   ?output:bool ->
   ?name:string ->
   unit ->
   with_length
-(** A [string] given to C as [char *] and [size_t]. *)
+(** A [string] given to C as [char *] and [size_t], by default an input. *)
 
-val output_string :
+val string_len_ref :
   ?owned:bool ->
   ?input:bool ->
   ?output:bool ->
   ?name:string ->
   unit ->
   with_length
-(** A [string] given to C as [char **] and [size_t *], usually filled by the C
-    function. *)
+(** A [string] given to C as [char **] and [size_t *], by default an output. *)
 
 val fixed_length_string :
   ?init:bool ->
@@ -137,24 +142,25 @@ val fixed_length_string :
     given by the OCaml argument [len].
     @param len_used_in_call also give the length to the C function *)
 
-val input_array :
+val array_len :
   ?owned:bool ->
-  ?output:bool ->
   ?input:bool ->
+  ?output:bool ->
   ?name:string ->
   Ty.mlc ->
   with_length
-(** [input_array ty] is an array of [ty] given to C as [ty *] and [size_t]. *)
+(** [array_len ty] is an array of [ty] given to C as [ty *] and [size_t], by
+    default an input. *)
 
-val output_array :
+val array_len_ref :
   ?owned:bool ->
-  ?output:bool ->
   ?input:bool ->
+  ?output:bool ->
   ?name:string ->
   Ty.mlc ->
   with_length
-(** [output_array ty] is an array of [ty] given to C as [ty **] and [size_t *],
-    usually filled by the C function. *)
+(** [array_len_ref ty] is an array of [ty] given to C as [ty **] and [size_t *],
+    by default an output. *)
 
 val fixed_length_array :
   ?init:bool ->
@@ -212,8 +218,8 @@ val value_type :
     created with {!extra_input}. *)
 
 val custom_ptr :
-  ?initialize:string ->
-  ?finalize:string ->
+  ?init:string ->
+  ?clear:string ->
   ?hash:string ->
   ?compare:string ->
   ml:string ->
@@ -221,11 +227,11 @@ val custom_ptr :
   unit ->
   Ty.mlc
 (** Same as the [t] field of {!val:value_type}: the C functions take a [c *] and
-    [finalize] is called before [free]. *)
+    [clear] is called before [free]. *)
 
 val custom :
-  ?initialize:string ->
-  ?finalize:string ->
+  ?init:string ->
+  ?clear:string ->
   ?hash:string ->
   ?compare:string ->
   ml:string ->
@@ -235,7 +241,7 @@ val custom :
 (** The C value [c] is stored directly in the custom block, it should be small
     (e.g. a pointer). The C functions take a [c *]. *)
 
-val abstract : ?initialize:string -> ml:string -> c:string -> unit -> Ty.mlc
+val abstract : ?init:string -> ml:string -> c:string -> unit -> Ty.mlc
 (** The C value [c] is stored directly in an OCaml block without finalizer. *)
 
 (** {1 Other types} *)
@@ -269,7 +275,7 @@ val convert :
     @param mlc_to_c name of the conversion from the C type of [mlc] to [c] *)
 
 val on_stack :
-  ?init_expr:string -> ?initialize:string -> ?clear:string -> string -> Ty.c
+  ?init_expr:string -> ?init:string -> ?clear:string -> string -> Ty.c
 (** [on_stack ty] is the C type [ty] (for {!convert}) initialized and cleared
     with the given functions, which take a [ty *].
     @param init_expr the initial value (default [{ 0 }]) *)
@@ -302,7 +308,7 @@ val get_expression : name:string -> Ty.mlc -> string -> Expr.expr
 
 val do_nothing : string -> Ty.param list -> Expr.expr
 (** [do_nothing name params] defines the OCaml function [name] that only
-    converts its parameters, e.g. to create a value with its [initialize]. *)
+    converts its parameters, e.g. to create a value with its [init]. *)
 
 val map_param_in_call :
   ?name:string ->
@@ -312,3 +318,43 @@ val map_param_in_call :
   Ty.param
 (** [map_param_in_call ~ty p "fmt"] gives to the C function the expression
     ["fmt"] of type [ty], applied to the C argument of [p]. *)
+
+(** {1 Deprecated} *)
+
+val int_trunc : Ty.mlc [@@deprecated "use c_int"]
+
+val input_string :
+  ?owned:bool ->
+  ?input:bool ->
+  ?output:bool ->
+  ?name:string ->
+  unit ->
+  with_length
+[@@deprecated "use string_len"]
+
+val output_string :
+  ?owned:bool ->
+  ?input:bool ->
+  ?output:bool ->
+  ?name:string ->
+  unit ->
+  with_length
+[@@deprecated "use string_len_ref"]
+
+val input_array :
+  ?owned:bool ->
+  ?input:bool ->
+  ?output:bool ->
+  ?name:string ->
+  Ty.mlc ->
+  with_length
+[@@deprecated "use array_len"]
+
+val output_array :
+  ?owned:bool ->
+  ?input:bool ->
+  ?output:bool ->
+  ?name:string ->
+  Ty.mlc ->
+  with_length
+[@@deprecated "use array_len_ref"]
