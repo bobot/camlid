@@ -83,7 +83,7 @@ There are two kinds of types, depending on who owns the C data ({!Camlid.Ty.mlc.
   | {b owned by OCaml} | [ml2c] borrows the C data stored in the OCaml value, [c2ml] moves the C data into a new OCaml value | none, the finalizer of the OCaml value frees it | custom blocks, bigarrays, [value_type.t] |
 }
 
-So, for a type owned by OCaml, the C function can modify an input in place, and a parameter can't be both an input and an output: the C data would be owned by two OCaml values.
+So, for a type owned by OCaml, the C function can modify an input in place, and a parameter can't be both an input and an output: the C data would be owned by two OCaml values. An OCaml value never refers to memory owned by C: such a pointer is copied (see [copy_of_ptr] below).
 
 For copied types with allocated memory (strings and arrays), [~owned:false] removes the destructor: the C function takes ownership of an input, or keeps ownership of an output (e.g. a static string).
 
@@ -108,13 +108,13 @@ let () =
       (let a = fixed_length_array ~len_used_in_call:true vec.value in
        func "vec_ranges" [ a.t; a.len ]);
       (* vec *vec_global(void); returns a vec owned by C *)
-      func "vec_global" [] ~result:vec.borrowed;
+      func "vec_global" [] ~result:vec.copy_of_ptr;
     ]
 ]}
 
 - [vec.t] is a [vec *] owned by OCaml: an output is allocated and initialized by the stub, then owned by the OCaml value whose finalizer clears and frees it;
 - [vec.value] is a [vec] copied from or to a [vec] owned by OCaml, and cleared by the stub;
-- [vec.borrowed] is a [vec *] owned by C, copied into a [vec] owned by OCaml.
+- [vec.copy_of_ptr] is a [vec *] owned by C, copied into a [vec] owned by OCaml.
 
 When the constructor needs arguments, they can come from an {!Camlid.Helper.extra_input}, an argument of the OCaml function not given to the C function:
 

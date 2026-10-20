@@ -173,7 +173,7 @@ val mk_copy :
   copy
 
 val copy : copy:copy -> Ty.mlc -> Ty.mlc
-(** [copy ~copy ty] is [ty] where the C value of an output is borrowed: it is
+(** [copy ~copy ty] is [ty] where the C value of an output is owned by C: it is
     copied into a new C value, which is moved into the OCaml value. *)
 
 type convert = { convert : Expr.expr; src : Expr.var; dst : Expr.var }

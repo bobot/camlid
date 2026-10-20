@@ -22,7 +22,7 @@ let () =
        func "vec_ranges" [ a.t; a.len ] ~ml:"vec_ranges");
       (let a = input_array vec.value in
        func "vec_total" [ a.t; a.len ] ~result:int);
-      func "vec_global" [] ~result:vec.borrowed;
+      func "vec_global" [] ~result:vec.copy_of_ptr;
       func "vec_len" ~ml:"zeros" [ output zeros.t; size ] ~ignored_result:size_t;
       func "vec_len" ~ml:"zeros_len" [ input zeros.t ] ~result:size_t;
       func "vec_live" [] ~result:int;

@@ -214,7 +214,7 @@ let custom_ptr ?initialize ?finalize ?hash ?compare ~ml ~c () =
   let initialize = Option.map (mk_initialize ~cty) initialize in
   custom_ptr ?initialize ?finalize ?hash ?compare ~ml ~cty ()
 
-type value_type = { t : mlc; value : mlc; borrowed : mlc }
+type value_type = { t : mlc; value : mlc; copy_of_ptr : mlc }
 
 let value_type ?(init_args = []) ?hash ?compare ~init ~clear ~copy ~ml ~c () =
   let cty = expr "%s" c in
@@ -252,13 +252,13 @@ let value_type ?(init_args = []) ?hash ?compare ~init ~clear ~copy ~ml ~c () =
              [ e_var dst; e_deref src ]))
       ()
   in
-  let borrowed =
+  let copy_of_ptr =
     Expert.copy t
       ~copy:
         (mk_copy ~cty:t.cty.cty copy ~exprs:(fun ~dst ~src ->
              [ e_deref dst; e_deref src ]))
   in
-  { t; value; borrowed }
+  { t; value; copy_of_ptr }
 
 let extra_input ?label ?name ty =
   Expert.simple_param ?input_label:label ?name ~input:true ~used_in_call:false

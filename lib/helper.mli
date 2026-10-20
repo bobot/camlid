@@ -181,7 +181,7 @@ type value_type = {
       (** [T] in C, e.g. for the elements of arrays. It is copied with [copy]
           from or to a new [T] owned by OCaml, and cleared at the end of the
           stub. *)
-  borrowed : Ty.mlc;
+  copy_of_ptr : Ty.mlc;
       (** [T *] in C for an output owned by C, e.g. a pointer inside another
           structure. It is copied into a new [T] owned by OCaml. *)
 }
@@ -281,7 +281,8 @@ val copy :
   string ->
   Ty.mlc
 (** [copy ty f] is [ty] where an output owned by C is copied with the C function
-    [f] into a new value owned by OCaml. See [borrowed] in {!val:value_type}. *)
+    [f] into a new value owned by OCaml. See [copy_of_ptr] in {!val:value_type}.
+*)
 
 val ret_option_if : Ty.mlc -> Ty.param * Ty.mlc
 (** [ret_option_if ty] returns a parameter [status] (an [int *] for the C
