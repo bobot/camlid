@@ -45,6 +45,7 @@ let bool : mlc =
     ~unbox_attribute:Untagged ~unbox_version:(5, 2)
 
 let string_nt = Expert.string_nt
+let string_nt_prefix = Expert.string_nt_prefix
 let ptr_ref = ptr_ref
 
 let func_id ~ml ?result ~call_params fid params =

@@ -20,6 +20,7 @@ val builtin_mltypes :
   Ty.mlc
 
 val string_nt : ?owned:bool -> unit -> Ty.mlc
+val string_nt_prefix : ?owned:bool -> unit -> Ty.mlc
 val string_fixed_length : ?init:bool -> ?owned:bool -> Expr.var -> Ty.mlc
 val string_length_struct : Expr.defined
 val string_length : ?owned:bool -> unit -> Ty.mlc

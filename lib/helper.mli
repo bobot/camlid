@@ -132,9 +132,12 @@ val ptr_ref : Ty.mlc -> Ty.mlc
     memory before calling the C function *)
 
 val string_nt : ?owned:bool -> unit -> Ty.mlc
-(** It is [string] in OCaml, and [char *] in C. In both side the conversion
-    stops at the first null character. If there is no null character in the
-    OCaml string it stops at the end. *)
+(** It is [string] in OCaml, and [char *] in C. The conversion to C raises
+    [Failure] if the OCaml string contains a null character. *)
+
+val string_nt_prefix : ?owned:bool -> unit -> Ty.mlc
+(** Same as {!string_nt} but the conversion to C silently stops at the first
+    null character. *)
 
 type with_length = {
   t : Ty.param; (* array parameter *)

@@ -73,11 +73,11 @@ let builtin_mltypes ~unbox_attribute ~unbox_version ?u_type ~c_type ~c2ml ~ml2c
     v;
   }
 
-(* string null terminated, convert until the first null character *)
-
 let string_nt_alias = mlalias "string_nt" "string"
 
-let string_nt ?(owned = true) () =
+(* string null terminated. [~prefix:true] converts the OCaml string until its
+   first null character, otherwise the conversion fails if there is one. *)
+let string_nt ~prefix ~owned =
   let cty = typedef "string_nt" "char *" in
   let v = Var.mk "v" (expr "value") in
   let c = Var.mk "c" (expr "%a" pp_def cty) in
@@ -93,7 +93,12 @@ let string_nt ?(owned = true) () =
              call_codef "ml2c"
                [ (v', e_addr v); (c', e_addr c) ]
                (fun { fmt } ->
-                 fmt "size_t len=strlen(String_val(*%a))+1;@ " pp_var v';
+                 if prefix then
+                   fmt "size_t len=strlen(String_val(*%a))+1;@ " pp_var v'
+                 else (
+                   fmt "@[if (!caml_string_is_c_safe(*%a))@ " pp_var v';
+                   fmt "caml_failwith(\"string contains null bytes\");@]@ ";
+                   fmt "size_t len=caml_string_length(*%a)+1;@ " pp_var v');
                  fmt "*%a=malloc(len);@ " pp_var c';
                  fmt "memcpy(*%a,String_val(*%a),len);" pp_var c' pp_var v'));
         };
@@ -109,10 +114,13 @@ let string_nt ?(owned = true) () =
     v;
   }
 
-let string_nt =
-  let ty_owned = string_nt ~owned:true () in
-  let ty_not_owned = string_nt ~owned:false () in
-  fun ?(owned = true) () -> if owned then ty_owned else ty_not_owned
+let string_nt, string_nt_prefix =
+  let mk prefix =
+    let ty_owned = string_nt ~prefix ~owned:true in
+    let ty_not_owned = string_nt ~prefix ~owned:false in
+    fun ?(owned = true) () -> if owned then ty_owned else ty_not_owned
+  in
+  (mk false, mk true)
 
 let string_fixed_length ?(init = true) ?(owned = true) len =
   let cty = typedef "string_fs" "char *" in

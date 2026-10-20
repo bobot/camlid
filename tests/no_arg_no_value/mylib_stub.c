@@ -7,6 +7,7 @@
 #include <caml/memory.h>
 #include <caml/alloc.h>
 #include <caml/custom.h>
+#include <caml/fail.h>
 #include <stdio.h>
 #include <string.h>
 extern value camlid_stub_f(void){CAMLparam0();f();CAMLreturn(Val_unit);}

@@ -7,6 +7,7 @@
 #include <caml/memory.h>
 #include <caml/alloc.h>
 #include <caml/custom.h>
+#include <caml/fail.h>
 #include <stdio.h>
 #include <string.h>
 typedef int * camlid_ref;

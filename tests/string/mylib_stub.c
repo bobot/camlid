@@ -7,11 +7,14 @@
 #include <caml/memory.h>
 #include <caml/alloc.h>
 #include <caml/custom.h>
+#include <caml/fail.h>
 #include <stdio.h>
 #include <string.h>
 typedef char * camlid_string_nt;
 static void camlid_ml2c(value * v, camlid_string_nt * c){
-  size_t len=strlen(String_val(*v))+1;
+  if (!caml_string_is_c_safe(*v))
+  caml_failwith("string contains null bytes");
+  size_t len=caml_string_length(*v)+1;
   *c=malloc(len);
   memcpy(*c,String_val(*v),len);
   }
@@ -19,6 +22,20 @@ extern value camlid_stub_f_in(value p){
   CAMLparam1(p);
   camlid_string_nt p1 = ((camlid_string_nt) { 0 });
   camlid_ml2c(&p, &p1);
+  f_in(p1);
+  free(p1);
+  CAMLreturn(Val_unit);
+}
+typedef char * camlid_string_nt1;
+static void camlid_ml2c1(value * v, camlid_string_nt1 * c){
+  size_t len=strlen(String_val(*v))+1;
+  *c=malloc(len);
+  memcpy(*c,String_val(*v),len);
+  }
+extern value camlid_stub_f_in_prefix(value p){
+  CAMLparam1(p);
+  camlid_string_nt1 p1 = ((camlid_string_nt1) { 0 });
+  camlid_ml2c1(&p, &p1);
   f_in(p1);
   free(p1);
   CAMLreturn(Val_unit);
