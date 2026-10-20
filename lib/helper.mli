@@ -4,7 +4,12 @@
 
 (** {1 Functions} *)
 
+type error
+(** A check done after the call of the C function, see {!val:error} *)
+
 val func :
+  ?release_lock:bool ->
+  ?error:error ->
   ?ml:string ->
   ?result:Ty.mlc ->
   ?ignored_result:Ty.mlc ->
@@ -23,7 +28,31 @@ val func :
     @param ignored_result the C function returns a value which is ignored
     @param call_params
       the parameters in the order of the C function arguments, when it is not
-      the order of [params] *)
+      the order of [params]
+    @param release_lock
+      release the runtime lock during the call, so that other threads can run.
+      Raises [Invalid_argument] if an argument of the C function points into the
+      OCaml heap (e.g. {!input_value}).
+    @param error checks the result of the C function, see {!val:error} *)
+
+(** {2 Errors} *)
+
+val exception_ : ?registered:string -> string -> Expert.exn_
+(** [exception_ name] declares in the OCaml file [exception name of string],
+    registered under the name [registered] (default [name]) which should be
+    unique among the libraries, e.g. ["Mylib.Error"]. *)
+
+val error :
+  ?exn:Expert.exn_ -> ?msg:string -> ?vars:Expr.var list -> string -> error
+(** [error is_error] raises an exception when the C function
+    [int is_error(res, vars...)] returns true, where [res] is the result of the
+    C function (given by [result] or [ignored_result]), if any. Before raising,
+    the C values are freed as usual, and the outputs owned by OCaml are
+    finalized.
+    @param msg
+      the C function [const char * msg(res, vars...)] gives the argument of the
+      exception (default ["f failed"])
+    @param exn the exception (default [Failure]) *)
 
 (** The following functions create a parameter from a type with fresh variables.
     A parameter can be used in many functions but only once by function.

@@ -72,6 +72,7 @@ let builtin_mltypes ~unbox_attribute ~unbox_version ?u_type ~c_type ~c2ml ~ml2c
       };
     v;
     owned_by_ml = false;
+    ml_heap = false;
   }
 
 let string_nt_alias = mlalias "string_nt" "string"
@@ -114,6 +115,7 @@ let string_nt ~prefix ~owned =
       };
     v;
     owned_by_ml = false;
+    ml_heap = false;
   }
 
 let string_nt_prefix ?(owned = true) () = string_nt ~prefix:true ~owned
@@ -158,6 +160,7 @@ let string_fixed_length ?(init = true) ?(owned = true) len =
       };
     v;
     owned_by_ml = false;
+    ml_heap = false;
   }
 
 let string_length_struct =
@@ -202,6 +205,7 @@ let string_length ?(owned = true) () =
       };
     v;
     owned_by_ml = false;
+    ml_heap = false;
   }
 
 let ptr_ref (ty : mlc) =
@@ -242,6 +246,7 @@ let ptr_ref (ty : mlc) =
       };
     v = ty.v;
     owned_by_ml = ty.owned_by_ml;
+    ml_heap = ty.ml_heap;
   }
 
 type copy = { copy : Expr.expr; c_from : Expr.Var.t; c_to : Expr.Var.t }
@@ -418,6 +423,7 @@ let array ?(init = true) ?(owned = true) ~len (ty : mlc) =
       };
     v;
     owned_by_ml = ty.owned_by_ml;
+    ml_heap = ty.ml_heap;
   }
 
 let array_length ?(owned = true) (ty : mlc) =
@@ -509,6 +515,7 @@ let array_length ?(owned = true) (ty : mlc) =
       };
     v;
     owned_by_ml = ty.owned_by_ml;
+    ml_heap = ty.ml_heap;
   }
 
 let map_param_in_call ?(name = "arg") map param =
@@ -536,6 +543,8 @@ let use_new_param_only_in_call param =
         pinit = None;
         pinit_expr = [];
         pfree = None;
+        pon_error = None;
+        pml_heap = false;
       }
 
 let get_field ty field_name param =
@@ -569,6 +578,7 @@ let abstract ?init ?get ?set ~icty ~ml ~cty () =
   {
     v;
     owned_by_ml = false;
+    ml_heap = false;
     mlty = e_def @@ mlabstract ~keep_name:true ml;
     conv =
       Boxed
@@ -602,7 +612,8 @@ let abstract ?init ?get ?set ~icty ~ml ~cty () =
                         [
                           (f.c, e_var c');
                           ( f.i,
-                            expr "((%a *) Bp_val(*%a))" pp_expr icty pp_var v' );
+                            expr "((%a *) Bp_val(*%a))" pp_expr icty pp_var v'
+                          );
                         ] ));
         };
     cty =
@@ -725,6 +736,7 @@ let custom ?init ?clear ?hash ?compare ?get ?set ~ml ~icty ~cty () =
       };
     v;
     owned_by_ml = true;
+    ml_heap = false;
   }
 
 (** Encapsulate a c pointer type into an custom ml type *)
@@ -940,7 +952,25 @@ let param ?input_label ?(binds = []) ?(input = false) ?(output = false)
   in
   let pinit_expr = [ (pc, Some pty.cty.init_expr) ] in
   let pfree = Option.map bind pty.cty.free in
-  ({ pinput; pinit_expr; pinit; pused_in_call; pfree; poutput }, pc, pv)
+  let pon_error =
+    match (pty.conv, pty.cty.init) with
+    | Boxed { c2ml; _ }, Some _ when output && pty.owned_by_ml ->
+        Some (bind' c2ml)
+    | _ -> None
+  in
+  let pml_heap = used_in_call && pty.ml_heap in
+  ( {
+      pinput;
+      pinit_expr;
+      pinit;
+      pused_in_call;
+      pfree;
+      poutput;
+      pon_error;
+      pml_heap;
+    },
+    pc,
+    pv )
 
 let simple_param ?input_label ?binds ?input ?output ?used_in_call ?name pty =
   let param, c_var, _ =
@@ -962,6 +992,8 @@ let add_result params result =
         pfree = result.rfree;
         pinit = None;
         pinit_expr = [ (result.rc, None) ];
+        pon_error = None;
+        pml_heap = false;
       }
       :: params
   | None -> params
@@ -979,9 +1011,54 @@ let pp_scall proj { fmt } l =
   | [] -> ()
   | l -> fmt "%a@ " Fmt.(list ~sep:sp (box pp_expr)) l
 
-let code_c_fun ~params ~call_params ~result ~name (fid : expr) =
+type exn_ = { exn_def : defined; registered : string }
+
+let declare_exception ?registered name =
+  let registered = Option.value ~default:name registered in
+  let id = ID.mk ~keep_name:true name in
+  let exn_def =
+    ddef ~kind:ML id
+      "@[exception %a of string@]@.@[let () = Callback.register_exception %S \
+       (%a \"\")@]@."
+      pp_id id registered pp_id id
+  in
+  { exn_def; registered }
+
+type error = { cond : expr; msg : expr option; exn : exn_ option }
+
+let err_var = Var.mk "err" e_value
+
+let pp_error ~name ~params { fmt } error =
+  fmt "@[<v 2>if(%a){@," pp_expr error.cond;
+  (match error.msg with
+  | None ->
+      fmt "@[%a = caml_copy_string(%S);@]@," pp_var err_var (name ^ " failed")
+  | Some msg ->
+      fmt "@[%a = caml_copy_string(%a);@]@," pp_var err_var pp_expr msg);
+  pp_scall (fun p -> p.pon_error) { fmt } params;
+  pp_scall (fun p -> p.pfree) { fmt } params;
+  (match error.exn with
+  | None -> fmt "@[caml_failwith_value(%a);@]" pp_var err_var
+  | Some exn ->
+      fmt "@[/* %a */@]@," pp_def exn.exn_def;
+      fmt
+        "@[const value *exn = caml_named_value(%S);@]@,\
+         @[if(exn == NULL) caml_invalid_argument(%S);@]@,\
+         @[caml_raise_with_arg(*exn, %a);@]"
+        exn.registered
+        ("exception " ^ exn.registered ^ " not registered")
+        pp_var err_var);
+  fmt "@]@,}@,"
+
+let code_c_fun ?(release_lock = false) ?error ~params ~call_params ~result ~name
+    (fid : expr) =
   let params = add_result params result in
   let call_params = add_result call_params result in
+  if release_lock && List.exists (fun p -> p.pml_heap) call_params then
+    Fmt.invalid_arg
+      "Camlid: the runtime lock can't be released in %s, an argument of the C \
+       function points into the OCaml heap"
+      name;
   let var_pinput p =
     match p.pinput with
     | PINone -> None
@@ -1093,6 +1170,8 @@ let code_c_fun ~params ~call_params ~result ~name (fid : expr) =
       | MultipleValues ->
           camlParam ~is_param:false ~first:false
             (return_var :: List.filter_map boxed_poutput params));
+      if Option.is_some error then
+        camlParam ~is_param:false ~first:false [ err_var ];
       (* C Locals *)
       let pp_local fmt (pc, pinit_expr) =
         Fmt.pf fmt "@[%a %a%a;@]@," pp_expr pc.ty pp_var pc
@@ -1115,8 +1194,11 @@ let code_c_fun ~params ~call_params ~result ~name (fid : expr) =
       (* initialize variables *)
       pp_scall (fun p -> p.pinit) { fmt } params;
       (* function call *)
+      if release_lock then fmt "@[caml_enter_blocking_section();@]@,";
       fmt "@[%a@]@," pp_expr_binds
         (fid, List.filter_map (fun p -> p.pused_in_call) call_params);
+      if release_lock then fmt "@[caml_leave_blocking_section();@]@,";
+      Option.iter (pp_error ~name ~params { fmt }) error;
       (* convert output variable *)
       pp_scall c2a_poutput { fmt } params;
       (match kind_of_result with
@@ -1235,9 +1317,11 @@ let code_c_fun_bytecode ~params ~result fid_native =
       | MultipleValues -> ());
       fmt "@]@,@[}@]@]@.")
 
-let print_ml_fun ~params ?(call_params = params) ?result ~mlname fid =
+let print_ml_fun ?release_lock ?error ~params ?(call_params = params) ?result
+    ~mlname fid =
   let code_c =
-    code_c_fun ~params ~call_params ~result ~name:("stub_" ^ mlname) fid
+    code_c_fun ?release_lock ?error ~params ~call_params ~result
+      ~name:("stub_" ^ mlname) fid
   in
   let all = add_result params result in
   let inputs =
@@ -1392,7 +1476,14 @@ let convert ?mlc_to_c ?c_to_mlc ~(mlc : mlc) ~(c : c) () =
             c2ml = to_ml binds (on_v c2ml);
           }
   in
-  { mlty = mlc.mlty; conv; cty = c; v = mlc.v; owned_by_ml = false }
+  {
+    mlty = mlc.mlty;
+    conv;
+    cty = c;
+    v = mlc.v;
+    owned_by_ml = false;
+    ml_heap = false;
+  }
 
 module AlgData = struct
   type kind =
@@ -1586,6 +1677,13 @@ module AlgData = struct
               | KNonConst (_, l) ->
                   List.exists (fun (_, _, ty) -> ty.owned_by_ml) l)
             l;
+        ml_heap =
+          List.exists
+            (fun (_, _, k) ->
+              match k with
+              | KConst _ -> false
+              | KNonConst (_, l) -> List.exists (fun (_, _, ty) -> ty.ml_heap) l)
+            l;
       }
     in
     let dst_smart_constructors = Var.mk "dst" (expr "%a*" pp_def cty) in
@@ -1660,6 +1758,7 @@ let value =
       cty = { cty; init = None; init_expr; free = None; in_call = None; c };
       v;
       owned_by_ml = false;
+      ml_heap = true;
     }
 
 let ret_option_if expr typedef =
@@ -1773,6 +1872,7 @@ let bigarray_array1_aux ~managed ~kind ~cty ~mlty ~mlelt () =
       };
     v;
     owned_by_ml = true;
+    ml_heap = false;
   }
 
 let bigarray_array1 = bigarray_array1_aux

@@ -7,6 +7,8 @@
 #include <caml/alloc.h>
 #include <caml/custom.h>
 #include <caml/fail.h>
+#include <caml/callback.h>
+#include <caml/signals.h>
 #include <stdio.h>
 #include <string.h>
 static void caml_cudd_finalize(DdManager* * i){ Cudd_Quit(*i); free(*i); }

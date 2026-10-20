@@ -9,6 +9,11 @@
     - Expert.abstract takes expressions for icty and cty, like Expert.custom
     - add Helper.value_type for types handled like C++ classes (init,
       clear, copy), and Helper.extra_input
+    - Helper.func ~error raises an exception (Failure or declared with
+      Helper.exception_) when a C predicate on the result is true, after
+      freeing the C values
+    - Helper.func ~release_lock releases the runtime lock during the call;
+      Ty.mlc.ml_heap marks the types that forbid it
     - identical C definitions with the same basename are printed once, so
       types can be built many times without duplicating code
     - add Ty.mlc.owned_by_ml; a parameter of such a type can't be input

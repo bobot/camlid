@@ -1,0 +1,8 @@
+div 3
+Failure "checked_div failed"
+make "3 elements"
+My_error "error -2 for n=-1"
+My_error "error -2 for n=-1"
+My_error "error -2 for n=-1"
+live after errors 0
+sum 499500

@@ -48,11 +48,25 @@ let string_nt = Expert.string_nt
 let string_nt_prefix = Expert.string_nt_prefix
 let ptr_ref = ptr_ref
 
-let func_id ~ml ?result ~call_params fid params =
+let func_id ?release_lock ?error ~ml ?result ~call_params fid params =
   (* C function declaration *)
-  print_ml_fun ~call_params fid ~mlname:ml ~params ?result
+  print_ml_fun ?release_lock ?error ~call_params fid ~mlname:ml ~params ?result
 
-let func_res ?ml ?result ?call_params fname params =
+type error = fname:string -> Var.t option -> Expert.error
+
+let exception_ = declare_exception
+
+let error ?exn ?msg ?(vars = []) is_error ~fname res =
+  let args = Option.to_list res @ vars in
+  let call f = expr "%a" pp_call (existing f args, []) in
+  let msg =
+    match msg with
+    | None -> expr "%S" (fname ^ " failed")
+    | Some msg -> call msg
+  in
+  { cond = call is_error; msg = Some msg; exn }
+
+let func_res ?release_lock ?error ?ml ?result ?call_params fname params =
   let call_params = Option.value call_params ~default:params in
   let ml = Option.value ~default:fname ml in
   let fid =
@@ -65,22 +79,27 @@ let func_res ?ml ?result ?call_params fname params =
     in
     expr "%a%a;" pp_result result pp_call (existing fname vars_used_in_calls, [])
   in
-  func_id ~ml ?result ~call_params fid params
+  let error =
+    Option.map (fun e -> e ~fname (Option.map (fun r -> r.rc) result)) error
+  in
+  func_id ?release_lock ?error ~ml ?result ~call_params fid params
 
-let func ?ml ?result ?ignored_result ?call_params fname params =
+let func ?release_lock ?error ?ml ?result ?ignored_result ?call_params fname
+    params =
   let result =
     match (result, ignored_result) with
     | Some _, Some _ ->
         failwith "Camlid.Helper.func: can't set both result and ignored_result"
     | Some rty, None -> Some (Expert.simple_result rty)
-    | None, Some { cty = { free = None; _ }; _ } -> None
+    | None, Some { cty = { free = None; _ }; _ } when Option.is_none error ->
+        None
     | None, Some rty ->
         let rc = Var.mk "res" rty.cty.cty in
         let bind' code = Expr.binds [ (rty.cty.c, e_addr rc) ] code in
         Some { routput = PONone; rc; rfree = Option.map bind' rty.cty.free }
     | None, None -> None
   in
-  func_res ?ml ?result ?call_params fname params
+  func_res ?release_lock ?error ?ml ?result ?call_params fname params
 
 type with_length = { t : Ty.param; len : Ty.param }
 
@@ -178,6 +197,7 @@ let string_as_FILE_ptr =
       };
     v;
     owned_by_ml = false;
+    ml_heap = false;
   }
 
 let input_value ml = input (value ml)

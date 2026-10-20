@@ -282,6 +282,28 @@ val map_param_in_call :
 val deref_in_call : Ty.param -> Ty.param
 (** Give the address of the C variable to the stubbed function. *)
 
+(** {1 Errors} *)
+
+type exn_
+(** An OCaml exception with a string argument, raised by the stubs *)
+
+val declare_exception : ?registered:string -> string -> exn_
+(** [declare_exception name] declares [exception name of string] in the OCaml
+    file, registered with [Callback.register_exception].
+    @param registered
+      the registered name (default [name]), it should be unique among the
+      libraries, e.g. ["Mylib.Error"] *)
+
+type error = {
+  cond : Expr.expr;  (** C condition, true when the C function failed *)
+  msg : Expr.expr option;
+      (** C string, the argument of the exception (default ["f failed"]) *)
+  exn : exn_ option;  (** default [Failure] *)
+}
+(** The check done after the call. On failure, the outputs owned by OCaml that
+    were initialized are moved into OCaml values (which will be finalized), the
+    other values are freed, and the exception is raised. *)
+
 val get_expression : mlname:string -> Ty.mlc -> Expr.expr -> Expr.expr
 (** [get_expression ~mlname ty expr] defines the function [mlname] that returns
     the value of the C expression [expr] of type [ty] *)
@@ -315,6 +337,8 @@ val list_or_empty :
   unit
 
 val code_c_fun :
+  ?release_lock:bool ->
+  ?error:error ->
   params:Ty.param list ->
   call_params:Ty.param list ->
   result:Ty.result option ->
@@ -322,12 +346,17 @@ val code_c_fun :
   Expr.expr ->
   Expr.code
 (** @param call_params
-      should be a reordered subset of params (usually it is [params]) *)
+      should be a reordered subset of params (usually it is [params])
+    @param release_lock
+      release the runtime lock during the call; raises [Invalid_argument] if an
+      argument points into the OCaml heap *)
 
 val code_c_fun_bytecode :
   params:Ty.param list -> result:Ty.result option -> Expr.code -> Expr.code
 
 val print_ml_fun :
+  ?release_lock:bool ->
+  ?error:error ->
   params:Ty.param list ->
   ?call_params:Ty.param list ->
   ?result:Ty.result ->

@@ -48,6 +48,10 @@ type mlc = {
           bigarrays): [ml2c] borrows it, [c2ml] moves it into a new OCaml value
           and [cty.free] is [None]. [false] when [ml2c] and [c2ml] copy the
           data, and [cty.free] (if any) frees the C value. *)
+  ml_heap : bool;
+      (** [true] when the C value is or points into an OCaml value (e.g. a
+          [value]), so the C function can't be called with the runtime lock
+          released. *)
 }
 (** An OCaml type, a C type, and the conversions between them. It is a template
     instantiated by each parameter with fresh variables. *)
@@ -85,6 +89,10 @@ type param = {
   pused_in_call : (var * expr) option;
   pfree : expr option;
   poutput : poutput;
+  pon_error : expr option;
+      (** When the C function fails, moves an output owned by OCaml into an
+          OCaml value, which will be finalized *)
+  pml_heap : bool;  (** The C argument is or points into an OCaml value *)
 }
 (** A parameter is a set of variable linked by conversion expression. Possibly:
     - An input variable of type value and conversion functions

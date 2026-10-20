@@ -1,0 +1,136 @@
+// generated using generator.exe and camlid
+#include <stddef.h>
+#include <inttypes.h>
+#include "lib.h"
+#define CAML_NAME_SPACE
+#include <caml/mlvalues.h>
+#include <caml/memory.h>
+#include <caml/alloc.h>
+#include <caml/custom.h>
+#include <caml/fail.h>
+#include <caml/callback.h>
+#include <caml/signals.h>
+#include <stdio.h>
+#include <string.h>
+typedef intptr_t * camlid_ref;
+extern intptr_t camlid_stub_checked_div(intptr_t p,
+  intptr_t p1){
+  CAMLparam0();
+  intptr_t p2;
+  CAMLlocal1(err);
+  int res;
+  intptr_t p3 = ((intptr_t) { 0 });
+  intptr_t p4 = ((intptr_t) { 0 });
+  camlid_ref p5 = &(((struct { intptr_t a; }) { ((intptr_t) { 0 }) }).a);
+  p3 = (p);
+  p4 = (p1);
+  res = checked_div(p3, p4, p5);
+  if(is_negative(res)){
+    err = caml_copy_string("checked_div failed");
+    caml_failwith_value(err);
+  }
+  p2 = (*p5);
+  CAMLreturnT(intptr_t,p2);
+}
+extern value camlid_stub_checked_div_byte(value p,
+  value p1){
+  intptr_t p2;
+  value p_r;
+  intptr_t p3;
+  intptr_t p4;
+  p3 = Long_val(p);
+  p4 = Long_val(p1);
+  p2 = camlid_stub_checked_div(p3, p4);
+  p_r = Val_long(p2);
+  return p_r;
+}
+typedef char * camlid_string_nt;
+typedef camlid_string_nt * camlid_ref1;
+static void camlid_init(vec* * c){ *c = malloc(sizeof(vec)); vec_init(*c); }
+static void camlid_finalize(vec* * i){ vec_clear(*i); free(*i); }
+static void camlid_finalize_op(value v){
+  camlid_finalize(((vec* *) Data_custom_val(v)));
+  }
+struct custom_operations camlid_cops = {
+NULL,
+camlid_finalize_op,
+custom_compare_default,
+custom_hash_default,
+custom_serialize_default,
+custom_deserialize_default
+};
+static void camlid_c2ml(value * v, vec* * c){
+  *v = caml_alloc_custom(&camlid_cops,sizeof(vec*), 0, 1);
+  *(((vec* *) Data_custom_val(*v))) = *c;
+  }
+extern value camlid_stub_make(intptr_t n){
+  CAMLparam0();
+  CAMLlocal3(ret, p_r, p_r1);
+  CAMLlocal1(err);
+  int res;
+  vec* p = ((vec*) { 0 });
+  camlid_ref1 p1 = &(((struct { camlid_string_nt a; }) { ((camlid_string_nt) { 0 }) }).a);
+  intptr_t n1 = ((intptr_t) { 0 });
+  n1 = (n);
+  camlid_init(&p);
+  res = make(p, p1, n1);
+  if(is_negative_n(res, n1)){
+    err = caml_copy_string(error_msg(res, n1));
+    camlid_c2ml(&p_r, &p);
+    free(*p1);
+    /* My_error */
+    const value *exn = caml_named_value("Mylib.My_error");
+    if(exn == NULL) caml_invalid_argument("exception Mylib.My_error not registered");
+    caml_raise_with_arg(*exn, err);
+  }
+  camlid_c2ml(&p_r, &p);
+  p_r1 = caml_copy_string(*p1);
+  ret = caml_alloc(2,0);
+  Store_field(ret, 0, p_r);
+  Store_field(ret, 1, p_r1);
+free(*p1);
+CAMLreturn(ret);
+}
+extern value camlid_stub_make_byte(value n){
+  intptr_t n1;
+  n1 = Long_val(n);
+  return camlid_stub_make(n1);
+  
+}
+extern intptr_t camlid_stub_slow_sum(intptr_t p){
+  CAMLparam0();
+  intptr_t ures;
+  intptr_t res;
+  intptr_t p1 = ((intptr_t) { 0 });
+  p1 = (p);
+  caml_enter_blocking_section();
+  res = slow_sum(p1);
+  caml_leave_blocking_section();
+  ures = (res);
+  CAMLreturnT(intptr_t,ures);
+}
+extern value camlid_stub_slow_sum_byte(value p){
+  intptr_t ures;
+  value vres;
+  intptr_t p1;
+  p1 = Long_val(p);
+  ures = camlid_stub_slow_sum(p1);
+  vres = Val_long(ures);
+  return vres;
+}
+extern intptr_t camlid_stub_vec_live(void){
+  CAMLparam0();
+  intptr_t ures;
+  intptr_t res;
+  res = vec_live();
+  ures = (res);
+  CAMLreturnT(intptr_t,ures);
+}
+extern value camlid_stub_vec_live_byte(void){
+  intptr_t ures;
+  value vres;
+  ures = camlid_stub_vec_live();
+  vres = Val_long(ures);
+  return vres;
+}
+
