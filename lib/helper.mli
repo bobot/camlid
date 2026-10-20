@@ -25,31 +25,30 @@ val func :
       the parameters in the order of the C function arguments, when it is not
       the order of [params] *)
 
-(** The following functions create a parameter from a type with fresh
-    variables. A parameter can be used in many functions but only once by
-    function.
+(** The following functions create a parameter from a type with fresh variables.
+    A parameter can be used in many functions but only once by function.
 
     {t
-      | | OCaml argument | C argument | OCaml result |
-      |-|:-:|:-:|:-:|
-      | {!input} | x | x | |
-      | {!output} | | x | x |
-      | {!inout} | x | x | x |
-      | {!ignored} | | x | |
-      | {!extra_input} | x | | |
+      |                | OCaml argument | C argument | OCaml result |
+      |----------------|:--------------:|:----------:|:------------:|
+      | {!input}       |       x        |     x      |              |
+      | {!output}      |                |     x      |      x       |
+      | {!inout}       |       x        |     x      |      x       |
+      | {!ignored}     |                |     x      |              |
+      | {!extra_input} |       x        |            |              |
     } *)
 
 val input : ?name:string -> Ty.mlc -> Ty.param
 val output : ?name:string -> Ty.mlc -> Ty.param
 
 val inout : ?name:string -> Ty.mlc -> Ty.param
-(** @raise Invalid_argument for types owned by OCaml *)
+(** Raises [Invalid_argument] for types owned by OCaml. *)
 
 val ignored : ?name:string -> Ty.mlc -> Ty.param
 
 val extra_input : ?label:string -> ?name:string -> Ty.mlc -> Ty.param * Expr.var
 (** [extra_input ty] returns the parameter and its C variable, which can be used
-    by the other parameters, e.g. in the [init_args] of {!value_type}.
+    by the other parameters, e.g. in the [init_args] of {!val:value_type}.
     @param label label of the argument in the OCaml function *)
 
 (** {1 Scalars}
@@ -221,7 +220,7 @@ val custom_ptr :
   c:string ->
   unit ->
   Ty.mlc
-(** Same as the [t] field of {!value_type}: the C functions take a [c *] and
+(** Same as the [t] field of {!val:value_type}: the C functions take a [c *] and
     [finalize] is called before [free]. *)
 
 val custom :
@@ -282,7 +281,7 @@ val copy :
   string ->
   Ty.mlc
 (** [copy ty f] is [ty] where an output owned by C is copied with the C function
-    [f] into a new value owned by OCaml. See [borrowed] in {!value_type}. *)
+    [f] into a new value owned by OCaml. See [borrowed] in {!val:value_type}. *)
 
 val ret_option_if : Ty.mlc -> Ty.param * Ty.mlc
 (** [ret_option_if ty] returns a parameter [status] (an [int *] for the C

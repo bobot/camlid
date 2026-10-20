@@ -1,3 +1,20 @@
+## unreleased ##
+    - rename module Type into Ty
+    - add Helper.value_type for types handled like C++ classes (init,
+      clear, copy), and Helper.extra_input
+    - add Ty.mlc.owned_by_ml; a parameter of such a type can't be input
+      and output (it was finalized twice)
+    - string_nt fails if the string contains a null byte, the previous
+      behaviour is string_nt_prefix
+    - remove the get, set, internal and malloc options of Helper.abstract,
+      Helper.custom and Helper.custom_ptr (still in Expert)
+    - fix leak of the elements of input_array and output_array
+    - fix convert: the destination is initialized, the temporary is freed,
+      the unboxed case is fixed
+    - fix ignored_result: the result was not declared nor freed
+    - fix bigarray_array1 conversion to C
+    - documentation of the memory model
+
 ## 0.2 Second initial release ##
     - implement algdata as input
     - fix tests in release mode for ocaml < 5.2

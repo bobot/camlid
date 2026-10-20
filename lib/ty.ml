@@ -1,8 +1,14 @@
+(** Types and parameters.
+
+    The fields are C code (of type {!type:Expr.expr}) that mention the variables
+    [v] (OCaml value) and [c] (C value) of the record. *)
+
 open Expr
 
-(* untagging is considered as a kind of unboxing *)
+(** Untagging is considered as a kind of unboxing *)
 type unbox_attribute = Unboxed | Untagged
 
+(** Conversions between the OCaml value [v] and the C value [c] *)
 type conv =
   | Boxed of { c2ml : expr; ml2c : expr }
   | Unboxable of {
@@ -15,35 +21,36 @@ type conv =
       u : var;
       c2ml : expr;
       ml2c : expr;
-    }
+    }  (** In native code the value is given unboxed [u : uty] to the stub *)
 
 type c = {
-  cty : expr;  (** print the c type *)
+  cty : expr;  (** The C type *)
   init : expr option;
-      (** Initialize values of this type before giving them to stub function *)
-  init_expr : expr;  (** expression initialization of the c version *)
+      (** Constructor: initializes [c] when it is not an input, before the call
+      *)
+  init_expr : expr;  (** Initial value of the variable [c] *)
   free : expr option;
-      (** Free the C memory allocated during the call (not accessible in output
-          OCaml value) *)
+      (** Destructor: called on [c] at the end of the stub, so it must not free
+          memory moved into the OCaml results *)
   in_call : expr option;
-      (* expression used in the call of the stubbed function (default: variable c) *)
-  c : var;
-      (* variable of the c version used in the expression of the previous fields  *)
+      (** Expression given to the stubbed function (default [c]) *)
+  c : var;  (** The C value *)
 }
-(** A C type with utility functions *)
+(** A C type and its lifecycle in the stub *)
 
 type mlc = {
-  mlty : expr;  (** print the ocaml type *)
-  conv : conv;  (** convert C values of this type to ML value *)
+  mlty : expr;  (** The OCaml type *)
+  conv : conv;
   cty : c;
-  v : var;
-      (* variable for the ml version used in the expression of the previous fields *)
+  v : var;  (** The OCaml value *)
   owned_by_ml : bool;
       (** [true] when the C value is owned by the OCaml value (custom blocks,
-          bigarrays): [ml2c] borrows it and [c2ml] moves it into a new OCaml
-          value. [false] when [ml2c] and [c2ml] copy the data. *)
+          bigarrays): [ml2c] borrows it, [c2ml] moves it into a new OCaml value
+          and [cty.free] is [None]. [false] when [ml2c] and [c2ml] copy the
+          data, and [cty.free] (if any) frees the C value. *)
 }
-(** The conversion between an ML and C type *)
+(** An OCaml type, a C type, and the conversions between them. It is a template
+    instantiated by each parameter with fresh variables. *)
 
 type pinput =
   | PINone

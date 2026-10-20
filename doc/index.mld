@@ -1,20 +1,14 @@
 @short_title Camlid Stub Generator
 
-{0 Camlid }
+{0 Camlid}
 
-Camlid helps to bind a C library or code to OCaml code. Camlid generates the boilerplate C code and OCaml code from a user provided description of the functions from the C library the user wants to be accessible in the OCaml code.
+Camlid generates the C stubs and the OCaml externals binding a C library, from a description of its functions written in OCaml. Compared to camlidl the description is an OCaml program, so it is easy to extend (see {!expert}). Compared to ctypes the C data structures are manipulated in C, by generated C code, which simplifies the build.
 
-Compared to camlidl, the description is written in OCaml which gives access to a great language support, and it is simple to extend it for its own need (c.f. {! expert})
+The {{:http://github.com/bobot/camlid/tree/main/tests}tests} directory contains standalone examples with their generated files.
 
-Compared to ctypes, it emphasises the direct generation of C code in order to simplify the build, C datastructures are manipulated in C.
+{1 Quickstart}
 
-In addition to the following starting example, standalone examples can be found in the {{:http://github.com/bobot/camlid/tree/main/tests}tests} directory with the corresponding generated files.
-
-{1 Quickstart }
-
-Camlid allows to define an executable that will generate here a `mylib_stub.c` and `mylib.ml` file.
-
-Lets suppose that you want to bind to the following C functions, declared in {e alib.h}:
+To bind the functions of {e alib.h}:
 
 {@c[
 void f_input(int);
@@ -23,180 +17,141 @@ int f_with_res();
 void f_no_arg_no_result();
 ]}
 
-In your project in a {e generator} sub-directory define the following dune file:
+write a generator in a {e generator} sub-directory, with the dune file:
 
 {@dune[(executable (name generator) (libraries camlid))]}
 
-and {e generator.ml} file:
+and {e generator.ml}:
 
 {[
 open Camlid
 open Helper
 
- let () = Generate.to_file
-    (* Indicates the basename used for the generated files *)
-      "mylib"
-    (* Indicates header to include *)
-      ~headers:["alib.h"]
-  [
-    func "f_input" [ input int_trunc];
-    func "f_output" [ output (ptr_ref int_trunc)];
-    func "f_with_res" [] ~result:int_trunc;
-    func "f_no_arg_no_result" [];
-  ]
+let () =
+  Generate.to_file "mylib" ~headers:[ "alib.h" ]
+    [
+      func "f_input" [ input int_trunc ];
+      func "f_output" [ output (ptr_ref int_trunc) ];
+      func "f_with_res" [] ~result:int_trunc;
+      func "f_no_arg_no_result" [];
+    ]
 ]}
 
-Each [func "name" l] describes the signature of one C function named "name" and its parameters. Each elements of [l] are usually arguments of the function that should become inputs or outputs of the OCaml function. It is usual for a C function to fill an argument of type [int *] during its call, so an argument of the C function can be an output. Inputs or outputs are distintinguished using the function {!Camlid.Helper.input} or {!Camlid.Helper.output}, which takes as argument a description of the type. Parameters of the C function can also be ignored using instead {!Camlid.Helper.ignored}.
+[func "name" params] describes the C function [name]. Each parameter says whether the argument of the C function is an {!Camlid.Helper.input} or an {!Camlid.Helper.output} of the OCaml function, and gives its type. A type describes the OCaml type, the C type, the conversions, and the memory to allocate and free. Here {!Camlid.Helper.int_trunc} is an OCaml [int] and a C [int]; {!Camlid.Helper.ptr_ref} gives to [f_output] a pointer to an [int] to fill. The generated OCaml functions are:
 
-The description of the type of the parameters describe the C type, the OCaml type, the convertion function to use and even in some case the initialisation or deallocation needed. Here the [!CamlId.Helper.int_trunc] is used for converting OCaml type [int] to ocaml C type [int]. It is called {e int_trunc} since the value is truncated on 64-bits platform. The OCaml [int] type corresponds to [intptr_t], and [!CamlId.Helper.int] can be used in this case.
+{[
+val f_input : int -> unit
+val f_output : unit -> int
+val f_with_res : unit -> int
+val f_no_arg_no_result : unit -> unit
+]}
 
-Now in the directory of your OCaml library, you add in the dune file:
+In the dune file of the library, generate and compile the stubs:
 
-{@dune[(rule (targets mylib_stub.c mylib.ml) (action (run %{exe:generator/generator.exe})))]}
+{@dune[
+(rule
+ (targets mylib_stub.c mylib.ml)
+ (action (run %{exe:generator/generator.exe}))
+ (mode (promote (until-clean))))
 
-You can add to this stanza [(mode (promote (until-clean)))], if you want to see the generated files in the source directory (c.f. {{:https://dune.readthedocs.io/en/stable/reference/dune/rule.html#modes}modes}). Other promotion mode `(mode promote)` should be avoided because dune will not regenerate them in mode release and the generation is different with the version of OCaml.
+(library
+ (public_name mylib)
+ (foreign_stubs
+  (language c)
+  (names mylib_stub alib)
+  (flags -Werror=implicit-function-declaration -std=c11)))
+]}
 
-The compilation of the stubs is now done as {{:https://dune.readthedocs.io/en/stable/foreign-code.html}usual}, for example if {e alib.h} and {e alib.c} are in the current directory.
+The [(promote (until-clean))] mode lets you see the generated files in the source directory. Don't use [(mode promote)]: the files would not be regenerated in release mode, and they depend on the version of OCaml. Camlid is not a dependency of the library.
 
-{@dune[(library (public_name mylib) (foreign_stubs (language c) (names mylib_stub alib) (flags -Werror=implicit-function-declaration -std=c11)))]}
+{1:memory Memory}
 
-Camlid do not need to be added in the libraries used. Additional C flags can be added in development mode:
+The C value of a parameter lives in a local variable of the stub, and follows the lifecycle of a C++ object:
 
-{@dune[(env (dev (c_flags -Wall -Werror -Wconversion -Wstrict-prototypes --pedantic-errors :standard )))]}
++ {b input}: it is converted from the OCaml value ([ml2c]);
++ {b not an input}: it is initialized by its constructor ([init]);
++ the C function is called;
++ {b output}: it is converted to an OCaml value ([c2ml]);
++ it is destroyed by its destructor ([free]).
 
-{2 Helper}
+There are two kinds of types, depending on who owns the C data ({!Camlid.Ty.mlc.owned_by_ml}):
 
-The {!Camlid.Helper} modules allows to describe simply common cases. The kind of arguments are specified using {!Camlid.Helper.input}, {!Camlid.Helper.output}, {!Camlid.Helper.inout}, {!Camlid.Helper.ignored}. Morevoer the result is specified as optional arguments of {!Camlid.Helper.func}. With the label [~result] when the result should be returned by the OCaml function and [~result_ignored] when the result should be discarded.
-
-{3 Common types}
-
-OCaml common types can be translated to there C counter-parts:
-
-{t | Camlid | OCaml | C | remarks |
-   |----------|----------|
-   | {!Camlid.Helper.int} | [int] | [intptr_t] (same size as [intnat]) | Loose one bit when converting to OCaml |
-   | {!Camlid.Helper.int_trunc} | [int] | [int] | 32 bit on 64 bit architecture, loose half the bits going to C on 64bit and one going to ML in 32 bit |
-   | {!Camlid.Helper.int32} | [int32] | [int32_t] | |
-   | {!Camlid.Helper.int64} | [int64] | [int64_t] | |
-   | {!Camlid.Helper.nativeint} | [nativeint] | [intptr_t] | |
-   | {!Camlid.Helper.double} | [float] | [double] | |
-   | {!Camlid.Helper.bool} | [bool] | [int] | |
+{t
+  | | the conversions | the destructor | examples |
+  |---|---|---|---|
+  | {b copied} | copy the data between OCaml and C | frees the C copy | scalars, strings, arrays, [value_type.value] |
+  | {b owned by OCaml} | [ml2c] borrows the C data stored in the OCaml value, [c2ml] moves the C data into a new OCaml value | none, the finalizer of the OCaml value frees it | custom blocks, bigarrays, [value_type.t] |
 }
 
-They are unboxed on the ocaml side when possible.
+So, for a type owned by OCaml, the C function can modify an input in place, and a parameter can't be both an input and an output: the C data would be owned by two OCaml values.
 
-For outputs, using [Camlid.Helper.(output int_trunc)] is not useful since a parameter of scalar type like [int] will not change its value after a call. In this case the parameter is more often of type [int *], it is achieved using [Camlid.Helper.ptr_ref ty]. The OCaml type is the same as [ty] but a pointer to a location of type [ty] is created and given as parameter of the C function. 
+For copied types with allocated memory (strings and arrays), [~owned:false] removes the destructor: the C function takes ownership of an input, or keeps ownership of an output (e.g. a static string).
 
-{3 Types with Allocations}
+{2:value_type C++-like types}
 
-Types that require allocations have more versions:
- - Is the size of an output array given as input, given by the C function, or found by looking for the first null pointer or the first null character?
- - Is the data allocated owned by the OCaml code or the C code?
-
-For [string] the simplest is [Camlid.Helper.string_nt ?owned ()], which convert between [string] and [char *]. The conversion stop at the first null character, in both side. Since OCaml [string] can contains multiple null characters, in this case only a part of the OCaml [string] is converted to [char *].
-
-If the C function accept the length of the string as a separate argument the function {!Camlid.Helper.input_string} and {!Camlid.Helper.output_string} that return a pair of parameters. They are directly used to describe parameters in [Camlid.Helper.func].
+Many C libraries (GMP, FLINT, ...) handle their types like C++ classes, with a constructor, a destructor and a copy function. {!val:Camlid.Helper.value_type} binds such a type once, for the three ways a C function can use it:
 
 {[
-      (let a = input_string () in
-       func "f_input" [ a.t; a.len ]);
-]}
-
-Only [a.t] will appear as a parameter of the OCaml function, [a.len] is only used for the C call as a [size_t]. [a.t] is a [char *].
-
-{[
-      (let a = output_string () in
-       func "f_input" [ a.t; a.len ]);
-]}
-
-In the case of {!Camlid.Helper.output_string}, [a.t] is a [char **] and [a.len] is a [size_t *].
-
-The parameters [a.t], [a.len] can be used in the description of different functions but only once by function. [a.len] should only be used when [a.t] is also present, since it is just a view on the length of [a.t].
-
-If the length of the string is known by the caller, {!Camlid.Helper.fixed_length_string} should be used.
-
-{[
-      (let a = fixed_length_string () in
-       func "f_output" [ a.t; a.len ]);
-]}
-
-In that case [a.len] is an input. If the length should also be given to the C call [len_used_in_call] should be added:
-
-{[
-      (let a = fixed_length_string ~len_used_in_call:true () in
-       func "f_output" [ a.t; a.len ]);
-]}
-
-For arrays the functions take additionnaly the type of the elements, {!Camlid.Helper.input_array}, {!Camlid.Helper.output_array}, {!Camlid.Helper.fixed_length_array}.
-
-{3 Abstract value}
-
-OCaml allows to embed any data into an OCaml value with the Abstract_tag. Camlid allows to simply defined such embedding, by simply giving the c type and and the name for the abstract OCaml type.
-
-{[
-let pointer = abstract ~ml:"myptr" ~c:"int *" ()
+(* void vec_init(vec *); void vec_clear(vec *); void vec_set(vec *dst, vec *src); *)
+let vec =
+  value_type ~init:"vec_init" ~clear:"vec_clear" ~copy:"vec_set"
+    ~ml:"vec" ~c:"vec" ()
 
 let () =
   Generate.to_file ~headers:[ "lib.h" ] "mylib"
     [
-      func "of_int" [ input int; output pointer ];
-      func "to_int" [ input pointer ] ~result:int;
+      (* void vec_range(vec *, size_t); *)
+      func "vec_range" [ output vec.t; input size_t ];
+      (* void vec_push(vec *, intptr_t); modifies the OCaml value in place *)
+      func "vec_push" [ input vec.t; input int ];
+      (* void vec_ranges(vec *, size_t); fills an array of vec *)
+      (let a = fixed_length_array ~len_used_in_call:true vec.value in
+       func "vec_ranges" [ a.t; a.len ]);
+      (* vec *vec_global(void); returns a vec owned by C *)
+      func "vec_global" [] ~result:vec.borrowed;
     ]
 ]}
 
-It defines an abstract type [type myptr].
+- [vec.t] is a [vec *] owned by OCaml: an output is allocated and initialized by the stub, then owned by the OCaml value whose finalizer clears and frees it;
+- [vec.value] is a [vec] copied from or to a [vec] owned by OCaml, and cleared by the stub;
+- [vec.borrowed] is a [vec *] owned by C, copied into a [vec] owned by OCaml.
 
-In the case of output parameters that are not also an input, an initialization function can be given.
-
-{[
-let pointer = abstract ~initialize:"lib_init" ~ml:"myptr" ~c:"int *" ()
-]}
-
-{3 Custom value}
-
-If the user wants to provide user-defined comparison, hashing or just a function to call during deallocation of the OCaml value, a custom value can be defined with {!Camlid.Helper.custom}:
+When the constructor needs arguments, they can come from an {!Camlid.Helper.extra_input}, an argument of the OCaml function not given to the C function:
 
 {[
-let pointer =
-  custom ~finalize:"finalize_ptr" ~compare:"compare_ptr" ~hash:"hash_ptr"
-    ~initialize:"initialize_ptr" ~ml:"myptr" ~c:"int *" ()
+(* void mat_init(mat *, intptr_t rows, intptr_t cols); *)
+let rows, rows_var = extra_input ~label:"rows" int
+let cols, cols_var = extra_input ~label:"cols" int
 
-let () =
-  Generate.to_file "mylib" ~headers:[ "lib.h" ]
-    [
-      func "of_int" [ input int; output pointer ];
-      func "to_int" [ input pointer ] ~result:int;
-    ]
+let mat =
+  value_type ~init:"mat_init" ~init_args:[ rows_var; cols_var ]
+    ~clear:"mat_clear" ~copy:"mat_set" ~ml:"mat" ~c:"mat" ()
+
+(* val zero : rows:int -> cols:int -> mat *)
+let zero = func "mat_zero" ~ml:"zero" [ output mat.t; rows; cols ]
 ]}
 
-When the C type wrapped is a pointer, {!Camlid.Helper.custom_ptr} is prefered because the functions take the pointer as argument instead of a reference on it.
+{1 Helper}
+
+{!Camlid.Helper} describes the common cases:
+- the kind of parameters: {!Camlid.Helper.input}, {!Camlid.Helper.output}, {!Camlid.Helper.inout}, {!Camlid.Helper.ignored}, {!Camlid.Helper.extra_input};
+- the scalars, e.g. {!Camlid.Helper.int} ([intptr_t]), {!Camlid.Helper.double}, {!Camlid.Helper.bool}, unboxed or untagged when possible;
+- strings and arrays, e.g. {!Camlid.Helper.string_nt} for null terminated strings;
+- C values owned by OCaml: {!val:Camlid.Helper.value_type}, {!Camlid.Helper.custom_ptr}, {!Camlid.Helper.custom}, {!Camlid.Helper.abstract};
+- conversions to other C types with {!Camlid.Helper.convert}, and algebraic datatypes with {!Camlid.Helper.algdata}.
+
+When the C function takes the length of a string or an array as a separate argument, the helpers return two parameters, which are used in the same function:
+
+{[
+(* void f(char *, size_t); *)
+let a = input_string () in
+func "f" [ a.t; a.len ]
+]}
+
+Only [a.t] is an argument of the OCaml function. {!Camlid.Helper.output_string} gives [char **] and [size_t *] to the C function, and {!Camlid.Helper.fixed_length_string} allocates the string with a length given as an OCaml argument.
 
 {1:expert Expert}
 
-The {!Camlid.Expert} modules allows to define its own kind of parameters, or convertible types. Their definitions are base on the step of the stub of a C function:
+{!Camlid.Expert} defines new types and parameters. A type ({!Camlid.Ty.mlc}) is a template: its OCaml type, C type, conversions, constructor and destructor are C code that mention its variables [v] (the OCaml value) and [c] (the C value). {!Camlid.Expert.param} instantiates the template with fresh variables, and returns them so that they can be used in the other parameters of the function (e.g. the length of an array).
 
-- For inputs:
-    - The ML type
-    - a variable for the ML value used as a formal
-    - a variable used for the C value which is declared and possibly staticly initialized
-    - conversion from the ML value to the C value
-- For not inputs:
-    - declaration of C values, and static initialization
-    - initialization using a function
-- For outputs:
-    - the declaration of a variable for the ML value used for the result
-- C Function Call
-    - with an expression for each parameter
-- For outputs:
-    - convert the C value into the ML value used for the result
-    - The ML type of the result
-- Freeing of ressources
-- Creation of the tuple if there is multiple results
-- Return of the result
-
-In addition unboxable parameters have conversion function from ML to the unboxed type, and the unboxed type to the C value, but it is not necessary to take into account those differences.
-
-A parameter is of type {!Camlid.Ty.param} and it uses directly the variable that are used during the generation. A convertible type is of type {!Camlid.Ty.mlc}. It is a template for a parameter and it is implicitly parameterized by the variable of type {!Camlid.Expr.var} it contains (the fields [v], [c], [u], [ml]) . The function {!Camlid.Helper.input} generates new fresh variables and bind them in the definition of a convertible type.
-
-Camlid handles fresh identifiers with {!type:Camlid.Expr.id} and variable {!Camlid.Expr.var}. An identifier that is attached to some code (a function, the name of a structure) is handled with {!Camlid.Expr.defined}. The printing function {!Camlid.Expr.pp_def} do not print directly the definition but the identifier associated with this definition, however the definition will be printed before the definition which mentions its identifier. The type {!type:Camlid.Expr.code} is the definition of a function. It adds to {!Camlid.Expr.defined} the list of its formals. The function {!val:Camlid.Expr.code} allows to define a function using its body. All the variables that used in its code are added as formals except if mentioned in locals. The function {!Camlid.Expr.pp_call} and {!Camlid.Expr.pp_calli} print the call to the function, and which expression to appply for each formals. A formals that is not binded is applied directly. In a way the variable is still free and propagates to the context.
-
+Camlid handles fresh identifiers with {!type:Camlid.Expr.id} and variables with {!Camlid.Expr.var}. A definition (a C function, a structure, an OCaml type) is attached to an identifier with {!Camlid.Expr.defined}: printing the identifier adds the definition to the generated files, before its first use. {!type:Camlid.Expr.code} defines a C function from its body; the variables used in the body become its formal parameters, unless they are in [locals]. {!Camlid.Expr.pp_call} prints a call that applies each formal to an expression; the formals not applied are kept as variables, so they propagate to the calling context.

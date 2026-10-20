@@ -257,8 +257,8 @@ val param :
     It returns the parameter, its C variable and its OCaml variable. They can be
     used in the definition of the other parameters of the same function.
 
-    @raise Invalid_argument
-      for an input and output of a type with [owned_by_ml]. *)
+    Raises [Invalid_argument] for an input and output of a type with
+    [owned_by_ml]. *)
 
 val simple_param :
   ?input_label:string ->
