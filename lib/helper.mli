@@ -339,6 +339,20 @@ val algdata : string -> (string * (string * Ty.mlc) list) list -> Ty.mlc
 (** [algdata name constrs] defines the OCaml algebraic datatype [name] and the
     corresponding C tagged union. *)
 
+val enum : ?c:string -> string -> (string * string) list -> Ty.mlc
+(** [enum name [ (constr, cst); ... ]] defines the OCaml type
+    [type name = constr | ...] where each constructor is the C constant [cst] of
+    type [c] (default [int]). The conversion to OCaml raises [Failure] for an
+    unknown value. *)
+
+val flags : ?c:string -> string -> (string * string) list -> Ty.mlc
+(** Same as {!enum} for bit flags: [name list] in OCaml, the bitwise or of the
+    constants in C. *)
+
+val nullable : Ty.mlc -> Ty.mlc
+(** [nullable ty] is [ty option] in OCaml, where [None] is the C [NULL] pointer,
+    e.g. [nullable (string_nt ())]. *)
+
 val string_as_FILE_ptr : Ty.mlc
 (** A [string] output written by the C function in a [FILE *]. *)
 

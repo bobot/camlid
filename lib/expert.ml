@@ -2052,6 +2052,21 @@ let bigarray_array1 = bigarray_array1_aux
 
 (* The OCaml value of [ty] is a block containing the OCaml value of [ty] and
    the OCaml value [parent], which is kept alive. *)
+(* [ml2c] of [ty] applied to the first field of the OCaml value [v] *)
+let ml2c_field0 (ty : mlc) ml2c v =
+  let v' = Var.mk "v" (expr "value *") in
+  let c' = Var.mk "c" (expr "%a *" pp_expr ty.cty.cty) in
+  call_codef "ml2c_field"
+    [ (v', e_addr v); (c', e_addr ty.cty.c) ]
+    (fun { fmt } ->
+      if ty.ml2c_noalloc then fmt "value cid_temp = Field(*%a, 0);@," pp_var v'
+      else (
+        fmt "CAMLparam0();@,CAMLlocal1(cid_temp);@,";
+        fmt "cid_temp = Field(*%a, 0);@," pp_var v');
+      fmt "@[%a@]" pp_expr_binds
+        (ml2c, ty_binds ~v:(expr "cid_temp") ~c:(expr "(*%a)" pp_var c') ty);
+      if not ty.ml2c_noalloc then fmt "@,CAMLreturn0;")
+
 type child = { t : mlc; with_parent : var -> mlc }
 
 let keep_alive_with ~parent (ty : mlc) =
@@ -2065,7 +2080,7 @@ let keep_alive_with ~parent (ty : mlc) =
     conv =
       Boxed
         {
-          ml2c = binds [ (ty.v, expr "Field(%a,0)" pp_var v) ] ml2c;
+          ml2c = ml2c_field0 ty ml2c v;
           c2ml =
             call_codef "c2ml"
               [
@@ -2229,3 +2244,173 @@ let child (parent : parent) ?clear ?clear_with_parent ~ml ~cty () =
           parent, use with_parent\")")
   in
   { t; with_parent }
+
+(* An OCaml variant with constant constructors, and C constants *)
+let enum_ml_type name constrs =
+  let id = ID.mk ~keep_name:true name in
+  toplevel ~kind:ML id "@[<hv 2>type %a =@ %a@]@." pp_id id
+    Fmt.(list ~sep:sp (any "| " ++ string))
+    (List.map fst constrs)
+
+let enum ?(c = "int") name constrs =
+  let mlty = enum_ml_type name constrs in
+  let cty = expr "%s" c in
+  let v = Var.mk "v" e_value in
+  let cv = Var.mk "c" cty in
+  let v' = Var.mk "v" (expr "value *") in
+  let c' = Var.mk "c" (expr "%s *" c) in
+  let constrs = List.mapi (fun i (_, cst) -> (i, cst)) constrs in
+  {
+    mlty = e_def mlty;
+    conv =
+      Boxed
+        {
+          ml2c =
+            call_codef "ml2c"
+              [ (v', e_addr v); (c', e_addr cv) ]
+              (fun { fmt } ->
+                fmt "@[<v 2>switch(Long_val(*%a)){@," pp_var v';
+                List.iter
+                  (fun (i, cst) ->
+                    fmt "case %i: *%a = %s; break;@," i pp_var c' cst)
+                  constrs;
+                fmt "@]}");
+          c2ml =
+            call_codef "c2ml"
+              [ (v', e_addr v); (c', e_addr cv) ]
+              (fun { fmt } ->
+                fmt "@[<v 2>switch(*%a){@," pp_var c';
+                List.iter
+                  (fun (i, cst) ->
+                    fmt "case %s: *%a = Val_long(%i); break;@," cst pp_var v' i)
+                  constrs;
+                fmt "default: caml_failwith(%S);@]@,}"
+                  ("unknown value of " ^ name));
+        };
+    cty =
+      {
+        cty;
+        init = None;
+        init_expr = expr "((%s) 0)" c;
+        free = None;
+        in_call = None;
+        c = cv;
+      };
+    v;
+    owned_by_ml = false;
+    ml_heap = false;
+    ml2c_noalloc = true;
+    c2ml_noalloc = false;
+  }
+
+let flags ?(c = "int") name constrs =
+  let mlty = enum_ml_type name constrs in
+  let cty = expr "%s" c in
+  let v = Var.mk "v" e_value in
+  let cv = Var.mk "c" cty in
+  let v' = Var.mk "v" (expr "value *") in
+  let c' = Var.mk "c" (expr "%s *" c) in
+  let csts = List.map snd constrs in
+  {
+    mlty = expr "%a list" pp_def mlty;
+    conv =
+      Boxed
+        {
+          ml2c =
+            call_codef "ml2c"
+              [ (v', e_addr v); (c', e_addr cv) ]
+              (fun { fmt } ->
+                fmt "@[static const %s cid_table[] = { %a };@]@," c
+                  Fmt.(list ~sep:comma string)
+                  csts;
+                fmt "*%a = 0;@," pp_var c';
+                fmt
+                  "@[<v 2>for(value cid_l = *%a; cid_l != Val_emptylist; cid_l \
+                   = Field(cid_l, 1)){@,"
+                  pp_var v';
+                fmt "*%a |= cid_table[Long_val(Field(cid_l, 0))];@]@,}" pp_var
+                  c');
+          c2ml =
+            call_codef "c2ml"
+              [ (v', e_addr v); (c', e_addr cv) ]
+              (fun { fmt } ->
+                fmt "@[static const %s cid_table[] = { %a };@]@," c
+                  Fmt.(list ~sep:comma string)
+                  csts;
+                fmt "CAMLparam0();@,CAMLlocal1(cid_cell);@,";
+                fmt "*%a = Val_emptylist;@," pp_var v';
+                fmt
+                  "@[<v 2>for(intptr_t cid_i = %i; cid_i >= 0; cid_i--){@,\
+                   @[<v 2>if((*%a & cid_table[cid_i]) == cid_table[cid_i]){@,\
+                   cid_cell = caml_alloc_small(2, 0);@,\
+                   Field(cid_cell, 0) = Val_long(cid_i);@,\
+                   Field(cid_cell, 1) = *%a;@,\
+                   *%a = cid_cell;@]@,\
+                   }@]@,\
+                   }@,"
+                  (List.length csts - 1)
+                  pp_var c' pp_var v' pp_var v';
+                fmt "CAMLreturn0;");
+        };
+    cty =
+      {
+        cty;
+        init = None;
+        init_expr = expr "((%s) 0)" c;
+        free = None;
+        in_call = None;
+        c = cv;
+      };
+    v;
+    owned_by_ml = false;
+    ml_heap = false;
+    ml2c_noalloc = true;
+    c2ml_noalloc = false;
+  }
+
+(* [None] is the NULL pointer *)
+let nullable (ty : mlc) =
+  let ml2c, c2ml =
+    match ty.conv with
+    | Boxed { ml2c; c2ml } -> (ml2c, c2ml)
+    | Unboxable _ -> invalid_arg "Camlid.nullable: the type is not a pointer"
+  in
+  let v = Var.mk "v" e_value in
+  let v' = Var.mk "v" (expr "value *") in
+  let c' = Var.mk "c" (expr "%a *" pp_expr ty.cty.cty) in
+  {
+    ty with
+    mlty = expr "(%a option)" pp_expr ty.mlty;
+    conv =
+      Boxed
+        {
+          ml2c =
+            expr "@[if(Is_long(%a)) %a = NULL;@ else {@ %a@ }@]" pp_var v pp_var
+              ty.cty.c pp_expr (ml2c_field0 ty ml2c v);
+          c2ml =
+            call_codef "c2ml"
+              [ (v', e_addr v); (c', e_addr ty.cty.c) ]
+              (fun { fmt } ->
+                fmt "@[<v 2>if(*%a == NULL) *%a = Val_int(0);@]@," pp_var c'
+                  pp_var v';
+                fmt "@[<v 2>else {@,CAMLparam0();@,CAMLlocal1(cid_temp);@,";
+                fmt "@[%a@]@," pp_expr_binds
+                  ( c2ml,
+                    ty_binds ~v:(expr "cid_temp") ~c:(expr "(*%a)" pp_var c') ty
+                  );
+                fmt "*%a = caml_alloc_small(1, 0);@," pp_var v';
+                fmt "Field(*%a, 0) = cid_temp;@," pp_var v';
+                fmt "CAMLreturn0;@]@,}");
+        };
+    cty =
+      {
+        ty.cty with
+        free =
+          Option.map
+            (fun free ->
+              expr "@[if(%a != NULL){@ %a@ }@]" pp_var ty.cty.c pp_expr free)
+            ty.cty.free;
+      };
+    v;
+    c2ml_noalloc = false;
+  }

@@ -276,6 +276,15 @@ module AlgData : sig
   val algdata : string -> (string * (string * Ty.mlc) list) list -> t
 end
 
+val enum : ?c:string -> string -> (string * string) list -> Ty.mlc
+(** See {!Helper.enum} *)
+
+val flags : ?c:string -> string -> (string * string) list -> Ty.mlc
+(** See {!Helper.flags} *)
+
+val nullable : Ty.mlc -> Ty.mlc
+(** See {!Helper.nullable} *)
+
 val ret_option_if : Expr.expr -> Ty.mlc -> Ty.mlc
 (** [ret_option_if expr ty] the OCaml value returned is [Some v] if the C
     expression [expr] is true, where [v] is returned by [ty], otherwise it is

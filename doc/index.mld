@@ -172,6 +172,7 @@ When the conversions don't allocate in the OCaml heap (scalars, inputs owned by 
 - the scalars, e.g. {!Camlid.Helper.int} ([intptr_t]), {!Camlid.Helper.double}, {!Camlid.Helper.bool}, unboxed or untagged when possible;
 - strings and arrays, e.g. {!Camlid.Helper.string_nt} for null terminated strings;
 - C values owned by OCaml: {!val:Camlid.Helper.value_type}, {!Camlid.Helper.custom_ptr}, {!Camlid.Helper.custom}, {!Camlid.Helper.abstract};
+- C enumerations and bit flags with {!Camlid.Helper.enum} and {!Camlid.Helper.flags}, [NULL] as [None] with {!Camlid.Helper.nullable};
 - conversions to other C types with {!Camlid.Helper.convert}, and algebraic datatypes with {!Camlid.Helper.algdata}.
 
 When the C function takes the length of a string or an array as a separate argument, the helpers return two parameters, which are used in the same function:

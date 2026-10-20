@@ -2,8 +2,8 @@ open Camlid
 open Helper
 
 let vec =
-  value_type ~dispose:"vec_dispose" ~init:"vec_init" ~clear:"vec_clear" ~copy:"vec_set" ~ml:"vec"
-    ~c:"vec" ()
+  value_type ~dispose:"vec_dispose" ~init:"vec_init" ~clear:"vec_clear"
+    ~copy:"vec_set" ~ml:"vec" ~c:"vec" ()
 
 let my_error = exception_ ~registered:"Mylib.My_error" "My_error"
 

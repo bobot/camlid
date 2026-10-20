@@ -1,0 +1,9 @@
+Red -> Green
+Green -> Blue
+Blue -> Red
+Failure "unknown value of color"
+[Exec]
+[Read,Write,Exec]
+None -> None
+Some "" -> None
+Some "abc" -> Some "abc"

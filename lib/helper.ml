@@ -370,3 +370,7 @@ let parent ?clear ~ml ~c () = Expert.parent ?clear ~ml ~cty:(expr "%s" c) ()
 
 let child parent ?clear ?clear_with_parent ~ml ~c () =
   Expert.child parent ?clear ?clear_with_parent ~ml ~cty:(expr "%s" c) ()
+
+let enum = Expert.enum
+let flags = Expert.flags
+let nullable = Expert.nullable

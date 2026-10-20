@@ -79,11 +79,15 @@ extern value camlid_stub_stmt_new(value d){
   camlid_c2ml2(&vres, &res, &d);
   CAMLreturn(vres);
 }
+static void camlid_ml2c_field(value * v, stmt* * c){
+  value cid_temp = Field(*v, 0);
+  (*c) = *(((stmt* *) Data_custom_val(cid_temp)));
+  }
 extern intptr_t camlid_stub_stmt_read(value p){
   intptr_t ures;
   intptr_t res;
   stmt* p1 = ((stmt*) { 0 });
-  p1 = *(((stmt* *) Data_custom_val(Field(p,0))));
+  camlid_ml2c_field(&p, &p1);
   res = stmt_read(p1);
   ures = (res);
   return ures;
