@@ -635,8 +635,10 @@ type clear = { clear : expr; i : var }
 type hash = { hash : expr; i : var }
 type compare = { compare : expr; i1 : var; i2 : var }
 
+type mem = { mem : expr; c : var }
 (** Encapsulate a c type into an custom ml type *)
-let custom ?init ?clear ?hash ?compare ?get ?set ~ml ~icty ~cty () =
+
+let custom ?init ?clear ?hash ?compare ?mem ?get ?set ~ml ~icty ~cty () =
   let v = Var.mk "v" (expr "value") in
   let c = Var.mk "c" cty in
   let v' = Var.mk "v" (expr "value *") in
@@ -710,8 +712,15 @@ let custom ?init ?clear ?hash ?compare ?get ?set ~ml ~icty ~cty () =
             call_codef "c2ml"
               [ (v', e_addr v); (c', e_addr c) ]
               (fun { fmt } ->
-                fmt "@[*%a = caml_alloc_custom(&%a,sizeof(%a), 0, 1);@]@,"
-                  pp_var v' pp_def custom_op pp_expr icty;
+                (match mem with
+                | None ->
+                    fmt "@[*%a = caml_alloc_custom(&%a,sizeof(%a), 0, 1);@]@,"
+                      pp_var v' pp_def custom_op pp_expr icty
+                | Some (mem : mem) ->
+                    fmt
+                      "@[*%a = caml_alloc_custom_mem(&%a,sizeof(%a),@ %a);@]@,"
+                      pp_var v' pp_def custom_op pp_expr icty pp_expr_binds
+                      (mem.mem, [ (mem.c, e_var c') ]));
                 match set with
                 | None ->
                     fmt "@[*(%a) = *%a;@]" pp_expr (data_custom_val' icty v')
@@ -740,7 +749,7 @@ let custom ?init ?clear ?hash ?compare ?get ?set ~ml ~icty ~cty () =
   }
 
 (** Encapsulate a c pointer type into an custom ml type *)
-let custom_ptr ?init ?clear ?hash ?compare ?(malloc = true) ~ml ~cty () =
+let custom_ptr ?init ?clear ?hash ?compare ?mem ?(malloc = true) ~ml ~cty () =
   let cty_ptr = expr "%a*" pp_expr cty in
   let init =
     let c = Var.mk "c" (expr "%a *" pp_expr cty_ptr) in
@@ -812,7 +821,23 @@ let custom_ptr ?init ?clear ?hash ?compare ?(malloc = true) ~ml ~cty () =
         })
       compare
   in
-  custom ?init ?clear ?hash ?compare ~ml ~cty:cty_ptr ~icty:cty_ptr ()
+  let mem =
+    let c = Var.mk "c" (expr "%a *" pp_expr cty_ptr) in
+    let user (mem : mem) =
+      expr "%a" pp_expr_binds (mem.mem, [ (mem.c, e_deref c) ])
+    in
+    match mem with
+    | None when malloc -> Some { mem = expr "sizeof(%a)" pp_expr cty; c }
+    | None -> None
+    | Some mem when malloc ->
+        Some { mem = expr "sizeof(%a) + %a" pp_expr cty pp_expr (user mem); c }
+    | Some mem -> Some { mem = user mem; c }
+  in
+  custom ?init ?clear ?hash ?compare ?mem ~ml ~cty:cty_ptr ~icty:cty_ptr ()
+
+let mk_mem ~cty name =
+  let c = Var.mk "c" (expr "%a *" pp_expr cty) in
+  { mem = expr "%a" pp_call (existing name [ c ], []); c }
 
 let mk_get ~icty ~cty ?vars ?exprs get =
   let c = Var.mk "c" (expr "%a *" pp_expr cty) in

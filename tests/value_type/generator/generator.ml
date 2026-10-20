@@ -2,7 +2,7 @@ open Camlid
 open Helper
 
 let vec =
-  value_type ~init:"vec_init" ~clear:"vec_clear" ~copy:"vec_set"
+  value_type ~mem:"vec_mem" ~init:"vec_init" ~clear:"vec_clear" ~copy:"vec_set"
     ~hash:"vec_hash" ~compare:"vec_compare" ~ml:"vec" ~c:"vec" ()
 
 (* The size is an argument of the OCaml function used only by [vec_init_n] *)

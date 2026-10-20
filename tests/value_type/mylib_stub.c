@@ -35,7 +35,8 @@ custom_serialize_default,
 custom_deserialize_default
 };
 static void camlid_c2ml(value * v, vec* * c){
-  *v = caml_alloc_custom(&camlid_cops,sizeof(vec*), 0, 1);
+  *v = caml_alloc_custom_mem(&camlid_cops,sizeof(vec*),
+  sizeof(vec) + vec_mem(*c));
   *(((vec* *) Data_custom_val(*v))) = *c;
   }
 extern value camlid_stub_vec_range(intptr_t p){
@@ -207,7 +208,7 @@ custom_serialize_default,
 custom_deserialize_default
 };
 static void camlid_c2ml4(value * v, vec* * c){
-  *v = caml_alloc_custom(&camlid_cops1,sizeof(vec*), 0, 1);
+  *v = caml_alloc_custom_mem(&camlid_cops1,sizeof(vec*), sizeof(vec));
   *(((vec* *) Data_custom_val(*v))) = *c;
   }
 extern value camlid_stub_zeros(intptr_t p){

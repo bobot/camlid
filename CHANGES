@@ -14,13 +14,16 @@
       freeing the C values
     - Helper.func ~release_lock releases the runtime lock during the call;
       Ty.mlc.ml_heap marks the types that forbid it
+    - ?mem for custom types and value_type: the memory outside the OCaml
+      heap is given to the GC (caml_alloc_custom_mem); the malloc of
+      custom_ptr is always counted
     - identical C definitions with the same basename are printed once, so
       types can be built many times without duplicating code
     - add Ty.mlc.owned_by_ml; a parameter of such a type can't be input
       and output (it was finalized twice)
     - string_nt fails if the string contains a null byte, the previous
       behaviour is string_nt_prefix
-    - remove the get, set, internal and malloc options of Helper.abstract,
+    - remove the get, set and internal options of Helper.abstract,
       Helper.custom and Helper.custom_ptr (still in Expert)
     - fix leak of the elements of input_array and output_array
     - fix convert: the destination is initialized, the temporary is freed,

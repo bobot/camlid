@@ -19,3 +19,4 @@ void vec_ranges(vec *a, size_t n);
 intptr_t vec_total(vec *a, size_t n);
 vec *vec_global(void);
 intptr_t vec_live(void);
+size_t vec_mem(vec *v);

@@ -215,27 +215,30 @@ let abstract ?init ~ml ~c () : mlc =
   Expert.abstract ?init ~icty:(e_def cty) ~cty:(e_def cty) ~ml ()
 
 (** Encapsulate a c type into an custom ml type *)
-let custom ?init ?clear ?hash ?compare ~ml ~c () =
+let custom ?init ?clear ?hash ?compare ?mem ~ml ~c () =
   let cty = expr "%s" c in
   let icty = cty in
   let clear = Option.map (mk_clear ~icty) clear in
   let hash = Option.map (mk_hash ~icty) hash in
   let compare = Option.map (mk_compare ~icty) compare in
   let init = Option.map (mk_init ~cty) init in
-  custom ?init ?clear ?hash ?compare ~ml ~icty ~cty ()
+  let mem = Option.map (mk_mem ~cty) mem in
+  custom ?init ?clear ?hash ?compare ?mem ~ml ~icty ~cty ()
 
-let custom_ptr ?init ?clear ?hash ?compare ~ml ~c () =
+let custom_ptr ?init ?clear ?hash ?compare ?mem ?malloc ~ml ~c () =
   let cty = expr "%s" c in
   let icty = cty in
   let clear = Option.map (mk_clear ~icty) clear in
   let hash = Option.map (mk_hash ~icty) hash in
   let compare = Option.map (mk_compare ~icty) compare in
   let init = Option.map (mk_init ~cty) init in
-  custom_ptr ?init ?clear ?hash ?compare ~ml ~cty ()
+  let mem = Option.map (mk_mem ~cty) mem in
+  custom_ptr ?init ?clear ?hash ?compare ?mem ?malloc ~ml ~cty ()
 
 type value_type = { t : mlc; value : mlc; copy_of_ptr : mlc }
 
-let value_type ?(init_args = []) ?hash ?compare ~init ~clear ~copy ~ml ~c () =
+let value_type ?(init_args = []) ?hash ?compare ?mem ~init ~clear ~copy ~ml ~c
+    () =
   let cty = expr "%s" c in
   let init_c = mk_init ~cty init ~vars:(fun v -> v :: init_args) in
   let clear_c = mk_init ~cty clear in
@@ -243,6 +246,7 @@ let value_type ?(init_args = []) ?hash ?compare ~init ~clear ~copy ~ml ~c () =
     Expert.custom_ptr ~init:init_c ~clear:(mk_clear ~icty:cty clear)
       ?hash:(Option.map (mk_hash ~icty:cty) hash)
       ?compare:(Option.map (mk_compare ~icty:cty) compare)
+      ?mem:(Option.map (mk_mem ~cty) mem)
       ~malloc:true ~ml ~cty ()
   in
   let value =

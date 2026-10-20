@@ -52,3 +52,4 @@ vec *vec_global(void) {
   return &g;
 }
 intptr_t vec_live(void) { return live; }
+size_t vec_mem(vec *v) { return v->len * sizeof(intptr_t); }

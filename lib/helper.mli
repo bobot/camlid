@@ -226,6 +226,7 @@ val value_type :
   ?init_args:Expr.var list ->
   ?hash:string ->
   ?compare:string ->
+  ?mem:string ->
   init:string ->
   clear:string ->
   copy:string ->
@@ -240,7 +241,10 @@ val value_type :
     - [void clear(T *t)], the destructor;
     - [void copy(T *dst, T *src)], the copy assignment;
     - [intnat hash(T *t)] and [int compare(T *t1, T *t2)] for [Hashtbl.hash] and
-      [compare].
+      [compare];
+    - [size_t mem(T *t)], the size of the memory owned by [t] outside of the [T]
+      itself, so that the GC takes it into account (with
+      [caml_alloc_custom_mem], like [sizeof(T)] which is always counted).
 
     The [T] owned by OCaml is allocated with [malloc]. Its finalizer calls
     [clear] then [free]. [init_args] are C variables of other parameters, often
@@ -251,18 +255,25 @@ val custom_ptr :
   ?clear:string ->
   ?hash:string ->
   ?compare:string ->
+  ?mem:string ->
+  ?malloc:bool ->
   ml:string ->
   c:string ->
   unit ->
   Ty.mlc
-(** Same as the [t] field of {!val:value_type}: the C functions take a [c *] and
-    [clear] is called before [free]. *)
+(** The custom block contains a [c *], given to the C functions. By default it
+    is the same as the [t] field of {!val:value_type}: allocated with [malloc]
+    before [init], and freed after [clear].
+    @param malloc
+      [false] when the pointer is allocated by the C library (e.g. returned by
+      its constructor) and freed by [clear], which receives the [c *]. *)
 
 val custom :
   ?init:string ->
   ?clear:string ->
   ?hash:string ->
   ?compare:string ->
+  ?mem:string ->
   ml:string ->
   c:string ->
   unit ->

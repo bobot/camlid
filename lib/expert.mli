@@ -75,6 +75,10 @@ type hash = { hash : Expr.expr; i : Expr.var }
 type compare = { compare : Expr.expr; i1 : Expr.var; i2 : Expr.var }
 (** Comparison of [i1 : icty *] and [i2 : icty *] *)
 
+type mem = { mem : Expr.expr; c : Expr.var }
+(** Size in bytes of the memory outside the OCaml heap owned by [c : cty *],
+    given to the GC with [caml_alloc_custom_mem] *)
+
 val abstract :
   ?init:init ->
   ?get:get ->
@@ -91,6 +95,7 @@ val custom :
   ?clear:clear ->
   ?hash:hash ->
   ?compare:compare ->
+  ?mem:mem ->
   ?get:get ->
   ?set:set ->
   ml:string ->
@@ -105,6 +110,7 @@ val custom_ptr :
   ?clear:clear ->
   ?hash:hash ->
   ?compare:compare ->
+  ?mem:mem ->
   ?malloc:bool ->
   ml:string ->
   cty:Expr.expr ->
@@ -159,6 +165,9 @@ val mk_hash :
   hash
 
 val mk_compare : icty:Expr.expr -> string -> compare
+
+val mk_mem : cty:Expr.expr -> string -> mem
+(** [mk_mem ~cty f] calls [size_t f(cty *c)] *)
 
 (** {2 Copies and conversions} *)
 

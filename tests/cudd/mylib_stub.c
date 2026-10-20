@@ -11,7 +11,7 @@
 #include <caml/signals.h>
 #include <stdio.h>
 #include <string.h>
-static void caml_cudd_finalize(DdManager* * i){ Cudd_Quit(*i); free(*i); }
+static void caml_cudd_finalize(DdManager* * i){ Cudd_Quit(*i); }
 static void caml_cudd_finalize_op(value v){
   caml_cudd_finalize(((DdManager* *) Data_custom_val(v)));
   }

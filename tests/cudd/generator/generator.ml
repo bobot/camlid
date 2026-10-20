@@ -3,7 +3,9 @@ open Helper
 
 (** todo add reference counting on cudd manager *)
 
-let man = custom_ptr ~clear:"Cudd_Quit" ~ml:"man" ~c:"DdManager" ()
+let man =
+  custom_ptr ~malloc:false ~clear:"Cudd_Quit" ~ml:"man" ~c:"DdManager" ()
+
 let mani, mani_pc = Expert.simple_param ~input:true man ~name:"man"
 let bdd_t = Expert.typedef "bdd_t" "DdNode*"
 
