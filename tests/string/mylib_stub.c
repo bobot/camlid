@@ -14,8 +14,6 @@
 #include <string.h>
 typedef char * camlid_string_nt;
 static void camlid_ml2c(value * v, camlid_string_nt * c){
-  if (!caml_string_is_c_safe(*v))
-  caml_failwith("string contains null bytes");
   size_t len=caml_string_length(*v)+1;
   *c=malloc(len);
   memcpy(*c,String_val(*v),len);
@@ -23,9 +21,24 @@ static void camlid_ml2c(value * v, camlid_string_nt * c){
 extern value camlid_stub_f_in(value p){
   CAMLparam1(p);
   camlid_string_nt p1 = ((camlid_string_nt) { 0 });
+  if(!caml_string_is_c_safe(p)) caml_failwith("string contains null bytes");
   camlid_ml2c(&p, &p1);
   f_in(p1);
   free(p1);
+  CAMLreturn(Val_unit);
+}
+extern value camlid_stub_f_in2(value p,
+  value p1){
+  CAMLparam2(p, p1);
+  camlid_string_nt p2 = ((camlid_string_nt) { 0 });
+  camlid_string_nt p3 = ((camlid_string_nt) { 0 });
+  if(!caml_string_is_c_safe(p)) caml_failwith("string contains null bytes");
+  if(!caml_string_is_c_safe(p1)) caml_failwith("string contains null bytes");
+  camlid_ml2c(&p, &p2);
+  camlid_ml2c(&p1, &p3);
+  f_in2(p2, p3);
+  free(p2);
+  free(p3);
   CAMLreturn(Val_unit);
 }
 static void camlid_ml2c1(value * v, camlid_string_nt * c){

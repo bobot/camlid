@@ -46,3 +46,8 @@ intptr_t slow_sum(intptr_t n) {
   return s;
 }
 size_t vec_length(vec *v) { return v->len; }
+void vec_status(vec *v, intptr_t n, enum status *st) {
+  v->data = malloc(sizeof(intptr_t));
+  v->len = 0;
+  *st = n < 0 ? (enum status)42 : n == 0 ? EMPTY : OK;
+}

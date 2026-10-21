@@ -41,19 +41,19 @@ type c = {
 type effects = Plan.effects = {
   alloc : bool;
       (** allocates in the OCaml heap, or registers values with [CAMLparam] *)
-  raises : bool;  (** can raise an OCaml exception *)
+  raising : bool;  (** can raise an OCaml exception *)
 }
 (** The effects of a conversion on the OCaml runtime *)
 
 let pure = Plan.pure
-let allocates = { alloc = true; raises = false }
-let may_raise = { alloc = false; raises = true }
+let allocates = { alloc = true; raising = false }
+let may_raise = { alloc = false; raising = true }
 
 (** The safe default when the effects are not known *)
-let unknown = { alloc = true; raises = true }
+let unknown = { alloc = true; raising = true }
 
 let union e1 e2 =
-  { alloc = e1.alloc || e2.alloc; raises = e1.raises || e2.raises }
+  { alloc = e1.alloc || e2.alloc; raising = e1.raising || e2.raising }
 
 type contract = {
   owned_by_ml : bool;
@@ -76,12 +76,32 @@ let copied ?(ml_heap = false) ~ml2c ~c2ml () =
 let owned_by_ml ~ml2c ~c2ml () =
   { owned_by_ml = true; ml_heap = false; ml2c; c2ml }
 
+type check_exn = Check_failure | Check_invalid_argument
+
+type check = {
+  cond : expr;
+      (** True when the value is refused. It doesn't allocate, raise or modify
+          anything. *)
+  exn : check_exn;
+  msg : string;
+}
+(** A check of a value before its conversion. A failed check raises the
+    exception, when the stub owns nothing. *)
+
+type checks = {
+  ml2c_check : check option;  (** checks the OCaml value [v] *)
+  c2ml_check : check option;  (** checks the C value [c] *)
+}
+
+let no_checks = { ml2c_check = None; c2ml_check = None }
+
 type mlc = {
   mlty : expr;  (** The OCaml type *)
   conv : conv;
   cty : c;
   v : var;  (** The OCaml value *)
   contract : contract;
+  checks : checks;
 }
 (** An OCaml type, a C type, and the conversions between them. It is a template
     instantiated by each parameter with fresh variables. *)
@@ -119,12 +139,12 @@ type param = {
   pused_in_call : (var * expr) option;
   pfree : expr option;
   poutput : poutput;
-  pon_error : expr option;
-      (** When the C function fails, moves an output owned by OCaml into an
-          OCaml value, which will be finalized *)
   pml_heap : bool;  (** The C argument is or points into an OCaml value *)
   pml2c : effects;  (** The effects of the conversion of the input *)
   pc2ml : effects;  (** The effects of the boxed conversion of the output *)
+  powned_by_ml : bool;  (** The C value is owned by the OCaml value *)
+  pcheck_in : check option;  (** The check of the input *)
+  pcheck_out : check option;  (** The check of the output *)
 }
 (** A parameter is a set of variable linked by conversion expression. Possibly:
     - An input variable of type value and conversion functions
@@ -141,6 +161,8 @@ type result = {
   rfree : expr option;
   rc : var;
   rc2ml : effects;  (** The effects of the boxed conversion *)
+  rowned_by_ml : bool;  (** The C value is owned by the OCaml value *)
+  rcheck : check option;  (** The check of the result *)
 }
 
 type conf = Expr.expr list

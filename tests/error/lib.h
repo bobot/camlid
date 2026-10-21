@@ -20,3 +20,7 @@ const char *error_msg(int rc, intptr_t n);
 /* computation run without the runtime lock */
 intptr_t slow_sum(intptr_t n);
 size_t vec_length(vec *v);
+
+enum status { OK, EMPTY };
+/* fills v with n elements, returns an invalid status when n < 0 */
+void vec_status(vec *v, intptr_t n, enum status *st);

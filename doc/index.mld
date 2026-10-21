@@ -147,7 +147,9 @@ let node_new =
 
 {2 Errors, runtime lock and noalloc}
 
-[~error] checks the result of the C function after the call. On failure the stub cleans up as usual (copies are freed, initialized outputs owned by OCaml are moved into OCaml values and finalized later) then raises the exception:
+The stub raises an exception only when it owns nothing, or after cleaning up: the conversions themselves never raise. A type that refuses some values has a check ({!type:Camlid.Ty.checks}), a C condition evaluated before its conversion: [string_nt] refuses strings with null bytes, [enum] unknown C constants, [dispose] disposed values. The checks of the inputs run before any conversion; the checks of the outputs and [~error] run after the call, and clean up before raising (copies are freed, outputs owned by OCaml are moved into OCaml values and finalized later).
+
+[~error] checks the result of the C function after the call:
 
 {[
 (* int make(vec *, char **, intptr_t n); returns a negative code on failure
@@ -161,7 +163,9 @@ let make =
     [ output vec.t; output (ptr_ref (string_nt ())); n ]
 ]}
 
-When the conversions don't allocate in the OCaml heap (scalars, inputs owned by OCaml, ...) and there is at most one result, the external is declared [[@@noalloc]] and the stub doesn't register its values with [CAMLparam]. Use [~noalloc:false] if the C function calls the OCaml runtime itself.
+When the conversions don't allocate in the OCaml heap (scalars, inputs owned by OCaml, ...), there is no check, and there is at most one result, the external is declared [[@@noalloc]] and the stub doesn't register its values with [CAMLparam]. Use [~noalloc:false] if the C function calls the OCaml runtime itself.
+
+The order of the steps of a stub, the values registered with the GC and these decisions are made by {!Camlid.Plan.schedule}, which is proved in Why3 to be memory safe ([proof/plan.mlw]), provided that each type matches its {!type:Camlid.Ty.contract}.
 
 [~release_lock:true] releases the runtime lock during the call, so other threads can run. The arguments of the C function are C values that don't point into the OCaml heap, except for [value] types for which it is refused.
 

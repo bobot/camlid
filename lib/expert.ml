@@ -6,6 +6,10 @@ let ty_binds ?(binds = []) ?v ?c ty =
   let bc = match c with None -> [] | Some c -> [ (ty.cty.c, c) ] in
   bv @ bc @ binds
 
+let map_checks ?(ml2c = Fun.id) ?(c2ml = Fun.id) (ch : checks) =
+  let map f = Option.map (fun (ch : check) -> { ch with cond = f ch.cond }) in
+  { ml2c_check = map ml2c ch.ml2c_check; c2ml_check = map c2ml ch.c2ml_check }
+
 let e_value = expr "value"
 
 let typedef name =
@@ -77,6 +81,7 @@ let builtin_mltypes ~unbox_attribute ~unbox_version ?u_type ~c_type ~c2ml ~ml2c
           (if String.starts_with ~prefix:"Val_" c2ml then Ty.pure
            else Ty.allocates)
         ();
+    checks = Ty.no_checks;
   }
 
 let string_nt_alias = mlalias "string_nt" "string"
@@ -101,10 +106,7 @@ let string_nt ~prefix ~owned =
                (fun { fmt } ->
                  if prefix then
                    fmt "size_t len=strlen(String_val(*%a))+1;@ " pp_var v'
-                 else (
-                   fmt "@[if (!caml_string_is_c_safe(*%a))@ " pp_var v';
-                   fmt "caml_failwith(\"string contains null bytes\");@]@ ";
-                   fmt "size_t len=caml_string_length(*%a)+1;@ " pp_var v');
+                 else fmt "size_t len=caml_string_length(*%a)+1;@ " pp_var v';
                  fmt "*%a=malloc(len);@ " pp_var c';
                  fmt "memcpy(*%a,String_val(*%a),len);" pp_var c' pp_var v'));
         };
@@ -118,10 +120,20 @@ let string_nt ~prefix ~owned =
         c;
       };
     v;
-    contract =
-      Ty.copied
-        ~ml2c:(if prefix then Ty.pure else Ty.may_raise)
-        ~c2ml:Ty.allocates ();
+    contract = Ty.copied ~ml2c:Ty.pure ~c2ml:Ty.allocates ();
+    checks =
+      {
+        ml2c_check =
+          (if prefix then None
+           else
+             Some
+               {
+                 cond = expr "!caml_string_is_c_safe(%a)" pp_var v;
+                 exn = Check_failure;
+                 msg = "string contains null bytes";
+               });
+        c2ml_check = None;
+      };
   }
 
 let string_nt_prefix ?(owned = true) () = string_nt ~prefix:true ~owned
@@ -166,6 +178,7 @@ let string_fixed_length ?(init = true) ?(owned = true) len =
       };
     v;
     contract = Ty.copied ~ml2c:Ty.pure ~c2ml:Ty.allocates ();
+    checks = Ty.no_checks;
   }
 
 let string_length_struct =
@@ -210,6 +223,7 @@ let string_length ?(owned = true) () =
       };
     v;
     contract = Ty.copied ~ml2c:Ty.pure ~c2ml:Ty.allocates ();
+    checks = Ty.no_checks;
   }
 
 let ptr_ref (ty : mlc) =
@@ -250,6 +264,7 @@ let ptr_ref (ty : mlc) =
       };
     v = ty.v;
     contract = ty.contract;
+    checks = map_checks ~c2ml:add_addr ty.checks;
   }
 
 type copy = { copy : Expr.expr; c_from : Expr.Var.t; c_to : Expr.Var.t }
@@ -322,6 +337,38 @@ let copy ~copy (ty : mlc) =
     | Unboxable _ -> invalid_arg "not implemented"
   in
   { ty with conv; contract = { ty.contract with owned_by_ml = false } }
+
+(* The checks of the elements [ty] of an array, lifted to the array: the
+   OCaml array [v] and the C elements [c_elt i] for [i < c_len] *)
+let array_checks ~v ~c_len ~c_elt (ty : mlc) =
+  let map (ch : check) name loop =
+    let id =
+      codef ~ret:(expr "int") name (fun { fmt } ->
+          fmt "@[<hv 2>%a@]@ return 0;" loop ch.cond)
+    in
+    { ch with cond = expr "%a" pp_call (id, []) }
+  in
+  {
+    ml2c_check =
+      Option.map
+        (fun ch ->
+          map ch "check_ml" (fun fmt cond ->
+              Fmt.pf fmt
+                "for(size_t cid_i=0; cid_i < Wosize_val(%a); cid_i++)@ if(%a) \
+                 return 1;"
+                pp_var v pp_expr
+                (Expr.binds [ (ty.v, expr "Field(%a, cid_i)" pp_var v) ] cond)))
+        ty.checks.ml2c_check;
+    c2ml_check =
+      Option.map
+        (fun ch ->
+          map ch "check_c" (fun fmt cond ->
+              Fmt.pf fmt
+                "for(size_t cid_i=0; cid_i < %a; cid_i++)@ if(%a) return 1;"
+                pp_expr c_len pp_expr
+                (Expr.binds [ (ty.cty.c, c_elt) ] cond)))
+        ty.checks.c2ml_check;
+  }
 
 let array ?(init = true) ?(owned = true) ~len (ty : mlc) =
   let cty = expr "%a*" pp_expr ty.cty.cty in
@@ -431,6 +478,8 @@ let array ?(init = true) ?(owned = true) ~len (ty : mlc) =
         ml2c = Ty.union Ty.allocates ty.contract.ml2c;
         c2ml = Ty.union Ty.allocates ty.contract.c2ml;
       };
+    checks =
+      array_checks ~v ~c_len:(e_var len) ~c_elt:(expr "%a[cid_i]" pp_var c) ty;
   }
 
 let array_length ?(owned = true) (ty : mlc) =
@@ -527,6 +576,10 @@ let array_length ?(owned = true) (ty : mlc) =
         ml2c = Ty.union Ty.allocates ty.contract.ml2c;
         c2ml = Ty.union Ty.allocates ty.contract.c2ml;
       };
+    checks =
+      array_checks ~v ~c_len:(expr "%a.len" pp_var c)
+        ~c_elt:(expr "%a.t[cid_i]" pp_var c)
+        ty;
   }
 
 let map_param_in_call ?(name = "arg") map param =
@@ -554,10 +607,12 @@ let use_new_param_only_in_call param =
         pinit = None;
         pinit_expr = [];
         pfree = None;
-        pon_error = None;
         pml_heap = false;
         pml2c = Ty.pure;
         pc2ml = Ty.pure;
+        powned_by_ml = false;
+        pcheck_in = None;
+        pcheck_out = None;
       }
 
 let get_field ty field_name param =
@@ -591,6 +646,7 @@ let abstract ?init ?get ?set ~icty ~ml ~cty () =
   {
     v;
     contract = Ty.copied ~ml2c:Ty.pure ~c2ml:Ty.allocates ();
+    checks = Ty.no_checks;
     mlty = e_def @@ mlabstract ~keep_name:true ml;
     conv =
       Boxed
@@ -763,6 +819,7 @@ let custom_gen ?(ml_extra = fun _ -> []) ?init ?clear ?hash ?compare ?mem ?get
       };
     v;
     contract = Ty.owned_by_ml ~ml2c:Ty.pure ~c2ml:Ty.allocates ();
+    checks = Ty.no_checks;
   }
 
 (** Encapsulate a c pointer type into an custom ml type *)
@@ -873,15 +930,7 @@ let custom_ptr ?init ?clear ?hash ?compare ?mem ?dispose ?(malloc = true) ~ml
       let get =
         let c = Var.mk "c" (expr "%a *" pp_expr cty_ptr) in
         let i = Var.mk "i" (expr "%a *" pp_expr cty_ptr) in
-        {
-          get =
-            expr "@[if(*%a == NULL) caml_invalid_argument(%S);@]@ *%a = *%a;"
-              pp_var i
-              (ml ^ ": used after " ^ dispose)
-              pp_var c pp_var i;
-          c;
-          i;
-        }
+        { get = expr "*%a = *%a;" pp_var c pp_var i; c; i }
       in
       let ml_extra abs =
         let v = Var.mk "v" e_value in
@@ -911,7 +960,22 @@ let custom_ptr ?init ?clear ?hash ?compare ?mem ?dispose ?(malloc = true) ~ml
         custom_gen ~ml_extra ?init ?clear ?hash ?compare ?mem ~get ~ml
           ~cty:cty_ptr ~icty:cty_ptr ()
       in
-      { t with contract = { t.contract with ml2c = Ty.may_raise } }
+      {
+        t with
+        checks =
+          {
+            t.checks with
+            ml2c_check =
+              Some
+                {
+                  cond =
+                    expr "(*((%a *) Data_custom_val(%a)) == NULL)" pp_expr
+                      cty_ptr pp_var t.v;
+                  exn = Check_invalid_argument;
+                  msg = ml ^ ": used after " ^ dispose;
+                };
+          };
+      }
 
 let mk_mem ~cty name =
   let c = Var.mk "c" (expr "%a *" pp_expr cty) in
@@ -1055,12 +1119,6 @@ let param ?input_label ?(binds = []) ?(input = false) ?(output = false)
   in
   let pinit_expr = [ (pc, Some pty.cty.init_expr) ] in
   let pfree = Option.map bind pty.cty.free in
-  let pon_error =
-    match (pty.conv, pty.cty.init) with
-    | Boxed { c2ml; _ }, Some _ when output && pty.contract.owned_by_ml ->
-        Some (bind' c2ml)
-    | _ -> None
-  in
   let pml_heap = used_in_call && pty.contract.ml_heap in
   let pml2c =
     if not input then Ty.pure
@@ -1070,6 +1128,13 @@ let param ?input_label ?(binds = []) ?(input = false) ?(output = false)
       | Boxed _ -> pty.contract.ml2c
   in
   let pc2ml = if not output then Ty.pure else pty.contract.c2ml in
+  let bind_check bind (ch : check) = { ch with cond = bind ch.cond } in
+  let pcheck_in =
+    if input then Option.map (bind_check bind) pty.checks.ml2c_check else None
+  in
+  let pcheck_out =
+    if output then Option.map (bind_check bind') pty.checks.c2ml_check else None
+  in
   ( {
       pinput;
       pinit_expr;
@@ -1077,10 +1142,12 @@ let param ?input_label ?(binds = []) ?(input = false) ?(output = false)
       pused_in_call;
       pfree;
       poutput;
-      pon_error;
       pml_heap;
       pml2c;
       pc2ml;
+      powned_by_ml = pty.contract.owned_by_ml;
+      pcheck_in;
+      pcheck_out;
     },
     pc,
     pv )
@@ -1103,10 +1170,12 @@ let result_param result =
     pfree = result.rfree;
     pinit = None;
     pinit_expr = [ (result.rc, None) ];
-    pon_error = None;
     pml_heap = false;
     pml2c = Ty.pure;
     pc2ml = result.rc2ml;
+    powned_by_ml = result.rowned_by_ml;
+    pcheck_in = None;
+    pcheck_out = result.rcheck;
   }
 
 let add_result params result =
@@ -1142,6 +1211,37 @@ type error = { cond : expr; msg : expr option; exn : exn_ option }
 
 let err_var = Var.mk "err" e_value
 
+(** Moves the outputs owned by OCaml into OCaml values, which will be finalized,
+    then frees *)
+let pp_cleanup ~moves ~frees { fmt } =
+  let move p =
+    match p.poutput with
+    | PONone -> None
+    | POBoxed { c2ml; _ } | POUnboxable { c2ml; _ } -> Some c2ml
+  in
+  pp_scall move { fmt } moves;
+  pp_scall (fun p -> p.pfree) { fmt } frees
+
+let pp_check_exn fmt = function
+  | Check_failure -> Fmt.string fmt "caml_failwith"
+  | Check_invalid_argument -> Fmt.string fmt "caml_invalid_argument"
+
+let pp_check_in { fmt } p =
+  match p.pcheck_in with
+  | None -> ()
+  | Some ch ->
+      fmt "@[if(%a) %a(%S);@]@ " pp_expr ch.cond pp_check_exn ch.exn ch.msg
+
+let pp_check_out ~moves ~frees { fmt } p =
+  match p.pcheck_out with
+  | None -> ()
+  | Some ch ->
+      fmt "@[<v 2>if(%a){@," pp_expr ch.cond;
+      fmt "@[%a = caml_copy_string(%S);@]@," pp_var err_var ch.msg;
+      pp_cleanup ~moves ~frees { fmt };
+      fmt "@[%a_value(%a);@]" pp_check_exn ch.exn pp_var err_var;
+      fmt "@]@,}@,"
+
 let pp_error ~name ~moves ~frees { fmt } error =
   fmt "@[<v 2>if(%a){@," pp_expr error.cond;
   (match error.msg with
@@ -1149,8 +1249,7 @@ let pp_error ~name ~moves ~frees { fmt } error =
       fmt "@[%a = caml_copy_string(%S);@]@," pp_var err_var (name ^ " failed")
   | Some msg ->
       fmt "@[%a = caml_copy_string(%a);@]@," pp_var err_var pp_expr msg);
-  pp_scall (fun p -> p.pon_error) { fmt } moves;
-  pp_scall (fun p -> p.pfree) { fmt } frees;
+  pp_cleanup ~moves ~frees { fmt };
   (match error.exn with
   | None -> fmt "@[caml_failwith_value(%a);@]" pp_var err_var
   | Some exn ->
@@ -1176,13 +1275,15 @@ let plan_param (p : param) : Plan.param =
       | PONone -> No_output
       | POBoxed _ -> Boxed_output
       | POUnboxable _ -> Unboxable_output);
+    owned_by_ml = p.powned_by_ml;
     init = Option.is_some p.pinit;
     free = Option.is_some p.pfree;
-    on_error = Option.is_some p.pon_error;
     value_locals = List.exists (fun (c, _) -> c.ty == e_value) p.pinit_expr;
     ml_heap = p.pml_heap;
     ml2c = p.pml2c;
     c2ml = p.pc2ml;
+    in_check = Option.is_some p.pcheck_in;
+    out_check = Option.is_some p.pcheck_out;
   }
 
 (** The parameters (with the result first) and the plan of a stub *)
@@ -1204,7 +1305,7 @@ let plan ?noalloc ?(release_lock = false) ?error ~params ~call_params ~result
     aux 0 params
   in
   let options : Plan.options =
-    { noalloc; release_lock; error = Option.is_some error }
+    { want_noalloc = noalloc; release_lock; error = Option.is_some error }
   in
   match
     Plan.schedule ~name options
@@ -1329,16 +1430,21 @@ let code_c_fun_of_plan ?error ~(plan : Plan.plan) ~params ~name (fid : expr) =
                p.pinit_expr)
            (get roots.c_values));
       let step : Plan.step -> unit = function
+        | Check_in l -> List.iter (pp_check_in { fmt }) (get l)
         | Ml2c l -> pp_scall a2c_pinput { fmt } (get l)
         | Init l -> pp_scall (fun p -> p.pinit) { fmt } (get l)
-        | Enter_blocking -> fmt "@[caml_enter_blocking_section();@]@,"
-        | Call l ->
+        | Call (l, release_lock) ->
+            if release_lock then fmt "@[caml_enter_blocking_section();@]@,";
             fmt "@[%a@]@," pp_expr_binds
-              (fid, List.filter_map (fun p -> p.pused_in_call) (get l))
-        | Leave_blocking -> fmt "@[caml_leave_blocking_section();@]@,"
+              (fid, List.filter_map (fun p -> p.pused_in_call) (get l));
+            if release_lock then fmt "@[caml_leave_blocking_section();@]@,"
         | Check_error { moves; frees } ->
             pp_error ~name ~moves:(get moves) ~frees:(get frees) { fmt }
               (Option.get error)
+        | Check_out (l, { moves; frees }) ->
+            List.iter
+              (pp_check_out ~moves:(get moves) ~frees:(get frees) { fmt })
+              (get l)
         | C2ml l -> pp_scall c2a_poutput { fmt } (get l)
         | Alloc_tuple l ->
             let li = List.mapi (fun i v -> (i, ml_poutput v)) (get l) in
@@ -1634,12 +1740,97 @@ let convert ?mlc_to_c ?c_to_mlc ~(mlc : mlc) ~(c : c) () =
     cty = c;
     v = mlc.v;
     contract = { mlc.contract with owned_by_ml = false; ml_heap = false };
+    checks =
+      (if Option.is_some mlc.checks.c2ml_check then
+         invalid_arg
+           "Camlid.convert: the conversion of an output with a check is not \
+            supported";
+       { mlc.checks with c2ml_check = None });
   }
 
 module AlgData = struct
   type kind =
     | KConst of int
     | KNonConst of int * (string * Expr.var * mlc) list
+
+  let all_fields l =
+    List.concat_map
+      (function
+        | _, _, KConst _ -> []
+        | _, _, KNonConst (_, fields) -> List.map (fun (_, _, ty) -> ty) fields)
+      l
+
+  (* The checks of the fields, lifted to the whole value *)
+  let algdata_checks ~ml_type ~v ~c l =
+    let field_checks proj =
+      List.concat_map
+        (function
+          | _, _, KConst _ -> []
+          | name, id, KNonConst (nc, fields) ->
+              List.filter_map
+                (fun (i, (fname, _, ty)) ->
+                  Option.map
+                    (fun ch -> (name, id, nc, i, fname, ty, ch))
+                    (proj ty))
+                (List.mapi (fun i f -> (i, f)) fields))
+        l
+    in
+    let summary checks =
+      match checks with
+      | [] -> None
+      | (_, _, _, _, _, _, (ch : check)) :: _ ->
+          if
+            List.for_all
+              (fun (_, _, _, _, _, _, (ch' : check)) ->
+                ch'.exn = ch.exn && ch'.msg = ch.msg)
+              checks
+          then Some (ch.exn, ch.msg)
+          else Some (Check_failure, "invalid value of " ^ ml_type)
+    in
+    let ml2c_check =
+      let checks = field_checks (fun ty -> ty.checks.ml2c_check) in
+      Option.map
+        (fun (exn, msg) ->
+          let v' = Var.mk "v" (expr "value") in
+          let id =
+            codef ~ret:(expr "int") "check_ml" (fun { fmt } ->
+                fmt "@[if(Is_long(%a)) return 0;@]@ " pp_var v';
+                List.iter
+                  (fun (_, _, nc, i, _, ty, (ch : check)) ->
+                    fmt "@[if(Tag_val(%a) == %i && (%a)) return 1;@]@ " pp_var
+                      v' nc pp_expr
+                      (Expr.binds
+                         [ (ty.v, expr "Field(%a, %i)" pp_var v' i) ]
+                         ch.cond))
+                  checks;
+                fmt "return 0;")
+          in
+          ({ cond = expr "%a" pp_call (id, [ (v', e_var v) ]); exn; msg }
+            : check))
+        (summary checks)
+    in
+    let c2ml_check =
+      let checks = field_checks (fun ty -> ty.checks.c2ml_check) in
+      Option.map
+        (fun (exn, msg) ->
+          let c' = Var.mk "c" (expr "%a *" pp_expr c.ty) in
+          let id =
+            codef ~ret:(expr "int") "check_c" (fun { fmt } ->
+                List.iter
+                  (fun (name, id, _, _, fname, ty, (ch : check)) ->
+                    fmt "@[if(%a->tag == %a && (%a)) return 1;@]@ " pp_var c'
+                      pp_id id pp_expr
+                      (Expr.binds
+                         [ (ty.cty.c, expr "%a->u.%s.%s" pp_var c' name fname) ]
+                         ch.cond))
+                  checks;
+                fmt "return 0;")
+          in
+          ({ cond = expr "%a" pp_call (id, [ (c', e_addr c) ]); exn; msg }
+            : check))
+        (summary checks)
+    in
+    { ml2c_check; c2ml_check }
 
   type constr = {
     name : string;
@@ -1871,9 +2062,16 @@ module AlgData = struct
                   | KNonConst (_, l) ->
                       List.exists (fun (_, _, ty) -> ty.contract.ml_heap) l)
                 l;
-            ml2c = Ty.unknown;
-            c2ml = Ty.unknown;
+            ml2c =
+              List.fold_left
+                (fun acc ty -> Ty.union acc ty.contract.ml2c)
+                Ty.allocates (all_fields l);
+            c2ml =
+              List.fold_left
+                (fun acc ty -> Ty.union acc ty.contract.c2ml)
+                Ty.allocates (all_fields l);
           };
+        checks = algdata_checks ~ml_type ~v ~c l;
       }
     in
     let dst_smart_constructors = Var.mk "dst" (expr "%a*" pp_def cty) in
@@ -1948,6 +2146,7 @@ let value =
       cty = { cty; init = None; init_expr; free = None; in_call = None; c };
       v;
       contract = Ty.copied ~ml_heap:true ~ml2c:Ty.pure ~c2ml:Ty.pure ();
+      checks = Ty.no_checks;
     }
 
 let ret_option_if expr typedef =
@@ -2020,6 +2219,12 @@ let simple_result rty =
     rc;
     rfree = Option.map bind' rty.cty.free;
     rc2ml = rty.contract.c2ml;
+    rowned_by_ml = rty.contract.owned_by_ml;
+    rcheck =
+      Option.map
+        (fun (ch : check) ->
+          { ch with cond = Expr.binds [ (rty.cty.c, e_var rc) ] ch.cond })
+        rty.checks.c2ml_check;
   }
 
 let get_expression ~mlname ty e =
@@ -2066,6 +2271,7 @@ let bigarray_array1_aux ~managed ~kind ~cty ~mlty ~mlelt () =
       };
     v;
     contract = Ty.owned_by_ml ~ml2c:Ty.pure ~c2ml:Ty.allocates ();
+    checks = Ty.no_checks;
   }
 
 let bigarray_array1 = bigarray_array1_aux
@@ -2122,6 +2328,10 @@ let keep_alive_with ~parent (ty : mlc) =
     v;
     contract =
       { ty.contract with c2ml = Ty.union ty.contract.c2ml Ty.allocates };
+    checks =
+      map_checks
+        ~ml2c:(fun e -> Expr.binds [ (ty.v, expr "Field(%a, 0)" pp_var v) ] e)
+        ty.checks;
   }
 
 let keep_alive (ty : mlc) =
@@ -2187,6 +2397,7 @@ let parent ?clear ~ml ~cty () =
         };
       v;
       contract = Ty.owned_by_ml ~ml2c:Ty.pure ~c2ml:Ty.allocates ();
+      checks = Ty.no_checks;
     }
   in
   (t, { rc; release; release_r = r })
@@ -2238,6 +2449,7 @@ let child (parent : parent) ?clear ?clear_with_parent ~ml ~cty () =
         };
       v;
       contract = Ty.owned_by_ml ~ml2c:Ty.pure ~c2ml:Ty.allocates ();
+      checks = Ty.no_checks;
     }
   in
   let with_parent parent_v =
@@ -2300,8 +2512,7 @@ let enum ?(c = "int") name constrs =
                   (fun (i, cst) ->
                     fmt "case %s: *%a = Val_long(%i); break;@," cst pp_var v' i)
                   constrs;
-                fmt "default: caml_failwith(%S);@]@,}"
-                  ("unknown value of " ^ name));
+                fmt "default: *%a = Val_long(0);@]@,}" pp_var v');
         };
     cty =
       {
@@ -2313,7 +2524,23 @@ let enum ?(c = "int") name constrs =
         c = cv;
       };
     v;
-    contract = Ty.copied ~ml2c:Ty.pure ~c2ml:Ty.may_raise ();
+    contract = Ty.copied ~ml2c:Ty.pure ~c2ml:Ty.pure ();
+    checks =
+      {
+        ml2c_check = None;
+        c2ml_check =
+          Some
+            {
+              cond =
+                expr "!(%a)"
+                  Fmt.(
+                    list ~sep:(any " || ") (fun fmt (_, cst) ->
+                        pf fmt "%a == %s" pp_var cv cst))
+                  constrs;
+              exn = Check_failure;
+              msg = "unknown value of " ^ name;
+            };
+      };
   }
 
 let flags ?(c = "int") name constrs =
@@ -2376,6 +2603,7 @@ let flags ?(c = "int") name constrs =
       };
     v;
     contract = Ty.copied ~ml2c:Ty.pure ~c2ml:Ty.allocates ();
+    checks = Ty.no_checks;
   }
 
 (* [None] is the NULL pointer *)
@@ -2423,4 +2651,11 @@ let nullable (ty : mlc) =
     v;
     contract =
       { ty.contract with c2ml = Ty.union ty.contract.c2ml Ty.allocates };
+    checks =
+      map_checks
+        ~ml2c:(fun e ->
+          expr "(Is_block(%a) && (%a))" pp_var v pp_expr
+            (Expr.binds [ (ty.v, expr "Field(%a, 0)" pp_var v) ] e))
+        ~c2ml:(fun e -> expr "(%a != NULL && (%a))" pp_var ty.cty.c pp_expr e)
+        ty.checks;
   }

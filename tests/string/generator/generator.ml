@@ -7,6 +7,7 @@ let () =
   Generate.to_file "mylib"
     [
       func "f_in" [ input string ];
+      func "f_in2" [ input string; input string ];
       func ~ml:"f_in_prefix" "f_in" [ input (string_nt_prefix ()) ];
       func "f_out" [ output (ptr_ref string) ];
       (let str = fixed_length_string () in

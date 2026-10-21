@@ -4,6 +4,7 @@ external vec_dispose : vec -> unit = "camlid_vec_dispose" [@@noalloc]
 type camlid_string_nt = string
 exception My_error of string
 let () = Callback.register_exception "Mylib.My_error" (My_error "")
+type status = | Ok | Empty
 external checked_div:
   (int [@untagged]) ->
   (int [@untagged]) ->
@@ -24,6 +25,10 @@ external vec_length:
   vec ->
   (int [@untagged])
   = "camlid_stub_vec_length_byte" "camlid_stub_vec_length"
+external vec_status:
+  (int [@untagged]) ->
+  vec * status
+  = "camlid_stub_vec_status_byte" "camlid_stub_vec_status"
 external vec_live_alloc:
   unit -> (int [@untagged])
   = "camlid_stub_vec_live_alloc_byte" "camlid_stub_vec_live_alloc"

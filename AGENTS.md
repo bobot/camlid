@@ -27,6 +27,8 @@ it follows the OCaml FFI rules, and handles C values like C++ objects
 | see how the generated stubs changed | `git diff tests/` (they are promoted silently by `dune runtest`) |
 | formatting | `dune fmt` (ocamlformat 0.29.0) |
 | documentation, must give no warnings | `dune build @doc` |
+| prove the stub scheduler | `make prove` (why3find, see `agents/skills/why3.md`) |
+| extract it to `lib/plan_gen.ml` (committed) | `make extract` |
 | memory check of a test | `valgrind --leak-check=full --errors-for-leak-kinds=definite --error-exitcode=1 _build/default/tests/<t>/app.exe` |
 
 The minimum OCaml version is 4.14 (also tested with 5.x in CI): no

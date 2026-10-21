@@ -24,6 +24,19 @@ let () =
   (match Mylib.vec_length v with
   | _ -> print_endline "no error"
   | exception Invalid_argument msg -> Printf.printf "Invalid_argument %S\n" msg);
+  (* the vec is owned by OCaml before the check of the status fails *)
+  Gc.full_major ();
+  let before = Mylib.vec_live () in
+  for _ = 1 to 3 do
+    match Mylib.vec_status (-1) with
+    | _ -> print_endline "no error"
+    | exception Failure msg -> Printf.printf "Failure %S\n" msg
+  done;
+  (match Mylib.vec_status 0 with
+  | _, Mylib.Empty -> print_endline "empty"
+  | _, Mylib.Ok -> print_endline "ok");
+  Gc.full_major ();
+  Printf.printf "live after status %i\n" (Mylib.vec_live () - before);
   let t = Thread.create (fun () -> Mylib.slow_sum 1000) () in
   Printf.printf "sum %i\n" (Mylib.slow_sum 1000);
   Thread.join t

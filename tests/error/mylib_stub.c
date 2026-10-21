@@ -144,7 +144,7 @@ extern intptr_t camlid_stub_vec_length(value p){
   intptr_t ures;
   size_t res;
   vec* p1 = ((vec*) { 0 });
-  if(*((vec* *) Data_custom_val(p)) == NULL) caml_invalid_argument("vec: used after vec_dispose");
+  if((*((vec* *) Data_custom_val(p)) == NULL)) caml_invalid_argument("vec: used after vec_dispose");
   *&p1 = *((vec* *) Data_custom_val(p));
   res = vec_length(p1);
   ures = (intptr_t)(res);
@@ -156,6 +156,42 @@ extern value camlid_stub_vec_length_byte(value p){
   ures = camlid_stub_vec_length(p);
   vres = Val_long(ures);
   return vres;
+}
+typedef enum status * camlid_ref2;
+static void camlid_c2ml1(value * v, enum status * c){
+  switch(*c){
+    case OK: *v = Val_long(0); break;
+    case EMPTY: *v = Val_long(1); break;
+    default: *v = Val_long(0);
+  }
+  }
+extern value camlid_stub_vec_status(intptr_t p){
+  CAMLparam0();
+  CAMLlocal3(ret, p_r, p_r1);
+  CAMLlocal1(err);
+  vec* p1 = ((vec*) { 0 });
+  intptr_t p2 = ((intptr_t) { 0 });
+  camlid_ref2 p3 = &(((struct { enum status a; }) { ((enum status) 0) }).a);
+  p2 = (p);
+  camlid_init(&p1);
+  vec_status(p1, p2, p3);
+  if(!(*p3 == OK || *p3 == EMPTY)){
+    err = caml_copy_string("unknown value of status");
+    camlid_c2ml(&p_r, &p1);
+    caml_failwith_value(err);
+  }
+  camlid_c2ml(&p_r, &p1);
+  camlid_c2ml1(&p_r1, &*p3);
+  ret = caml_alloc(2,0);
+  Store_field(ret, 0, p_r);
+  Store_field(ret, 1, p_r1);
+CAMLreturn(ret);
+}
+extern value camlid_stub_vec_status_byte(value p){
+  intptr_t p1;
+  p1 = Long_val(p);
+  return camlid_stub_vec_status(p1);
+  
 }
 extern intptr_t camlid_stub_vec_live_alloc(void){
   CAMLparam0();

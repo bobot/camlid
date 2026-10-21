@@ -104,6 +104,8 @@ let func ?noalloc ?release_lock ?error ?ml ?result ?ignored_result ?call_params
             rc;
             rfree = Option.map bind' rty.cty.free;
             rc2ml = Ty.pure;
+            rowned_by_ml = false;
+            rcheck = None;
           }
     | None, None -> None
   in
@@ -205,6 +207,7 @@ let string_as_FILE_ptr =
       };
     v;
     contract = Ty.copied ~ml2c:Ty.allocates ~c2ml:Ty.allocates ();
+    checks = Ty.no_checks;
   }
 
 let input_value ml = input (value ml)

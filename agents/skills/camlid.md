@@ -6,6 +6,7 @@ Status: 2026-10-21, commit f182722.
 
 | file | role |
 |---|---|
+| `lib/plan.ml`, `lib/plan_gen.ml` | the scheduler of the stub steps, proved in `proof/plan.mlw` and extracted (`make extract`); never edit `plan_gen.ml` |
 | `lib/expr.ml` | identifiers, variables, expressions (`{ expr : unit Fmt.t }`), definitions, and `final_print` |
 | `lib/ty.ml` | the records: `mlc` (a type template), `param` (an instantiated parameter), `result` |
 | `lib/expert.ml` | type constructors (strings, arrays, custom, abstract, value_type, parent/child, enum, algdata, ...), `param`, and stub generation (`code_c_fun`, `code_c_fun_bytecode`, `print_ml_fun`) |
@@ -46,7 +47,8 @@ outside closures.
 
 `Plan.schedule` works on an abstract view of the parameters (`Plan.param`)
 and decides the order of the steps, the GC roots, noalloc and the
-refusals. `Expert.code_c_fun_of_plan` only prints the plan. The order is: formals, `CAMLparam`/`CAMLlocal` (omitted when noalloc), C
+refusals. It is proved in Why3 (`proof/plan.mlw`): change it there, prove
+(`make prove`), then `make extract`. `Expert.code_c_fun_of_plan` only prints the plan. The order is: formals, `CAMLparam`/`CAMLlocal` (omitted when noalloc), C
 locals with `init_expr`, ml2c of the inputs, init of the others,
 `caml_enter_blocking_section`, call, leave, error check (message, move the
 outputs owned by OCaml, frees, raise), c2ml of the outputs, tuple, frees,
@@ -59,8 +61,12 @@ the native one. `print_ml_fun` writes the `external`, with `[@unboxed]`,
 1. Write the `mlc` in `expert.ml`, with an honest contract
    (`Ty.copied ~ml2c ~c2ml ()` or `Ty.owned_by_ml ...`). When unsure, use
    `Ty.unknown` for the effects, and `~ml_heap:true` if the C value can point
-   into an OCaml block. A conversion that calls `caml_failwith` raises; one
-   that allocates or uses `CAMLparam` allocates.
+   into an OCaml block. A conversion must not raise: refuse values with a
+   check (`Ty.checks`, a C condition on `v` for the input or `c` for the
+   output, which doesn't allocate). A conversion that allocates or uses
+   `CAMLparam` allocates. A type built from another one (array, option,
+   pointer...) must lift the checks of the inner type (`map_checks`,
+   `array_checks`, `algdata_checks`).
 2. Expose it in `expert.mli`, and in `helper.ml(i)` if users need it.
    Optional arguments go before labelled ones, and the order matches the
    other helpers (`?init ?clear ?hash ?compare ?mem ... ~ml ~c ()`).

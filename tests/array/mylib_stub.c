@@ -75,9 +75,12 @@ extern value camlid_stub_f_input(value array){
 typedef char * camlid_string_nt;
 struct camlid_array_s1 { camlid_string_nt* t; size_t len; };
 typedef struct camlid_array_s1 camlid_array1;
+static int camlid_check_ml(value v){
+  for(size_t cid_i=0; cid_i < Wosize_val(v); cid_i++)
+    if(!caml_string_is_c_safe(Field(v, cid_i))) return 1;
+  return 0;
+  }
 static void camlid_ml2c1(value * v, camlid_string_nt * c){
-  if (!caml_string_is_c_safe(*v))
-  caml_failwith("string contains null bytes");
   size_t len=caml_string_length(*v)+1;
   *c=malloc(len);
   memcpy(*c,String_val(*v),len);
@@ -102,6 +105,7 @@ extern intptr_t camlid_stub_f_strings(value array){
   intptr_t ures;
   size_t res;
   camlid_array1 array1 = ((camlid_array1) { 0 });
+  if(camlid_check_ml(array)) caml_failwith("string contains null bytes");
   camlid_ml2c2(&array, &array1);
   res = f_strings(array1.t, array1.len);
   ures = (intptr_t)(res);

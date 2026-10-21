@@ -1,0 +1,16 @@
+module BuiltIn
+  syntax type int "int"
+  syntax literal int "%1"
+end
+module int.Int
+  syntax val (<)   "(%1 < %2)"
+  syntax val (<=)  "(%1 <= %2)"
+  syntax val (>)   "(%1 > %2)"
+  syntax val (>=)  "(%1 >= %2)"
+  syntax val (=)   "(%1 = %2)"
+  syntax val (+)   "(%1 + %2)"
+  syntax val (-)   "(%1 - %2)"
+end
+module list.Length
+  syntax val length "List.length %1"
+end

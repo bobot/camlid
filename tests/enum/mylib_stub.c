@@ -24,24 +24,34 @@ static void camlid_c2ml(value * v, enum color * c){
     case RED: *v = Val_long(0); break;
     case GREEN: *v = Val_long(1); break;
     case BLUE: *v = Val_long(2); break;
-    default: caml_failwith("unknown value of color");
+    default: *v = Val_long(0);
   }
   }
 extern value camlid_stub_next_color(value p){
   CAMLparam1(p);
   CAMLlocal1(vres);
+  CAMLlocal1(err);
   enum color res;
   enum color p1 = ((enum color) 0);
   camlid_ml2c(&p, &p1);
   res = next_color(p1);
+  if(!(res == RED || res == GREEN || res == BLUE)){
+    err = caml_copy_string("unknown value of color");
+    caml_failwith_value(err);
+  }
   camlid_c2ml(&vres, &res);
   CAMLreturn(vres);
 }
 extern value camlid_stub_bad_color(void){
   CAMLparam0();
   CAMLlocal1(vres);
+  CAMLlocal1(err);
   enum color res;
   res = bad_color();
+  if(!(res == RED || res == GREEN || res == BLUE)){
+    err = caml_copy_string("unknown value of color");
+    caml_failwith_value(err);
+  }
   camlid_c2ml(&vres, &res);
   CAMLreturn(vres);
 }
@@ -79,8 +89,6 @@ extern value camlid_stub_flags_add_exec(value p){
 }
 typedef char * camlid_string_nt;
 static void camlid_ml2c2(value * v, camlid_string_nt * c){
-  if (!caml_string_is_c_safe(*v))
-  caml_failwith("string contains null bytes");
   size_t len=caml_string_length(*v)+1;
   *c=malloc(len);
   memcpy(*c,String_val(*v),len);
@@ -105,6 +113,7 @@ extern value camlid_stub_non_empty(value p){
   CAMLlocal1(vres);
   camlid_string_nt res;
   camlid_string_nt p1 = ((camlid_string_nt) { 0 });
+  if((Is_block(p) && (!caml_string_is_c_safe(Field(p, 0))))) caml_failwith("string contains null bytes");
   if(Is_long(p)) p1 = NULL; else { camlid_ml2c_field(&p, &p1); }
   res = non_empty(p1);
   camlid_c2ml2(&vres, &res);

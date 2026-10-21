@@ -52,10 +52,10 @@ val string_fixed_length : ?init:bool -> ?owned:bool -> Expr.var -> Ty.mlc
 
 (** {2 Values owned by OCaml}
 
-    The C value is stored in an OCaml block ([contract.owned_by_ml] is [true]). [icty] is
-    the C type stored in the block and [cty] the C type given to the stubbed
-    functions (usually the same). The record arguments are created with the
-    [mk_*] functions below. *)
+    The C value is stored in an OCaml block ([contract.owned_by_ml] is [true]).
+    [icty] is the C type stored in the block and [cty] the C type given to the
+    stubbed functions (usually the same). The record arguments are created with
+    the [mk_*] functions below. *)
 
 type init = { init : Expr.expr; c : Expr.var }
 (** Initialize [c : cty *], used when the type is not an input *)

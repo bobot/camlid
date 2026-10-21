@@ -1,8 +1,9 @@
 # OCaml FFI rules: review checklist for generated stubs
 
 Use it when reviewing a `tests/*/mylib_stub.c` or a new template. Each rule
-says where camlid enforces it today. The proposal in
-`agents/design/safe-stubs.md` wants to prove them (P1 to P6).
+says where camlid enforces it. P1 to P6 are proved for the order of the
+steps of the stub (`proof/plan.mlw`); the C templates of the types are
+trusted, so check them against these rules.
 
 ## GC roots (P3)
 
@@ -37,15 +38,17 @@ says where camlid enforces it today. The proposal in
 - A custom block finalizer must not allocate, raise, or call OCaml.
 - An OCaml value never points to memory owned by C. Copy it
   (`copy_of_ptr`), or keep the owner alive (`keep_alive`, `parent`/`child`).
-- After `dispose`, the pointer is NULL: the finalizer skips it, and ml2c
-  raises `Invalid_argument`.
+- After `dispose`, the pointer is NULL: the finalizer skips it, and the
+  check of the input raises `Invalid_argument`.
 
 ## Exceptions (P6)
 
 - `caml_failwith`/`caml_raise*` don't return: everything the stub owns must
   be freed before. Camlid: the error path frees and moves before raising.
-- Known hole (2026-10-21): a raising ml2c (`string_nt` with a null byte, a
-  disposed value) leaks the copies of the inputs converted before it.
+- Conversions don't raise: refusals are checks (`Ty.checks`), run before
+  any conversion for the inputs, after the call with the cleanup for the
+  outputs. Fixed on 2026-10-21: a raising ml2c leaked the copies of the
+  inputs converted before it.
 - An exception raised by name needs `Callback.register_exception`
   (`Helper.exception_` does it). The stub checks for NULL.
 

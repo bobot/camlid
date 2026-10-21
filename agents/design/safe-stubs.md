@@ -1,7 +1,11 @@
 # Proposal: a checkable stub IR, a cleaner C API, and Why3 proofs
 
-Status: proposal, 2026-10-21, on top of f182722 (branch `documentation`).
-Nothing here is implemented yet.
+Status (2026-10-21): points 1 to 3 are done. `Ty.contract` (ce37613),
+the plan IR (9079aea), and `schedule` proved in Why3 (`proof/plan.mlw`,
+extracted to `lib/plan_gen.ml`), with checks instead of raising
+conversions. Points 4 (C API without `*%a`) and 5 (`Unchecked`) are not
+started. The model and its limits are described in the header of
+`proof/plan.mlw`.
 
 ## Goal
 

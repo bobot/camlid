@@ -5,6 +5,8 @@ let vec =
   value_type ~dispose:"vec_dispose" ~init:"vec_init" ~clear:"vec_clear"
     ~copy:"vec_set" ~ml:"vec" ~c:"vec" ()
 
+let status = enum ~c:"enum status" "status" [ ("Ok", "OK"); ("Empty", "EMPTY") ]
+
 let my_error = exception_ ~registered:"Mylib.My_error" "My_error"
 
 let make =
@@ -36,5 +38,6 @@ let () =
       func "slow_sum" ~release_lock:true [ input int ] ~result:int;
       func "vec_live" [] ~result:int;
       func "vec_length" [ input vec.t ] ~result:size_t;
+      func "vec_status" [ output vec.t; input int; output (ptr_ref status) ];
       func ~ml:"vec_live_alloc" "vec_live" ~noalloc:false [] ~result:int;
     ]

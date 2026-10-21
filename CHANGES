@@ -29,7 +29,14 @@
       owned_by_ml, ml_heap, and the effects (alloc, raises) of ml2c and
       c2ml; Ty.copied and Ty.owned_by_ml build it
     - the order of the steps of a stub is decided by Plan.schedule, and
-      Expert.code_c_fun only prints it
+      Expert.code_c_fun only prints it; Plan.schedule is written and proved
+      in Why3 (proof/plan.mlw: no leak, no double free, GC roots, noalloc,
+      runtime lock, no exception while the stub owns memory) and extracted
+    - Ty.checks: conversions don't raise anymore, a type that refuses
+      values has a C check, run before any conversion for the inputs, or
+      after the call with a cleanup for the outputs (string_nt, enum,
+      dispose, and the arrays and algdata containing them). Fixes a leak
+      when a conversion raised after another input was copied
     - ?mem for custom types and value_type: the memory outside the OCaml
       heap is given to the GC (caml_alloc_custom_mem); the malloc of
       custom_ptr is always counted
