@@ -9,6 +9,11 @@
 
 include Plan_gen
 
+(** The positions are OCaml integers ([OInt.t] in the proof) *)
+type nonrec step = int step
+
+type nonrec plan = int plan
+
 let pure = { alloc = false; raising = false }
 
 let message ~name = function
@@ -40,6 +45,7 @@ let message ~name = function
         "Camlid: the runtime lock can't be released in %s, an argument of the \
          C function points into the OCaml heap"
         name
+  | Too_many_params -> Printf.sprintf "Camlid: %s has too many parameters" name
   | Not_noalloc ->
       Printf.sprintf
         "Camlid: %s can't be noalloc, a conversion allocates or the function \

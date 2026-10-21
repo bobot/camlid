@@ -36,42 +36,42 @@ type options = {
   error: bool;
   }
 
-type result_kind =
+type 'i result_kind =
   | Unit_result
-  | One_value of (int)
-  | One_unboxed of (int)
-  | Tuple of ((int) list)
+  | One_value of 'i
+  | One_unboxed of 'i
+  | Tuple of ('i list)
 
-type gc_roots = {
-  inputs: (int) list;
-  outputs: (int) list;
+type 'i gc_roots = {
+  inputs: 'i list;
+  outputs: 'i list;
   ret: bool;
   err: bool;
-  c_values: (int) list;
+  c_values: 'i list;
   }
 
-type cleanup = {
-  moves: (int) list;
-  frees: (int) list;
+type 'i cleanup = {
+  moves: 'i list;
+  frees: 'i list;
   }
 
-type step =
-  | Check_in of ((int) list)
-  | Ml2c of ((int) list)
-  | Init of ((int) list)
-  | Call of ((int) list) * (bool)
-  | Check_error of cleanup
-  | Check_out of ((int) list) * cleanup
-  | C2ml of ((int) list)
-  | Alloc_tuple of ((int) list)
-  | Free of ((int) list)
+type 'i step =
+  | Check_in of ('i list)
+  | Ml2c of ('i list)
+  | Init of ('i list)
+  | Call of ('i list) * (bool)
+  | Check_error of ('i cleanup)
+  | Check_out of ('i list) * ('i cleanup)
+  | C2ml of ('i list)
+  | Alloc_tuple of ('i list)
+  | Free of ('i list)
   | Return
 
-type plan = {
+type 'i plan = {
   noalloc: bool;
-  result: result_kind;
-  roots: gc_roots;
-  steps: step list;
+  result: 'i result_kind;
+  roots: 'i gc_roots;
+  steps: ('i step) list;
   }
 
 type sched_error =
@@ -82,9 +82,10 @@ type sched_error =
   | Raising_output
   | Lock_ml_heap
   | Not_noalloc
+  | Too_many_params
 
 type schedule_result =
-  | Ok of plan
+  | Ok of ((int) plan)
   | Error of sched_error
 
 type sel =
@@ -156,7 +157,12 @@ let rec pids (x: sel) (ps: param list) (n: int) : (int) list =
   match ps with
   | [] -> [] 
   | q :: r ->
-    (let l = pids x r ((n + 1)) in if selected x q then n :: l else l)
+    (let l = pids x r ((n + (1 ))) in if selected x q then n :: l else l)
+
+let rec fits (n: int) (ps: param list) : bool =
+  match ps with
+  | [] -> true
+  | _ :: r -> ((n < (max_int ))) && fits ((n + (1 ))) r
 
 let rec exists_sel (x: sel) (ps: param list) : bool =
   match ps with
@@ -166,12 +172,21 @@ let rec exists_sel (x: sel) (ps: param list) : bool =
 let rec get (ps: param list) (i: int) : param =
   match ps with
   | [] -> assert false (* absurd *)
-  | q :: r -> if ((i = 0)) then q else get r ((i - 1))
+  | q :: r -> if ((i = (0 ))) then q else get r ((i - (1 )))
 
-let rec valid_call (n: int) (l: (int) list) : bool =
+let rec lt_length (i: int) (ps: param list) : bool =
+  if ((i < (0 )))
+  then false
+  else
+    begin match ps with
+    | [] -> false
+    | _ :: r -> ((i = (0 ))) || lt_length ((i - (1 ))) r
+    end
+
+let rec valid_call (ps: param list) (l: (int) list) : bool =
   match l with
   | [] -> true
-  | i :: r -> ((0 <= i)) && ((i < n)) && valid_call n r
+  | i :: r -> lt_length i ps && valid_call ps r
 
 let rec heap_in_call (ps: param list) (l: (int) list) : bool =
   match l with
@@ -181,120 +196,124 @@ let rec heap_in_call (ps: param list) (l: (int) list) : bool =
 
 let schedule (o: options) (ps: param list) (call: (int) list) :
   schedule_result =
-  if not (valid_call (List.length ps) call)
-  then Error Bad_call
+  if not (fits (0 ) ps)
+  then Error Too_many_params
   else
     begin
-      if exists_sel S_input_output_owned ps
-      then Error Input_output_owned
+      if not (valid_call ps call)
+      then Error Bad_call
       else
         begin
-          if exists_sel S_owned_unused ps
-          then Error Owned_unused
+          if exists_sel S_input_output_owned ps
+          then Error Input_output_owned
           else
             begin
-              if exists_sel S_raising_owning_input ps
-              then Error Raising_owning_input
+              if exists_sel S_owned_unused ps
+              then Error Owned_unused
               else
                 begin
-                  if exists_sel S_raising_output ps
-                  then Error Raising_output
+                  if exists_sel S_raising_owning_input ps
+                  then Error Raising_owning_input
                   else
                     begin
-                      if o.release_lock && heap_in_call ps call
-                      then Error Lock_ml_heap
+                      if exists_sel S_raising_output ps
+                      then Error Raising_output
                       else
                         begin
-                          let outputs1 = pids S_output ps 0 in
-                          let can_noalloc =
-                            not o.release_lock && not o.error && not 
-                                                                 (exists_sel S_not_noalloc
-                                                                  ps) && 
-                                                                 begin
-                                                                   match
-                                                                   outputs1
-                                                                 with
-                                                                 | [] -> true
-                                                                 | i :: ([]) ->
-                                                                   (let q =
-                                                                    get ps i in
-                                                                    is_pure 
-                                                                    q.c2ml || 
-                                                                    unboxable_output q)
-                                                                 | _ -> false
-                                                                 end in
-                          let noalloc1 =
-                            match o.want_noalloc with
-                            | None -> can_noalloc
-                            | Some b -> b in
-                          if noalloc1 && not can_noalloc
-                          then Error Not_noalloc
+                          if o.release_lock && heap_in_call ps call
+                          then Error Lock_ml_heap
                           else
                             begin
-                              let result1 =
-                                match outputs1 with
-                                | [] -> Unit_result
-                                | i :: ([]) ->
-                                  if unboxable_output (get ps i)
-                                  then One_unboxed i
-                                  else One_value i
-                                | l -> Tuple l in
-                              let out_checks = pids S_out_check ps 0 in
-                              let roots1 =
-                                if noalloc1
-                                then
-                                  { inputs = [] ; outputs = [] ; ret = false;
-                                    err = false; c_values = []  }
-                                else
-                                  { inputs = pids S_boxed_input ps 0;
-                                    outputs =
-                                    begin match result1 with
-                                    | (Unit_result | One_unboxed _) -> [] 
-                                    | One_value i -> i :: [] 
-                                    | Tuple l -> l
-                                    end; ret =
-                                    begin match result1 with
-                                    | Tuple _ -> true
-                                    | _ -> false
-                                    end; err =
-                                    o.error || begin match out_checks with
-                                    | [] -> false
-                                    | _ -> true
-                                    end; c_values =
-                                    pids S_value_locals ps 0 } in
-                              let cin = pids S_in_check ps 0 in
-                              let ain = pids S_pre_input ps 0 in
-                              let b1in = pids S_checked_input ps 0 in
-                              let b2in = pids S_owning_input ps 0 in
-                              let ini = pids S_init ps 0 in
-                              let frees1 = pids S_free ps 0 in
-                              let cerr =
-                                { moves = pids S_move_error ps 0; frees =
-                                  frees1 } in
-                              let cout =
-                                { moves = pids S_move_out ps 0; frees =
-                                  frees1 } in
-                              let t_free = Free frees1 :: Return :: []  in
-                              let t_tuple =
-                                match result1 with
-                                | Tuple l -> Alloc_tuple l :: t_free
-                                | _ -> t_free in
-                              let t_c2ml = C2ml outputs1 :: t_tuple in
-                              let t_out =
-                                Check_out (out_checks, cout) :: t_c2ml in
-                              let t_err =
-                                if o.error
-                                then Check_error cerr :: t_out
-                                else t_out in
-                              let t_call =
-                                Call (call, o.release_lock) :: t_err in
-                              let t_init = Init ini :: t_call in
-                              let t_b2 = Ml2c b2in :: t_init in
-                              let t_b1 = Ml2c b1in :: t_b2 in
-                              let t_chk = Check_in cin :: t_b1 in
-                              let steps1 = Ml2c ain :: t_chk in
-                              let p =
-                                { noalloc = noalloc1; result = result1;
-                                  roots = roots1; steps = steps1 } in
-                              Ok p end end end end end end end
+                              let outputs1 = pids S_output ps (0 ) in
+                              let cna =
+                                not o.release_lock && not o.error && 
+                                                      not (exists_sel S_not_noalloc
+                                                           ps) && begin
+                                                                    match
+                                                                    outputs1
+                                                                  with
+                                                      | [] -> true
+                                                      | i :: ([]) ->
+                                                        (let q = get ps i in
+                                                         is_pure q.c2ml || 
+                                                         unboxable_output q)
+                                                      | _ -> false
+                                                      end in
+                              let noalloc1 =
+                                match o.want_noalloc with
+                                | None -> cna
+                                | Some b -> b in
+                              if noalloc1 && not cna
+                              then Error Not_noalloc
+                              else
+                                begin
+                                  let result1 =
+                                    match outputs1 with
+                                    | [] -> Unit_result
+                                    | i :: ([]) ->
+                                      if unboxable_output (get ps i)
+                                      then One_unboxed i
+                                      else One_value i
+                                    | l -> Tuple l in
+                                  let out_checks = pids S_out_check ps (0 ) in
+                                  let roots1 =
+                                    if noalloc1
+                                    then
+                                      { inputs = [] ; outputs = [] ; ret =
+                                        false; err = false; c_values = 
+                                        []  }
+                                    else
+                                      { inputs = pids S_boxed_input ps (0 );
+                                        outputs =
+                                        begin match result1 with
+                                        | (Unit_result | One_unboxed _) ->
+                                          [] 
+                                        | One_value i -> i :: [] 
+                                        | Tuple l -> l
+                                        end; ret =
+                                        begin match result1 with
+                                        | Tuple _ -> true
+                                        | _ -> false
+                                        end; err =
+                                        o.error || begin match out_checks
+                                                   with
+                                        | [] -> false
+                                        | _ -> true
+                                        end; c_values =
+                                        pids S_value_locals ps (0 ) } in
+                                  let cin = pids S_in_check ps (0 ) in
+                                  let ain = pids S_pre_input ps (0 ) in
+                                  let b1in = pids S_checked_input ps (0 ) in
+                                  let b2in = pids S_owning_input ps (0 ) in
+                                  let ini = pids S_init ps (0 ) in
+                                  let frees1 = pids S_free ps (0 ) in
+                                  let cerr =
+                                    { moves = pids S_move_error ps (0 );
+                                      frees = frees1 } in
+                                  let cout =
+                                    { moves = pids S_move_out ps (0 );
+                                      frees = frees1 } in
+                                  let t_free = Free frees1 :: Return :: []  in
+                                  let t_tuple =
+                                    match result1 with
+                                    | Tuple l -> Alloc_tuple l :: t_free
+                                    | _ -> t_free in
+                                  let t_c2ml = C2ml outputs1 :: t_tuple in
+                                  let t_out =
+                                    Check_out (out_checks, cout) :: t_c2ml in
+                                  let t_err =
+                                    if o.error
+                                    then Check_error cerr :: t_out
+                                    else t_out in
+                                  let t_call =
+                                    Call (call, o.release_lock) :: t_err in
+                                  let t_init = Init ini :: t_call in
+                                  let t_b2 = Ml2c b2in :: t_init in
+                                  let t_b1 = Ml2c b1in :: t_b2 in
+                                  let t_chk = Check_in cin :: t_b1 in
+                                  let steps1 = Ml2c ain :: t_chk in
+                                  let p =
+                                    { noalloc = noalloc1; result = result1;
+                                      roots = roots1; steps = steps1 } in
+                                  Ok p end end end end end end end end
 

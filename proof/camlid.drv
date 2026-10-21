@@ -1,16 +1,15 @@
-module BuiltIn
-  syntax type int "int"
-  syntax literal int "%1"
-end
-module int.Int
-  syntax val (<)   "(%1 < %2)"
-  syntax val (<=)  "(%1 <= %2)"
-  syntax val (>)   "(%1 > %2)"
-  syntax val (>=)  "(%1 >= %2)"
-  syntax val (=)   "(%1 = %2)"
-  syntax val (+)   "(%1 + %2)"
-  syntax val (-)   "(%1 - %2)"
-end
-module list.Length
-  syntax val length "List.length %1"
+(* Extraction of proof/plan.mlw: OInt.t, at least 31 bits, is the OCaml int *)
+
+module plan.OInt
+  syntax type t "int"
+  syntax val zero "0"
+  syntax val one "1"
+  syntax val max_t "max_int"
+  syntax val (+) "(%1 + %2)"
+  syntax val (-) "(%1 - %2)"
+  syntax val (=) "(%1 = %2)"
+  syntax val (<) "(%1 < %2)"
+  syntax val (<=) "(%1 <= %2)"
+  syntax val (>) "(%1 > %2)"
+  syntax val (>=) "(%1 >= %2)"
 end

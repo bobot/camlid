@@ -32,13 +32,35 @@ Trusted, not proved:
 - the C function produces nothing when `~error` says it failed, and
   doesn't call the OCaml runtime (unless `~noalloc:false`);
 - the printer translates each step faithfully (golden tests in `tests/`);
-- the extraction maps `int` to the OCaml `int` (`camlid.drv`): the
-  integers are positions in the list of parameters;
+- the extraction maps `OInt.t` to the OCaml `int` (`camlid.drv`): the
+  proof only assumes 31 bits, true on every platform. The model uses
+  mathematical integers, the program `OInt.t` (`abs_plan` relates them);
 - the bytecode stub and the OCaml `external` are out of the model. *)
+
+(** ## OCaml integers
+
+At least 31 bits, as OCaml `int` on every platform: a proof can't assume
+more. Extracted to the OCaml `int`. *)
+
+module OInt
+
+  use int.Int
+
+  clone export mach.int.Bounded_int with axiom .
+
+  axiom min_31 : min <= - 0x4000_0000
+  axiom max_31 : 0x3fff_ffff <= max
+
+  val constant zero : t ensures { to_int result = 0 }
+  val constant one : t ensures { to_int result = 1 }
+  val constant max_t : t ensures { to_int result = max }
+
+end
 
 module Types
 
   use int.Int
+  use OInt
   use list.List
   use list.Mem
   use list.Length
@@ -83,42 +105,86 @@ module Types
 
   (** ## Plans *)
 
-  type result_kind =
-    | Unit_result
-    | One_value int  (** a boxed result *)
-    | One_unboxed int  (** an unboxed result, returned as a C value *)
-    | Tuple (list int)  (** the outputs, stored in a tuple *)
+  (** The plans are parameterized by the type of the positions: `t` in
+      the program, `int` in the model *)
 
-  type gc_roots = {
-    inputs : list int;  (** boxed inputs, `CAMLparam` *)
-    outputs : list int;  (** boxed outputs, `CAMLlocal` *)
+  type result_kind 'i =
+    | Unit_result
+    | One_value 'i  (** a boxed result *)
+    | One_unboxed 'i  (** an unboxed result, returned as a C value *)
+    | Tuple (list 'i)  (** the outputs, stored in a tuple *)
+
+  type gc_roots 'i = {
+    inputs : list 'i;  (** boxed inputs, `CAMLparam` *)
+    outputs : list 'i;  (** boxed outputs, `CAMLlocal` *)
     ret : bool;  (** the tuple *)
     err : bool;  (** the message of the exception *)
-    c_values : list int;  (** parameters with C locals of type `value` *)
+    c_values : list 'i;  (** parameters with C locals of type `value` *)
   }
 
   (** What to do before raising: move the outputs owned by OCaml into
       OCaml values (their finalizers will clear them), then free. *)
-  type cleanup = { moves : list int; frees : list int }
+  type cleanup 'i = { moves : list 'i; frees : list 'i }
 
-  type step =
-    | Check_in (list int)  (** check the inputs, raise on failure *)
-    | Ml2c (list int)
-    | Init (list int)
-    | Call (list int) bool  (** the arguments; releases the lock *)
-    | Check_error cleanup  (** the C function failed: cleanup, raise *)
-    | Check_out (list int) cleanup  (** check the outputs *)
-    | C2ml (list int)
-    | Alloc_tuple (list int)
-    | Free (list int)
+  type step 'i =
+    | Check_in (list 'i)  (** check the inputs, raise on failure *)
+    | Ml2c (list 'i)
+    | Init (list 'i)
+    | Call (list 'i) bool  (** the arguments; releases the lock *)
+    | Check_error (cleanup 'i)  (** the C function failed: cleanup, raise *)
+    | Check_out (list 'i) (cleanup 'i)  (** check the outputs *)
+    | C2ml (list 'i)
+    | Alloc_tuple (list 'i)
+    | Free (list 'i)
     | Return
 
-  type plan = {
+  type plan 'i = {
     noalloc : bool;  (** no roots, `[@@noalloc]` *)
-    result : result_kind;
-    roots : gc_roots;
-    steps : list step;
+    result : result_kind 'i;
+    roots : gc_roots 'i;
+    steps : list (step 'i);
   }
+
+  (** The plan of the model *)
+
+  function ints (l: list t) : list int =
+    match l with Nil -> Nil | Cons x r -> Cons (to_int x) (ints r) end
+
+  function abs_result (r: result_kind t) : result_kind int =
+    match r with
+    | Unit_result -> Unit_result
+    | One_value i -> One_value (to_int i)
+    | One_unboxed i -> One_unboxed (to_int i)
+    | Tuple l -> Tuple (ints l)
+    end
+
+  function abs_roots (r: gc_roots t) : gc_roots int = {
+    inputs = ints r.inputs; outputs = ints r.outputs; ret = r.ret;
+    err = r.err; c_values = ints r.c_values }
+
+  function abs_cleanup (c: cleanup t) : cleanup int =
+    { moves = ints c.moves; frees = ints c.frees }
+
+  function abs_step (x: step t) : step int =
+    match x with
+    | Check_in l -> Check_in (ints l)
+    | Ml2c l -> Ml2c (ints l)
+    | Init l -> Init (ints l)
+    | Call l b -> Call (ints l) b
+    | Check_error c -> Check_error (abs_cleanup c)
+    | Check_out l c -> Check_out (ints l) (abs_cleanup c)
+    | C2ml l -> C2ml (ints l)
+    | Alloc_tuple l -> Alloc_tuple (ints l)
+    | Free l -> Free (ints l)
+    | Return -> Return
+    end
+
+  function abs_steps (l: list (step t)) : list (step int) =
+    match l with Nil -> Nil | Cons x r -> Cons (abs_step x) (abs_steps r) end
+
+  function abs_plan (p: plan t) : plan int = {
+    noalloc = p.noalloc; result = abs_result p.result;
+    roots = abs_roots p.roots; steps = abs_steps p.steps }
 
 
   type sched_error =
@@ -134,8 +200,9 @@ module Types
         (** the lock can't be released, an argument points into the OCaml
             heap *)
     | Not_noalloc  (** noalloc was requested but is not possible *)
+    | Too_many_params  (** more parameters than `max` *)
 
-  type schedule_result = Ok plan | Error sched_error
+  type schedule_result = Ok (plan t) | Error sched_error
 
   (** Selection of the parameters *)
   type sel =
@@ -201,11 +268,12 @@ module Lists
   use list.NthNoOpt
   use list.Distinct
   use option.Option
+  use OInt
   use Types
 
   (** The positions `i` of the parameters selected by `x` (shifted by
-      `n`) *)
-  let rec function pids (x: sel) (ps: list param) (n: int) : list int
+      `n`), in the model *)
+  let rec ghost function ipids (x: sel) (ps: list param) (n: int) : list int
     variant { ps }
     ensures { forall i. mem i result <->
                 n <= i < n + length ps /\ selected x (nth (i - n) ps) }
@@ -214,10 +282,32 @@ module Lists
   = match ps with
     | Nil -> Nil
     | Cons q r ->
-      let l = pids x r (n + 1) in
+      let l = ipids x r (n + 1) in
       assert { forall i. n < i -> nth (i - n) ps = nth (i - (n + 1)) r };
       assert { nth (n - n) ps = q };
       if selected x q then Cons n l else l
+    end
+
+  (** The same in the program *)
+  let rec pids (x: sel) (ps: list param) (n: t) : list t
+    requires { 0 <= n /\ n + length ps <= max }
+    variant { ps }
+    ensures { ints result = ipids x ps n }
+  = match ps with
+    | Nil -> Nil
+    | Cons q r ->
+      let l = pids x r (n + one) in
+      if selected x q then Cons n l else l
+    end
+
+  (** The positions fit in `t` *)
+  let rec fits (n: t) (ps: list param) : bool
+    requires { 0 <= n }
+    variant { ps }
+    ensures { result <-> n + length ps <= max }
+  = match ps with
+    | Nil -> true
+    | Cons _ r -> n < max_t && fits (n + one) r
     end
 
   let rec exists_sel (x: sel) (ps: list param) : bool
@@ -233,27 +323,36 @@ module Lists
       selected x q || b
     end
 
-  let rec function get (ps: list param) (i: int) : param
+  let rec get (ps: list param) (i: t) : param
     requires { 0 <= i < length ps }
     variant { ps }
     ensures { result = nth i ps }
   = match ps with
     | Nil -> absurd
-    | Cons q r -> if i = 0 then q else get r (i - 1)
+    | Cons q r -> if i = zero then q else get r (i - one)
     end
 
-  let rec valid_call (n: int) (l: list int) : bool
+  let rec lt_length (i: t) (ps: list param) : bool
+    variant { ps }
+    ensures { result <-> 0 <= i < length ps }
+  = if i < zero then false
+    else match ps with
+    | Nil -> false
+    | Cons _ r -> i = zero || lt_length (i - one) r
+    end
+
+  let rec valid_call (ps: list param) (l: list t) : bool
     variant { l }
-    ensures { result <-> forall i. mem i l -> 0 <= i < n }
+    ensures { result <-> forall i. mem i (ints l) -> 0 <= i < length ps }
   = match l with
     | Nil -> true
-    | Cons i r -> 0 <= i && i < n && valid_call n r
+    | Cons i r -> lt_length i ps && valid_call ps r
     end
 
-  let rec heap_in_call (ps: list param) (l: list int) : bool
-    requires { valid_idx ps l }
+  let rec heap_in_call (ps: list param) (l: list t) : bool
+    requires { valid_idx ps (ints l) }
     variant { l }
-    ensures { result <-> exists i. mem i l /\
+    ensures { result <-> exists i. mem i (ints l) /\
                 ((nth i ps).ml_heap \/ (nth i ps).value_locals) }
   = match l with
     | Nil -> false
@@ -313,7 +412,7 @@ module Model
   }
 
   (** After an allocation, only the registered values are valid *)
-  function gc (p: plan) (s: state) : state = {
+  function gc (p: plan int) (s: state) : state = {
     s with
     vin = (fun i -> s.vin i && mem i p.roots.inputs);
     vout = (fun i -> s.vout i && mem i p.roots.outputs);
@@ -334,11 +433,11 @@ module Model
       is returned as a C value *)
   constant pure_eff : effects = { alloc = false; raising = false }
 
-  function c2ml_eff (ps: list param) (p: plan) (i: int) : effects =
+  function c2ml_eff (ps: list param) (p: plan int) (i: int) : effects =
     if p.result = One_unboxed i then pure_eff
     else (prm ps i).c2ml
 
-  predicate any_alloc_out (ps: list param) (p: plan) (l: list int) =
+  predicate any_alloc_out (ps: list param) (p: plan int) (l: list int) =
     exists i. mem i l /\ (c2ml_eff ps p i).alloc
 
   (** Produced by the C function: not an input, no constructor *)
@@ -353,7 +452,7 @@ module Model
 
   (** The cleanup before raising is safe in state `s`, where the message
       has been allocated *)
-  predicate cleanup_ok (ps: list param) (p: plan) (s: state) (c: cleanup) =
+  predicate cleanup_ok (ps: list param) (p: plan int) (s: state) (c: cleanup int) =
     valid_idx ps c.moves /\ valid_idx ps c.frees /\
     distinct c.moves /\ distinct c.frees /\
     p.roots.err /\
@@ -365,7 +464,7 @@ module Model
     (forall i. 0 <= i < length ps -> s.st i = Owned ->
        mem i c.frees \/ (mem i c.moves /\ not (prm ps i).free))
 
-  predicate result_valid (p: plan) (s: state) =
+  predicate result_valid (p: plan int) (s: state) =
     match p.result with
     | Unit_result -> true
     | One_value i | One_unboxed i -> s.vout i
@@ -378,7 +477,7 @@ module Model
 
   (** The precondition of a step *)
   predicate ok_step (ps: list param) (o: options) (call: list int)
-      (p: plan) (s: state) (x: step) =
+      (p: plan int) (s: state) (x: step int) =
     match x with
     | Check_in l ->
       s.lock /\ valid_idx ps l /\
@@ -449,7 +548,7 @@ module Model
     end
 
   (** The state after a step that didn't raise *)
-  function next (ps: list param) (p: plan) (s: state) (x: step) : state =
+  function next (ps: list param) (p: plan int) (s: state) (x: step int) : state =
     match x with
     | Check_in l | Check_out l _ ->
       { s with chk = (fun i -> s.chk i || mem i l) }
@@ -481,7 +580,7 @@ module Model
     | Free l -> { s with st = (fun i -> if mem i l then Freed else s.st i) }
     end
 
-  predicate step_noalloc (ps: list param) (p: plan) (x: step) =
+  predicate step_noalloc (ps: list param) (p: plan int) (x: step int) =
     match x with
     | Check_in l | Check_out l _ -> l = Nil
     | Ml2c l -> forall i. mem i l -> is_pure (prm ps i).ml2c
@@ -492,8 +591,8 @@ module Model
     end
 
   (** The steps run safely from state `s` and end with `Return` *)
-  predicate run (ps: list param) (o: options) (call: list int) (p: plan)
-      (s: state) (l: list step) =
+  predicate run (ps: list param) (o: options) (call: list int) (p: plan int)
+      (s: state) (l: list (step int)) =
     match l with
     | Nil -> false
     | Cons x r ->
@@ -501,10 +600,10 @@ module Model
       (if x = Return then r = Nil else run ps o call p (next ps p s x) r)
     end
 
-  constant no_roots : gc_roots =
+  constant no_roots : gc_roots int =
     { inputs = Nil; outputs = Nil; ret = false; err = false; c_values = Nil }
 
-  predicate safe (ps: list param) (o: options) (call: list int) (p: plan) =
+  predicate safe (ps: list param) (o: options) (call: list int) (p: plan int) =
     (p.noalloc -> p.roots = no_roots) /\
     (o.want_noalloc = Some true -> p.noalloc) /\
     (o.want_noalloc = Some false -> not p.noalloc) /\
@@ -533,23 +632,23 @@ module Proof
   predicate no_sel (x: sel) (ps: list param) =
     forall i. 0 <= i < length ps -> not selected x (nth i ps)
 
-  function out_roots (r: result_kind) : list int =
+  function out_roots (r: result_kind int) : list int =
     match r with
     | Unit_result | One_unboxed _ -> Nil
     | One_value i -> Cons i Nil
     | Tuple l -> l
     end
 
-  function std_roots (ps: list param) (o: options) (r: result_kind) : gc_roots = {
-    inputs = pids S_boxed_input ps 0;
+  function std_roots (ps: list param) (o: options) (r: result_kind int) : gc_roots int = {
+    inputs = ipids S_boxed_input ps 0;
     outputs = out_roots r;
     ret = (match r with Tuple _ -> true | _ -> false end);
-    err = (o.error || match pids S_out_check ps 0 with Nil -> false | _ -> true end);
-    c_values = pids S_value_locals ps 0;
+    err = (o.error || match ipids S_out_check ps 0 with Nil -> false | _ -> true end);
+    c_values = ipids S_value_locals ps 0;
   }
 
-  predicate result_ok (ps: list param) (r: result_kind) =
-    match pids S_output ps 0 with
+  predicate result_ok (ps: list param) (r: result_kind int) =
+    match ipids S_output ps 0 with
     | Nil -> r = Unit_result
     | Cons i Nil ->
       r = (if unboxable_output (nth i ps) then One_unboxed i else One_value i)
@@ -557,7 +656,7 @@ module Proof
     end
 
   (** What `schedule` checked and built *)
-  predicate hyp (ps: list param) (o: options) (call: list int) (p: plan) =
+  predicate hyp (ps: list param) (o: options) (call: list int) (p: plan int) =
     valid_idx ps call /\
     no_sel S_input_output_owned ps /\ no_sel S_owned_unused ps /\
     no_sel S_raising_owning_input ps /\
@@ -566,7 +665,7 @@ module Proof
        not (nth i ps).ml_heap /\ not (nth i ps).value_locals) /\
     (p.noalloc ->
        not o.release_lock /\ not o.error /\ no_sel S_not_noalloc ps /\
-       match pids S_output ps 0 with
+       match ipids S_output ps 0 with
        | Nil -> true
        | Cons i Nil ->
          is_pure (nth i ps).c2ml \/ unboxable_output (nth i ps)
@@ -628,7 +727,7 @@ module Proof
     st_is ps s f /\ vals_ok ps s /\ s.lock /\ s.called /\
     s.unlocked_call = o.release_lock /\ chk_in ps s
 
-  let ghost gc_ok (ps: list param) (o: options) (call: list int) (p: plan)
+  let ghost gc_ok (ps: list param) (o: options) (call: list int) (p: plan int)
       (s: state)
     requires { hyp ps o call p }
     requires { not p.noalloc }
@@ -637,52 +736,52 @@ module Proof
   = ()
 
   let ghost l_ml2c_a (ps: list param) (o: options) (call: list int)
-      (p: plan)
+      (p: plan int)
     requires { hyp ps o call p }
-    ensures { let x = Ml2c (pids S_pre_input ps 0) in
+    ensures { let x = Ml2c (ipids S_pre_input ps 0) in
               ok_step ps o call p init_state x /\
               (p.noalloc -> step_noalloc ps p x) /\
               before0 ps (next ps p init_state x) st_a }
   = ()
 
   let ghost l_check_in (ps: list param) (o: options) (call: list int)
-      (p: plan) (s: state)
+      (p: plan int) (s: state)
     requires { hyp ps o call p }
     requires { before0 ps s st_a }
-    ensures { let x = Check_in (pids S_in_check ps 0) in
+    ensures { let x = Check_in (ipids S_in_check ps 0) in
               ok_step ps o call p s x /\ (p.noalloc -> step_noalloc ps p x) /\
               before ps (next ps p s x) st_a }
   = ()
 
   let ghost l_ml2c_b1 (ps: list param) (o: options) (call: list int)
-      (p: plan) (s: state)
+      (p: plan int) (s: state)
     requires { hyp ps o call p }
     requires { before ps s st_a }
-    ensures { let x = Ml2c (pids S_checked_input ps 0) in
+    ensures { let x = Ml2c (ipids S_checked_input ps 0) in
               ok_step ps o call p s x /\ (p.noalloc -> step_noalloc ps p x) /\
               before ps (next ps p s x) st_b }
   = ()
 
   let ghost l_ml2c_b2 (ps: list param) (o: options) (call: list int)
-      (p: plan) (s: state)
+      (p: plan int) (s: state)
     requires { hyp ps o call p }
     requires { before ps s st_b }
-    ensures { let x = Ml2c (pids S_owning_input ps 0) in
+    ensures { let x = Ml2c (ipids S_owning_input ps 0) in
               ok_step ps o call p s x /\ (p.noalloc -> step_noalloc ps p x) /\
               before ps (next ps p s x) st3 }
   = ()
 
   let ghost l_init (ps: list param) (o: options) (call: list int)
-      (p: plan) (s: state)
+      (p: plan int) (s: state)
     requires { hyp ps o call p }
     requires { before ps s st3 }
-    ensures { let x = Init (pids S_init ps 0) in
+    ensures { let x = Init (ipids S_init ps 0) in
               ok_step ps o call p s x /\ (p.noalloc -> step_noalloc ps p x) /\
               before ps (next ps p s x) st4 }
   = ()
 
   let ghost l_call (ps: list param) (o: options) (call: list int)
-      (p: plan) (s: state)
+      (p: plan int) (s: state)
     requires { hyp ps o call p }
     requires { before ps s st4 }
     ensures { let x = Call call o.release_lock in
@@ -692,29 +791,29 @@ module Proof
   = ()
 
   let ghost l_check_error (ps: list param) (o: options) (call: list int)
-      (p: plan) (s: state)
+      (p: plan int) (s: state)
     requires { hyp ps o call p }
     requires { o.error }
     requires { after ps o s st5 /\ no_mv s /\ not s.checked_error }
-    ensures { let x = Check_error { moves = pids S_move_error ps 0;
-                                    frees = pids S_free ps 0 } in
+    ensures { let x = Check_error { moves = ipids S_move_error ps 0;
+                                    frees = ipids S_free ps 0 } in
               ok_step ps o call p s x /\ (p.noalloc -> step_noalloc ps p x) /\
               after ps o (next ps p s x) st5 /\ no_mv (next ps p s x) /\
               (next ps p s x).checked_error }
   = ()
 
   let ghost l_check_out (ps: list param) (o: options) (call: list int)
-      (p: plan) (s: state)
+      (p: plan int) (s: state)
     requires { hyp ps o call p }
     requires { after ps o s st5 /\ no_mv s /\ (o.error -> s.checked_error) }
-    ensures { let x = Check_out (pids S_out_check ps 0)
-                        { moves = pids S_move_out ps 0;
-                          frees = pids S_free ps 0 } in
+    ensures { let x = Check_out (ipids S_out_check ps 0)
+                        { moves = ipids S_move_out ps 0;
+                          frees = ipids S_free ps 0 } in
               ok_step ps o call p s x /\ (p.noalloc -> step_noalloc ps p x) /\
               after ps o (next ps p s x) st5 /\ no_mv (next ps p s x) /\
               (o.error -> (next ps p s x).checked_error) /\
               chk_out ps (next ps p s x) }
-  = match pids S_out_check ps 0 with
+  = match ipids S_out_check ps 0 with
     | Nil -> ()
     | Cons i _ ->
       assert { selected S_out_check (nth i ps) };
@@ -723,16 +822,16 @@ module Proof
     end
 
   let ghost l_c2ml (ps: list param) (o: options) (call: list int)
-      (p: plan) (s: state)
+      (p: plan int) (s: state)
     requires { hyp ps o call p }
     requires { after ps o s st5 /\ no_mv s /\ (o.error -> s.checked_error) }
     requires { chk_out ps s }
-    ensures { let x = C2ml (pids S_output ps 0) in
+    ensures { let x = C2ml (ipids S_output ps 0) in
               ok_step ps o call p s x /\ (p.noalloc -> step_noalloc ps p x) /\
               after ps o (next ps p s x) st8 /\
               outs_ok ps (next ps p s x) /\
               (o.error -> (next ps p s x).checked_error) }
-  = let l = pids S_output ps 0 in
+  = let l = ipids S_output ps 0 in
     let ghost s1 = { s with
       st = (fun i -> if mem i l && (prm ps i).owned_by_ml &&
                         not (prm ps i).free then Moved
@@ -757,7 +856,7 @@ module Proof
     end
 
   let ghost l_tuple (ps: list param) (o: options) (call: list int)
-      (p: plan) (s: state) (l: list int)
+      (p: plan int) (s: state) (l: list int)
     requires { hyp ps o call p }
     requires { p.result = Tuple l }
     requires { after ps o s st8 /\ outs_ok ps s /\
@@ -767,7 +866,7 @@ module Proof
               after ps o (next ps p s x) st8 /\
               outs_ok ps (next ps p s x) /\ (next ps p s x).vret /\
               (o.error -> (next ps p s x).checked_error) }
-  = assert { pids S_output ps 0 = l };
+  = assert { ipids S_output ps 0 = l };
     assert { match l with Nil | Cons _ Nil -> false | _ -> true end };
     assert { not p.noalloc };
     assert { p.roots.outputs = l };
@@ -775,19 +874,19 @@ module Proof
     gc_ok ps o call p s
 
   let ghost l_free (ps: list param) (o: options) (call: list int)
-      (p: plan) (s: state)
+      (p: plan int) (s: state)
     requires { hyp ps o call p }
     requires { after ps o s st8 /\ outs_ok ps s /\
                (o.error -> s.checked_error) /\
                (match p.result with Tuple _ -> s.vret | _ -> true end) }
-    ensures { let x = Free (pids S_free ps 0) in
+    ensures { let x = Free (ipids S_free ps 0) in
               ok_step ps o call p s x /\ (p.noalloc -> step_noalloc ps p x) /\
               ok_step ps o call p (next ps p s x) Return /\
               (p.noalloc -> step_noalloc ps p Return) }
   = match p.result with
     | One_value i | One_unboxed i ->
-      assert { pids S_output ps 0 = Cons i Nil };
-      assert { mem i (pids S_output ps 0) };
+      assert { ipids S_output ps 0 = Cons i Nil };
+      assert { mem i (ipids S_output ps 0) };
       assert { 0 <= i < length ps /\ has_output (nth i ps) }
     | _ -> ()
     end
@@ -804,6 +903,7 @@ module Schedule
   use list.NthNoOpt
   use list.Distinct
   use option.Option
+  use OInt
   use Types
   use Lists
   use Model
@@ -836,18 +936,20 @@ module Schedule
         ((nth i ps).ml_heap \/ (nth i ps).value_locals)
     | Not_noalloc ->
       o.want_noalloc = Some true /\
-      not can_noalloc ps o (pids S_output ps 0)
+      not can_noalloc ps o (ipids S_output ps zero)
+    | Too_many_params -> length ps > max
     end
 
-  let schedule (o: options) (ps: list param) (call: list int)
+  let schedule (o: options) (ps: list param) (call: list t)
     : schedule_result
     ensures { match result with
-              | Ok p -> safe ps o call p
-              | Error e -> error_cond ps o call e
+              | Ok p -> safe ps o (ints call) (abs_plan p)
+              | Error e -> error_cond ps o (ints call) e
               end }
-    ensures { (forall e. not error_cond ps o call e) ->
+    ensures { (forall e. not error_cond ps o (ints call) e) ->
                 exists p. result = Ok p }
-  = if not valid_call (length ps) call then Error Bad_call
+  = if not fits zero ps then Error Too_many_params
+    else if not valid_call ps call then Error Bad_call
     else if exists_sel S_input_output_owned ps then Error Input_output_owned
     else if exists_sel S_owned_unused ps then Error Owned_unused
     else if exists_sel S_raising_owning_input ps then
@@ -855,8 +957,8 @@ module Schedule
     else if exists_sel S_raising_output ps then Error Raising_output
     else if o.release_lock && heap_in_call ps call then Error Lock_ml_heap
     else
-      let outputs = pids S_output ps 0 in
-      let can_noalloc =
+      let outputs = pids S_output ps zero in
+      let cna =
         not o.release_lock && not o.error &&
         not exists_sel S_not_noalloc ps &&
         match outputs with
@@ -869,11 +971,11 @@ module Schedule
       in
       let noalloc =
         match o.want_noalloc with
-        | None -> can_noalloc
+        | None -> cna
         | Some b -> b
         end
       in
-      if noalloc && not can_noalloc then Error Not_noalloc
+      if noalloc && not cna then Error Not_noalloc
       else
         let result =
           match outputs with
@@ -884,13 +986,13 @@ module Schedule
           | l -> Tuple l
           end
         in
-        let out_checks = pids S_out_check ps 0 in
+        let out_checks = pids S_out_check ps zero in
         let roots =
           if noalloc then
             { inputs = Nil; outputs = Nil; ret = false; err = false;
               c_values = Nil }
           else
-            { inputs = pids S_boxed_input ps 0;
+            { inputs = pids S_boxed_input ps zero;
               outputs =
                 (match result with
                  | Unit_result | One_unboxed _ -> Nil
@@ -899,16 +1001,16 @@ module Schedule
                  end);
               ret = (match result with Tuple _ -> true | _ -> false end);
               err = o.error || (match out_checks with Nil -> false | _ -> true end);
-              c_values = pids S_value_locals ps 0 }
+              c_values = pids S_value_locals ps zero }
         in
-        let cin = pids S_in_check ps 0 in
-        let ain = pids S_pre_input ps 0 in
-        let b1in = pids S_checked_input ps 0 in
-        let b2in = pids S_owning_input ps 0 in
-        let ini = pids S_init ps 0 in
-        let frees = pids S_free ps 0 in
-        let cerr = { moves = pids S_move_error ps 0; frees = frees } in
-        let cout = { moves = pids S_move_out ps 0; frees = frees } in
+        let cin = pids S_in_check ps zero in
+        let ain = pids S_pre_input ps zero in
+        let b1in = pids S_checked_input ps zero in
+        let b2in = pids S_owning_input ps zero in
+        let ini = pids S_init ps zero in
+        let frees = pids S_free ps zero in
+        let cerr = { moves = pids S_move_error ps zero; frees = frees } in
+        let cout = { moves = pids S_move_out ps zero; frees = frees } in
         let t_free = Cons (Free frees) (Cons Return Nil) in
         let t_tuple =
           match result with
@@ -928,52 +1030,57 @@ module Schedule
         let steps = Cons (Ml2c ain) t_chk in
         let p = { noalloc = noalloc; result = result; roots = roots;
                   steps = steps } in
-        (* proof *)
-        assert { result_ok ps result };
-        assert { roots = (if noalloc then no_roots else std_roots ps o result) };
-        assert { noalloc -> can_noalloc };
-        assert { hyp ps o call p };
+        (* proof, on the plan of the model *)
+        let ghost icall = ints call in
+        let ghost ip = abs_plan p in
+        assert { ip.roots = (if noalloc then no_roots
+                             else std_roots ps o ip.result) };
+        assert { noalloc -> can_noalloc ps o (ipids S_output ps 0) };
+        assert { result_ok ps ip.result };
+        assert { hyp ps o icall ip };
         let ghost s0 = init_state in
-        l_ml2c_a ps o call p;
-        let ghost sa = next ps p s0 (Ml2c ain) in
-        l_check_in ps o call p sa;
-        let ghost s1 = next ps p sa (Check_in cin) in
-        l_ml2c_b1 ps o call p s1;
-        let ghost s2 = next ps p s1 (Ml2c b1in) in
-        l_ml2c_b2 ps o call p s2;
-        let ghost s3 = next ps p s2 (Ml2c b2in) in
-        l_init ps o call p s3;
-        let ghost s4 = next ps p s3 (Init ini) in
-        l_call ps o call p s4;
-        let ghost s5 = next ps p s4 (Call call o.release_lock) in
+        l_ml2c_a ps o icall ip;
+        let ghost sa = next ps ip s0 (abs_step (Ml2c ain)) in
+        l_check_in ps o icall ip sa;
+        let ghost s1 = next ps ip sa (abs_step (Check_in cin)) in
+        l_ml2c_b1 ps o icall ip s1;
+        let ghost s2 = next ps ip s1 (abs_step (Ml2c b1in)) in
+        l_ml2c_b2 ps o icall ip s2;
+        let ghost s3 = next ps ip s2 (abs_step (Ml2c b2in)) in
+        l_init ps o icall ip s3;
+        let ghost s4 = next ps ip s3 (abs_step (Init ini)) in
+        l_call ps o icall ip s4;
+        let ghost s5 = next ps ip s4 (abs_step (Call call o.release_lock)) in
         let ghost s6 =
           if o.error then begin
-            l_check_error ps o call p s5;
-            next ps p s5 (Check_error cerr) end
+            l_check_error ps o icall ip s5;
+            next ps ip s5 (abs_step (Check_error cerr)) end
           else s5 in
-        l_check_out ps o call p s6;
-        let ghost s7 = next ps p s6 (Check_out out_checks cout) in
-        l_c2ml ps o call p s7;
-        let ghost s8 = next ps p s7 (C2ml outputs) in
+        l_check_out ps o icall ip s6;
+        let ghost s7 = next ps ip s6 (abs_step (Check_out out_checks cout)) in
+        l_c2ml ps o icall ip s7;
+        let ghost s8 = next ps ip s7 (abs_step (C2ml outputs)) in
         let ghost s9 =
           match result with
-          | Tuple l -> l_tuple ps o call p s8 l; next ps p s8 (Alloc_tuple l)
+          | Tuple l ->
+            l_tuple ps o icall ip s8 (ints l);
+            next ps ip s8 (abs_step (Alloc_tuple l))
           | _ -> s8
           end
         in
-        l_free ps o call p s9;
-        let ghost s10 = next ps p s9 (Free frees) in
-        assert { run ps o call p s10 (Cons Return Nil) };
-        assert { run ps o call p s9 t_free };
-        assert { run ps o call p s8 t_tuple };
-        assert { run ps o call p s7 t_c2ml };
-        assert { run ps o call p s6 t_out };
-        assert { run ps o call p s5 t_err };
-        assert { run ps o call p s4 t_call };
-        assert { run ps o call p s3 t_init };
-        assert { run ps o call p s2 t_b2 };
-        assert { run ps o call p s1 t_b1 };
-        assert { run ps o call p sa t_chk };
-        assert { run ps o call p s0 steps };
+        l_free ps o icall ip s9;
+        let ghost s10 = next ps ip s9 (abs_step (Free frees)) in
+        assert { run ps o icall ip s10 (Cons Return Nil) };
+        assert { run ps o icall ip s9 (abs_steps t_free) };
+        assert { run ps o icall ip s8 (abs_steps t_tuple) };
+        assert { run ps o icall ip s7 (abs_steps t_c2ml) };
+        assert { run ps o icall ip s6 (abs_steps t_out) };
+        assert { run ps o icall ip s5 (abs_steps t_err) };
+        assert { run ps o icall ip s4 (abs_steps t_call) };
+        assert { run ps o icall ip s3 (abs_steps t_init) };
+        assert { run ps o icall ip s2 (abs_steps t_b2) };
+        assert { run ps o icall ip s1 (abs_steps t_b1) };
+        assert { run ps o icall ip sa (abs_steps t_chk) };
+        assert { run ps o icall ip s0 (abs_steps steps) };
         Ok p
 end
