@@ -24,7 +24,7 @@ it follows the OCaml FFI rules, and handles C values like C++ objects
 |---|---|
 | build | `dune build` |
 | tests (native and bytecode, golden files) | `dune runtest` (= `make test`) |
-| accept new generated stubs or outputs | `dune promote` (review the diff of `tests/*/mylib_stub.c` first) |
+| see how the generated stubs changed | `git diff tests/` (they are promoted silently by `dune runtest`) |
 | formatting | `dune fmt` (ocamlformat 0.29.0) |
 | documentation, must give no warnings | `dune build @doc` |
 | memory check of a test | `valgrind --leak-check=full --errors-for-leak-kinds=definite --error-exitcode=1 _build/default/tests/<t>/app.exe` |

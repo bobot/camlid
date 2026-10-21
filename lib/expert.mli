@@ -52,7 +52,7 @@ val string_fixed_length : ?init:bool -> ?owned:bool -> Expr.var -> Ty.mlc
 
 (** {2 Values owned by OCaml}
 
-    The C value is stored in an OCaml block ([owned_by_ml] is [true]). [icty] is
+    The C value is stored in an OCaml block ([contract.owned_by_ml] is [true]). [icty] is
     the C type stored in the block and [cty] the C type given to the stubbed
     functions (usually the same). The record arguments are created with the
     [mk_*] functions below. *)
@@ -322,7 +322,7 @@ val param :
     used in the definition of the other parameters of the same function.
 
     Raises [Invalid_argument] for an input and output of a type with
-    [owned_by_ml]. *)
+    [contract.owned_by_ml]. *)
 
 val simple_param :
   ?input_label:string ->

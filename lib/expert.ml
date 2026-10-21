@@ -71,10 +71,12 @@ let builtin_mltypes ~unbox_attribute ~unbox_version ?u_type ~c_type ~c2ml ~ml2c
         c;
       };
     v;
-    owned_by_ml = false;
-    ml_heap = false;
-    ml2c_noalloc = true;
-    c2ml_noalloc = String.starts_with ~prefix:"Val_" c2ml;
+    contract =
+      Ty.copied ~ml2c:Ty.pure
+        ~c2ml:
+          (if String.starts_with ~prefix:"Val_" c2ml then Ty.pure
+           else Ty.allocates)
+        ();
   }
 
 let string_nt_alias = mlalias "string_nt" "string"
@@ -116,10 +118,10 @@ let string_nt ~prefix ~owned =
         c;
       };
     v;
-    owned_by_ml = false;
-    ml_heap = false;
-    ml2c_noalloc = prefix;
-    c2ml_noalloc = false;
+    contract =
+      Ty.copied
+        ~ml2c:(if prefix then Ty.pure else Ty.may_raise)
+        ~c2ml:Ty.allocates ();
   }
 
 let string_nt_prefix ?(owned = true) () = string_nt ~prefix:true ~owned
@@ -163,10 +165,7 @@ let string_fixed_length ?(init = true) ?(owned = true) len =
         c;
       };
     v;
-    owned_by_ml = false;
-    ml_heap = false;
-    ml2c_noalloc = true;
-    c2ml_noalloc = false;
+    contract = Ty.copied ~ml2c:Ty.pure ~c2ml:Ty.allocates ();
   }
 
 let string_length_struct =
@@ -210,10 +209,7 @@ let string_length ?(owned = true) () =
         c;
       };
     v;
-    owned_by_ml = false;
-    ml_heap = false;
-    ml2c_noalloc = true;
-    c2ml_noalloc = false;
+    contract = Ty.copied ~ml2c:Ty.pure ~c2ml:Ty.allocates ();
   }
 
 let ptr_ref (ty : mlc) =
@@ -253,10 +249,7 @@ let ptr_ref (ty : mlc) =
         c;
       };
     v = ty.v;
-    owned_by_ml = ty.owned_by_ml;
-    ml_heap = ty.ml_heap;
-    ml2c_noalloc = ty.ml2c_noalloc;
-    c2ml_noalloc = ty.c2ml_noalloc;
+    contract = ty.contract;
   }
 
 type copy = { copy : Expr.expr; c_from : Expr.Var.t; c_to : Expr.Var.t }
@@ -328,7 +321,7 @@ let copy ~copy (ty : mlc) =
           }
     | Unboxable _ -> invalid_arg "not implemented"
   in
-  { ty with conv; owned_by_ml = false }
+  { ty with conv; contract = { ty.contract with owned_by_ml = false } }
 
 let array ?(init = true) ?(owned = true) ~len (ty : mlc) =
   let cty = expr "%a*" pp_expr ty.cty.cty in
@@ -432,10 +425,12 @@ let array ?(init = true) ?(owned = true) ~len (ty : mlc) =
         c;
       };
     v;
-    owned_by_ml = ty.owned_by_ml;
-    ml_heap = ty.ml_heap;
-    ml2c_noalloc = false;
-    c2ml_noalloc = false;
+    contract =
+      {
+        ty.contract with
+        ml2c = Ty.union Ty.allocates ty.contract.ml2c;
+        c2ml = Ty.union Ty.allocates ty.contract.c2ml;
+      };
   }
 
 let array_length ?(owned = true) (ty : mlc) =
@@ -526,10 +521,12 @@ let array_length ?(owned = true) (ty : mlc) =
         c;
       };
     v;
-    owned_by_ml = ty.owned_by_ml;
-    ml_heap = ty.ml_heap;
-    ml2c_noalloc = false;
-    c2ml_noalloc = false;
+    contract =
+      {
+        ty.contract with
+        ml2c = Ty.union Ty.allocates ty.contract.ml2c;
+        c2ml = Ty.union Ty.allocates ty.contract.c2ml;
+      };
   }
 
 let map_param_in_call ?(name = "arg") map param =
@@ -559,8 +556,8 @@ let use_new_param_only_in_call param =
         pfree = None;
         pon_error = None;
         pml_heap = false;
-        pnoalloc_in = true;
-        pnoalloc_out = true;
+        pml2c = Ty.pure;
+        pc2ml = Ty.pure;
       }
 
 let get_field ty field_name param =
@@ -593,10 +590,7 @@ let abstract ?init ?get ?set ~icty ~ml ~cty () =
   let c' = Var.mk "c" (expr "%a *" pp_expr cty) in
   {
     v;
-    owned_by_ml = false;
-    ml_heap = false;
-    ml2c_noalloc = true;
-    c2ml_noalloc = false;
+    contract = Ty.copied ~ml2c:Ty.pure ~c2ml:Ty.allocates ();
     mlty = e_def @@ mlabstract ~keep_name:true ml;
     conv =
       Boxed
@@ -768,10 +762,7 @@ let custom_gen ?(ml_extra = fun _ -> []) ?init ?clear ?hash ?compare ?mem ?get
         c;
       };
     v;
-    owned_by_ml = true;
-    ml_heap = false;
-    ml2c_noalloc = true;
-    c2ml_noalloc = false;
+    contract = Ty.owned_by_ml ~ml2c:Ty.pure ~c2ml:Ty.allocates ();
   }
 
 (** Encapsulate a c pointer type into an custom ml type *)
@@ -920,7 +911,7 @@ let custom_ptr ?init ?clear ?hash ?compare ?mem ?dispose ?(malloc = true) ~ml
         custom_gen ~ml_extra ?init ?clear ?hash ?compare ?mem ~get ~ml
           ~cty:cty_ptr ~icty:cty_ptr ()
       in
-      { t with ml2c_noalloc = false }
+      { t with contract = { t.contract with ml2c = Ty.may_raise } }
 
 let mk_mem ~cty name =
   let c = Var.mk "c" (expr "%a *" pp_expr cty) in
@@ -968,7 +959,7 @@ let mk_init ~cty ?vars ?exprs init =
 
 let param ?input_label ?(binds = []) ?(input = false) ?(output = false)
     ?(used_in_call = true) ?(name = "p") pty =
-  if input && output && pty.owned_by_ml then
+  if input && output && pty.contract.owned_by_ml then
     invalid_arg
       "Camlid: a parameter can't be both an input and an output when its C \
        value is owned by the OCaml value (it would be owned by two OCaml \
@@ -1066,16 +1057,19 @@ let param ?input_label ?(binds = []) ?(input = false) ?(output = false)
   let pfree = Option.map bind pty.cty.free in
   let pon_error =
     match (pty.conv, pty.cty.init) with
-    | Boxed { c2ml; _ }, Some _ when output && pty.owned_by_ml ->
+    | Boxed { c2ml; _ }, Some _ when output && pty.contract.owned_by_ml ->
         Some (bind' c2ml)
     | _ -> None
   in
-  let pml_heap = used_in_call && pty.ml_heap in
-  let pnoalloc_in =
-    (not input)
-    || match pty.conv with Unboxable _ -> true | Boxed _ -> pty.ml2c_noalloc
+  let pml_heap = used_in_call && pty.contract.ml_heap in
+  let pml2c =
+    if not input then Ty.pure
+    else
+      match pty.conv with
+      | Unboxable _ -> Ty.pure
+      | Boxed _ -> pty.contract.ml2c
   in
-  let pnoalloc_out = (not output) || pty.c2ml_noalloc in
+  let pc2ml = if not output then Ty.pure else pty.contract.c2ml in
   ( {
       pinput;
       pinit_expr;
@@ -1085,8 +1079,8 @@ let param ?input_label ?(binds = []) ?(input = false) ?(output = false)
       poutput;
       pon_error;
       pml_heap;
-      pnoalloc_in;
-      pnoalloc_out;
+      pml2c;
+      pc2ml;
     },
     pc,
     pv )
@@ -1111,8 +1105,8 @@ let result_param result =
     pinit_expr = [ (result.rc, None) ];
     pon_error = None;
     pml_heap = false;
-    pnoalloc_in = true;
-    pnoalloc_out = result.rnoalloc;
+    pml2c = Ty.pure;
+    pc2ml = result.rc2ml;
   }
 
 let add_result params result =
@@ -1187,8 +1181,8 @@ let plan_param (p : param) : Plan.param =
     on_error = Option.is_some p.pon_error;
     value_locals = List.exists (fun (c, _) -> c.ty == e_value) p.pinit_expr;
     ml_heap = p.pml_heap;
-    noalloc_in = p.pnoalloc_in;
-    noalloc_out = p.pnoalloc_out;
+    ml2c = p.pml2c;
+    c2ml = p.pc2ml;
   }
 
 (** The parameters (with the result first) and the plan of a stub *)
@@ -1639,10 +1633,7 @@ let convert ?mlc_to_c ?c_to_mlc ~(mlc : mlc) ~(c : c) () =
     conv;
     cty = c;
     v = mlc.v;
-    owned_by_ml = false;
-    ml_heap = false;
-    ml2c_noalloc = mlc.ml2c_noalloc;
-    c2ml_noalloc = mlc.c2ml_noalloc;
+    contract = { mlc.contract with owned_by_ml = false; ml_heap = false };
   }
 
 module AlgData = struct
@@ -1862,23 +1853,27 @@ module AlgData = struct
             c;
           };
         v;
-        owned_by_ml =
-          List.exists
-            (fun (_, _, k) ->
-              match k with
-              | KConst _ -> false
-              | KNonConst (_, l) ->
-                  List.exists (fun (_, _, ty) -> ty.owned_by_ml) l)
-            l;
-        ml_heap =
-          List.exists
-            (fun (_, _, k) ->
-              match k with
-              | KConst _ -> false
-              | KNonConst (_, l) -> List.exists (fun (_, _, ty) -> ty.ml_heap) l)
-            l;
-        ml2c_noalloc = false;
-        c2ml_noalloc = false;
+        contract =
+          {
+            owned_by_ml =
+              List.exists
+                (fun (_, _, k) ->
+                  match k with
+                  | KConst _ -> false
+                  | KNonConst (_, l) ->
+                      List.exists (fun (_, _, ty) -> ty.contract.owned_by_ml) l)
+                l;
+            ml_heap =
+              List.exists
+                (fun (_, _, k) ->
+                  match k with
+                  | KConst _ -> false
+                  | KNonConst (_, l) ->
+                      List.exists (fun (_, _, ty) -> ty.contract.ml_heap) l)
+                l;
+            ml2c = Ty.unknown;
+            c2ml = Ty.unknown;
+          };
       }
     in
     let dst_smart_constructors = Var.mk "dst" (expr "%a*" pp_def cty) in
@@ -1952,10 +1947,7 @@ let value =
       conv;
       cty = { cty; init = None; init_expr; free = None; in_call = None; c };
       v;
-      owned_by_ml = false;
-      ml_heap = true;
-      ml2c_noalloc = true;
-      c2ml_noalloc = true;
+      contract = Ty.copied ~ml_heap:true ~ml2c:Ty.pure ~c2ml:Ty.pure ();
     }
 
 let ret_option_if expr typedef =
@@ -2027,7 +2019,7 @@ let simple_result rty =
     routput;
     rc;
     rfree = Option.map bind' rty.cty.free;
-    rnoalloc = rty.c2ml_noalloc;
+    rc2ml = rty.contract.c2ml;
   }
 
 let get_expression ~mlname ty e =
@@ -2073,10 +2065,7 @@ let bigarray_array1_aux ~managed ~kind ~cty ~mlty ~mlelt () =
         c;
       };
     v;
-    owned_by_ml = true;
-    ml_heap = false;
-    ml2c_noalloc = true;
-    c2ml_noalloc = false;
+    contract = Ty.owned_by_ml ~ml2c:Ty.pure ~c2ml:Ty.allocates ();
   }
 
 let bigarray_array1 = bigarray_array1_aux
@@ -2090,13 +2079,14 @@ let ml2c_field0 (ty : mlc) ml2c v =
   call_codef "ml2c_field"
     [ (v', e_addr v); (c', e_addr ty.cty.c) ]
     (fun { fmt } ->
-      if ty.ml2c_noalloc then fmt "value cid_temp = Field(*%a, 0);@," pp_var v'
+      if not ty.contract.ml2c.alloc then
+        fmt "value cid_temp = Field(*%a, 0);@," pp_var v'
       else (
         fmt "CAMLparam0();@,CAMLlocal1(cid_temp);@,";
         fmt "cid_temp = Field(*%a, 0);@," pp_var v');
       fmt "@[%a@]" pp_expr_binds
         (ml2c, ty_binds ~v:(expr "cid_temp") ~c:(expr "(*%a)" pp_var c') ty);
-      if not ty.ml2c_noalloc then fmt "@,CAMLreturn0;")
+      if ty.contract.ml2c.alloc then fmt "@,CAMLreturn0;")
 
 type child = { t : mlc; with_parent : var -> mlc }
 
@@ -2130,7 +2120,8 @@ let keep_alive_with ~parent (ty : mlc) =
                 fmt "CAMLreturn0;");
         };
     v;
-    c2ml_noalloc = false;
+    contract =
+      { ty.contract with c2ml = Ty.union ty.contract.c2ml Ty.allocates };
   }
 
 let keep_alive (ty : mlc) =
@@ -2195,10 +2186,7 @@ let parent ?clear ~ml ~cty () =
           c;
         };
       v;
-      owned_by_ml = true;
-      ml_heap = false;
-      ml2c_noalloc = true;
-      c2ml_noalloc = false;
+      contract = Ty.owned_by_ml ~ml2c:Ty.pure ~c2ml:Ty.allocates ();
     }
   in
   (t, { rc; release; release_r = r })
@@ -2249,10 +2237,7 @@ let child (parent : parent) ?clear ?clear_with_parent ~ml ~cty () =
           c;
         };
       v;
-      owned_by_ml = true;
-      ml_heap = false;
-      ml2c_noalloc = true;
-      c2ml_noalloc = false;
+      contract = Ty.owned_by_ml ~ml2c:Ty.pure ~c2ml:Ty.allocates ();
     }
   in
   let with_parent parent_v =
@@ -2328,10 +2313,7 @@ let enum ?(c = "int") name constrs =
         c = cv;
       };
     v;
-    owned_by_ml = false;
-    ml_heap = false;
-    ml2c_noalloc = true;
-    c2ml_noalloc = false;
+    contract = Ty.copied ~ml2c:Ty.pure ~c2ml:Ty.may_raise ();
   }
 
 let flags ?(c = "int") name constrs =
@@ -2393,10 +2375,7 @@ let flags ?(c = "int") name constrs =
         c = cv;
       };
     v;
-    owned_by_ml = false;
-    ml_heap = false;
-    ml2c_noalloc = true;
-    c2ml_noalloc = false;
+    contract = Ty.copied ~ml2c:Ty.pure ~c2ml:Ty.allocates ();
   }
 
 (* [None] is the NULL pointer *)
@@ -2410,7 +2389,6 @@ let nullable (ty : mlc) =
   let v' = Var.mk "v" (expr "value *") in
   let c' = Var.mk "c" (expr "%a *" pp_expr ty.cty.cty) in
   {
-    ty with
     mlty = expr "(%a option)" pp_expr ty.mlty;
     conv =
       Boxed
@@ -2443,5 +2421,6 @@ let nullable (ty : mlc) =
             ty.cty.free;
       };
     v;
-    c2ml_noalloc = false;
+    contract =
+      { ty.contract with c2ml = Ty.union ty.contract.c2ml Ty.allocates };
   }

@@ -38,11 +38,24 @@ type c = {
 }
 (** A C type and its lifecycle in the stub *)
 
-type mlc = {
-  mlty : expr;  (** The OCaml type *)
-  conv : conv;
-  cty : c;
-  v : var;  (** The OCaml value *)
+type effects = Plan.effects = {
+  alloc : bool;
+      (** allocates in the OCaml heap, or registers values with [CAMLparam] *)
+  raises : bool;  (** can raise an OCaml exception *)
+}
+(** The effects of a conversion on the OCaml runtime *)
+
+let pure = Plan.pure
+let allocates = { alloc = true; raises = false }
+let may_raise = { alloc = false; raises = true }
+
+(** The safe default when the effects are not known *)
+let unknown = { alloc = true; raises = true }
+
+let union e1 e2 =
+  { alloc = e1.alloc || e2.alloc; raises = e1.raises || e2.raises }
+
+type contract = {
   owned_by_ml : bool;
       (** [true] when the C value is owned by the OCaml value (custom blocks,
           bigarrays): [ml2c] borrows it, [c2ml] moves it into a new OCaml value
@@ -52,10 +65,23 @@ type mlc = {
       (** [true] when the C value is or points into an OCaml value (e.g. a
           [value]), so the C function can't be called with the runtime lock
           released. *)
-  ml2c_noalloc : bool;
-      (** [true] when the boxed [ml2c] doesn't allocate in the OCaml heap,
-          doesn't raise, and doesn't use [CAMLparam] *)
-  c2ml_noalloc : bool;  (** Same for the boxed [c2ml] *)
+  ml2c : effects;  (** The effects of the boxed [ml2c] *)
+  c2ml : effects;  (** The effects of the boxed [c2ml] *)
+}
+(** What the stub needs to know about a type to use it safely *)
+
+let copied ?(ml_heap = false) ~ml2c ~c2ml () =
+  { owned_by_ml = false; ml_heap; ml2c; c2ml }
+
+let owned_by_ml ~ml2c ~c2ml () =
+  { owned_by_ml = true; ml_heap = false; ml2c; c2ml }
+
+type mlc = {
+  mlty : expr;  (** The OCaml type *)
+  conv : conv;
+  cty : c;
+  v : var;  (** The OCaml value *)
+  contract : contract;
 }
 (** An OCaml type, a C type, and the conversions between them. It is a template
     instantiated by each parameter with fresh variables. *)
@@ -97,9 +123,8 @@ type param = {
       (** When the C function fails, moves an output owned by OCaml into an
           OCaml value, which will be finalized *)
   pml_heap : bool;  (** The C argument is or points into an OCaml value *)
-  pnoalloc_in : bool;  (** The conversion of the input doesn't allocate *)
-  pnoalloc_out : bool;
-      (** The boxed conversion of the output doesn't allocate *)
+  pml2c : effects;  (** The effects of the conversion of the input *)
+  pc2ml : effects;  (** The effects of the boxed conversion of the output *)
 }
 (** A parameter is a set of variable linked by conversion expression. Possibly:
     - An input variable of type value and conversion functions
@@ -115,7 +140,7 @@ type result = {
   routput : poutput;
   rfree : expr option;
   rc : var;
-  rnoalloc : bool;  (** The boxed conversion doesn't allocate *)
+  rc2ml : effects;  (** The effects of the boxed conversion *)
 }
 
 type conf = Expr.expr list

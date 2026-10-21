@@ -74,7 +74,7 @@ The C value of a parameter lives in a local variable of the stub, and follows th
 + {b output}: it is converted to an OCaml value ([c2ml]);
 + it is destroyed by its destructor ([free]).
 
-There are two kinds of types, depending on who owns the C data ({!Camlid.Ty.mlc.owned_by_ml}):
+There are two kinds of types, depending on who owns the C data ({!Camlid.Ty.contract.owned_by_ml}):
 
 {t
   | | the conversions | the destructor | examples |

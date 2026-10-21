@@ -5,6 +5,16 @@
     [agents/design/safe-stubs.md]). The parameters are numbered by their
     position. *)
 
+type effects = {
+  alloc : bool;
+      (** allocates in the OCaml heap, or registers values with [CAMLparam] *)
+  raises : bool;  (** can raise an OCaml exception *)
+}
+(** The effects of a conversion on the OCaml runtime *)
+
+let pure = { alloc = false; raises = false }
+let noalloc e = (not e.alloc) && not e.raises
+
 type input = No_input | Boxed_input | Unboxed_input
 type output = No_output | Boxed_output | Unboxable_output
 
@@ -16,8 +26,8 @@ type param = {
   on_error : bool;  (** is moved into an OCaml value on the error path *)
   value_locals : bool;  (** has C locals of type [value] *)
   ml_heap : bool;  (** its C argument is or points into an OCaml value *)
-  noalloc_in : bool;  (** the conversion of its input doesn't allocate *)
-  noalloc_out : bool;  (** the boxed conversion of its output doesn't allocate *)
+  ml2c : effects;  (** the conversion of its input *)
+  c2ml : effects;  (** the boxed conversion of its output *)
 }
 
 type options = { noalloc : bool option; release_lock : bool; error : bool }
@@ -90,8 +100,8 @@ let schedule ~name (o : options) (params : param list) ~(call : int list) =
       && List.length outputs <= 1
       && List.for_all
            (fun (_, p) ->
-             p.noalloc_in
-             && (p.noalloc_out
+             noalloc p.ml2c
+             && (noalloc p.c2ml
                 || (List.length outputs = 1 && p.output = Unboxable_output)))
            params
     in

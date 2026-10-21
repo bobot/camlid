@@ -86,11 +86,8 @@ static void camlid_ml2c2(value * v, camlid_string_nt * c){
   memcpy(*c,String_val(*v),len);
   }
 static void camlid_ml2c_field(value * v, camlid_string_nt * c){
-  CAMLparam0();
-  CAMLlocal1(cid_temp);
-  cid_temp = Field(*v, 0);
+  value cid_temp = Field(*v, 0);
   camlid_ml2c2(&cid_temp, &(*c));
-  CAMLreturn0;
   }
 static void camlid_c2ml2(value * v, camlid_string_nt * c){
   if(*c == NULL) *v = Val_int(0);

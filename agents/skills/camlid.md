@@ -20,9 +20,9 @@ and binds the template variables to them (`Expr.binds`, printed with
 `Format` stags). So one `mlc` can be used in many parameters and functions.
 
 Fields of `mlc` that drive the stub: `conv` (`Boxed` or `Unboxable`),
-`cty.init`, `cty.free`, `cty.in_call`, `owned_by_ml`, `ml_heap`,
-`ml2c_noalloc`, `c2ml_noalloc`. Read their documentation in `lib/ty.ml`
-before adding a type.
+`cty.init`, `cty.free`, `cty.in_call`, and `contract` (`owned_by_ml`,
+`ml_heap`, and the effects `{ alloc; raises }` of ml2c and c2ml). Read their
+documentation in `lib/ty.ml` before adding a type.
 
 ### Code and calls
 
@@ -42,9 +42,11 @@ stubs). ML definitions and `keep_name` ones are never merged. If two ML
 definitions get the same name, OCaml reports it, so create ML types once,
 outside closures.
 
-### The stub (`Expert.code_c_fun`)
+### The stub (`Plan.schedule`, `Expert.code_c_fun`)
 
-The order is: formals, `CAMLparam`/`CAMLlocal` (omitted when noalloc), C
+`Plan.schedule` works on an abstract view of the parameters (`Plan.param`)
+and decides the order of the steps, the GC roots, noalloc and the
+refusals. `Expert.code_c_fun_of_plan` only prints the plan. The order is: formals, `CAMLparam`/`CAMLlocal` (omitted when noalloc), C
 locals with `init_expr`, ml2c of the inputs, init of the others,
 `caml_enter_blocking_section`, call, leave, error check (message, move the
 outputs owned by OCaml, frees, raise), c2ml of the outputs, tuple, frees,
@@ -54,9 +56,11 @@ the native one. `print_ml_fun` writes the `external`, with `[@unboxed]`,
 
 ## Adding a type
 
-1. Write the `mlc` in `expert.ml`, with honest flags. When unsure:
-   `ml2c_noalloc = false`, `c2ml_noalloc = false`, `ml_heap = true` if the C
-   value can point into an OCaml block.
+1. Write the `mlc` in `expert.ml`, with an honest contract
+   (`Ty.copied ~ml2c ~c2ml ()` or `Ty.owned_by_ml ...`). When unsure, use
+   `Ty.unknown` for the effects, and `~ml_heap:true` if the C value can point
+   into an OCaml block. A conversion that calls `caml_failwith` raises; one
+   that allocates or uses `CAMLparam` allocates.
 2. Expose it in `expert.mli`, and in `helper.ml(i)` if users need it.
    Optional arguments go before labelled ones, and the order matches the
    other helpers (`?init ?clear ?hash ?compare ?mem ... ~ml ~c ()`).
@@ -68,8 +72,10 @@ the native one. `print_ml_fun` writes the `external`, with `[@unboxed]`,
 Each `tests/<t>/` has `generator/generator.ml`, `lib.c`/`lib.h` (a fake C
 library that counts its live objects), `app.ml`, `app.expected`, and the
 promoted generated files `mylib.ml`/`mylib_stub.c`. The tests compare the
-output in native and bytecode, and `dune runtest` fails when the generated
-files change: review the diff, then `dune promote`.
+output in native and bytecode. The generated files are promoted silently
+(`(mode (promote (until-clean)))`): after `dune runtest`, look at
+`git diff tests/` to see how the stubs changed. A refactoring must give no
+diff.
 
 Traps:
 

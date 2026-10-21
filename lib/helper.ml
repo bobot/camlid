@@ -103,7 +103,7 @@ let func ?noalloc ?release_lock ?error ?ml ?result ?ignored_result ?call_params
             routput = PONone;
             rc;
             rfree = Option.map bind' rty.cty.free;
-            rnoalloc = true;
+            rc2ml = Ty.pure;
           }
     | None, None -> None
   in
@@ -204,10 +204,7 @@ let string_as_FILE_ptr =
         c;
       };
     v;
-    owned_by_ml = false;
-    ml_heap = false;
-    ml2c_noalloc = false;
-    c2ml_noalloc = false;
+    contract = Ty.copied ~ml2c:Ty.allocates ~c2ml:Ty.allocates ();
   }
 
 let input_value ml = input (value ml)

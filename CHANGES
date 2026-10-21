@@ -14,7 +14,7 @@
       Helper.exception_) when a C predicate on the result is true, after
       freeing the C values
     - Helper.func ~release_lock releases the runtime lock during the call;
-      Ty.mlc.ml_heap marks the types that forbid it
+      Ty.contract.ml_heap marks the types that forbid it
     - algdata generates pattern matching macros in the style of datatype99
     - Helper.enum and Helper.flags map OCaml constant constructors to C
       constants; Helper.nullable maps None to NULL
@@ -23,9 +23,13 @@
     - Helper.keep_alive, Helper.parent and Helper.child for C values
       depending on others (kept alive, or reference counted when the
       parent is needed to destroy the child)
-    - externals are [@@noalloc] when the conversions don't allocate (new
-      fields Ty.mlc.ml2c_noalloc and c2ml_noalloc), Helper.func ~noalloc
-      to force or disable it
+    - externals are [@@noalloc] when the conversions don't allocate nor
+      raise, Helper.func ~noalloc to force or disable it
+    - Ty.mlc.contract groups what the stub needs to know about a type:
+      owned_by_ml, ml_heap, and the effects (alloc, raises) of ml2c and
+      c2ml; Ty.copied and Ty.owned_by_ml build it
+    - the order of the steps of a stub is decided by Plan.schedule, and
+      Expert.code_c_fun only prints it
     - ?mem for custom types and value_type: the memory outside the OCaml
       heap is given to the GC (caml_alloc_custom_mem); the malloc of
       custom_ptr is always counted
