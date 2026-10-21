@@ -9,11 +9,6 @@
 
 include Plan_gen
 
-(** The positions are OCaml integers ([OInt.t] in the proof) *)
-type nonrec step = int step
-
-type nonrec plan = int plan
-
 let pure = { alloc = false; raising = false }
 
 let message ~name = function

@@ -36,42 +36,42 @@ type options = {
   error: bool;
   }
 
-type 'i result_kind =
+type result_kind =
   | Unit_result
-  | One_value of 'i
-  | One_unboxed of 'i
-  | Tuple of ('i list)
+  | One_value of (int)
+  | One_unboxed of (int)
+  | Tuple of ((int) list)
 
-type 'i gc_roots = {
-  inputs: 'i list;
-  outputs: 'i list;
+type gc_roots = {
+  inputs: (int) list;
+  outputs: (int) list;
   ret: bool;
   err: bool;
-  c_values: 'i list;
+  c_values: (int) list;
   }
 
-type 'i cleanup = {
-  moves: 'i list;
-  frees: 'i list;
+type cleanup = {
+  moves: (int) list;
+  frees: (int) list;
   }
 
-type 'i step =
-  | Check_in of ('i list)
-  | Ml2c of ('i list)
-  | Init of ('i list)
-  | Call of ('i list) * (bool)
-  | Check_error of ('i cleanup)
-  | Check_out of ('i list) * ('i cleanup)
-  | C2ml of ('i list)
-  | Alloc_tuple of ('i list)
-  | Free of ('i list)
+type step =
+  | Check_in of ((int) list)
+  | Ml2c of ((int) list)
+  | Init of ((int) list)
+  | Call of ((int) list) * (bool)
+  | Check_error of cleanup
+  | Check_out of ((int) list) * cleanup
+  | C2ml of ((int) list)
+  | Alloc_tuple of ((int) list)
+  | Free of ((int) list)
   | Return
 
-type 'i plan = {
+type plan = {
   noalloc: bool;
-  result: 'i result_kind;
-  roots: 'i gc_roots;
-  steps: ('i step) list;
+  result: result_kind;
+  roots: gc_roots;
+  steps: step list;
   }
 
 type sched_error =
@@ -85,7 +85,7 @@ type sched_error =
   | Too_many_params
 
 type schedule_result =
-  | Ok of ((int) plan)
+  | Ok of plan
   | Error of sched_error
 
 type sel =
