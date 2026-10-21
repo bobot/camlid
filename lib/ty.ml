@@ -89,11 +89,13 @@ type check = {
     exception, when the stub owns nothing. *)
 
 type checks = {
-  ml2c_check : check option;  (** checks the OCaml value [v] *)
-  c2ml_check : check option;  (** checks the C value [c] *)
+  ml2c_checks : check list;
+      (** checks of the OCaml value [v]; they can read the C value of the inputs
+          without destructor nor check (e.g. a length) *)
+  c2ml_checks : check list;  (** checks of the C value [c] *)
 }
 
-let no_checks = { ml2c_check = None; c2ml_check = None }
+let no_checks = { ml2c_checks = []; c2ml_checks = [] }
 
 type mlc = {
   mlty : expr;  (** The OCaml type *)
@@ -143,8 +145,8 @@ type param = {
   pml2c : effects;  (** The effects of the conversion of the input *)
   pc2ml : effects;  (** The effects of the boxed conversion of the output *)
   powned_by_ml : bool;  (** The C value is owned by the OCaml value *)
-  pcheck_in : check option;  (** The check of the input *)
-  pcheck_out : check option;  (** The check of the output *)
+  pcheck_in : check list;  (** The checks of the input *)
+  pcheck_out : check list;  (** The checks of the output *)
 }
 (** A parameter is a set of variable linked by conversion expression. Possibly:
     - An input variable of type value and conversion functions
@@ -162,7 +164,7 @@ type result = {
   rc : var;
   rc2ml : effects;  (** The effects of the boxed conversion *)
   rowned_by_ml : bool;  (** The C value is owned by the OCaml value *)
-  rcheck : check option;  (** The check of the result *)
+  rcheck : check list;  (** The checks of the result *)
 }
 
 type conf = Expr.expr list

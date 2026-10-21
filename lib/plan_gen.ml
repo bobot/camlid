@@ -96,8 +96,9 @@ type sel =
   | S_value_locals
   | S_in_check
   | S_out_check
-  | S_raising_input
-  | S_quiet_input
+  | S_pre_input
+  | S_checked_input
+  | S_owning_input
   | S_move_error
   | S_move_out
   | S_input_output_owned
@@ -136,8 +137,9 @@ let selected (x: sel) (q: param) : bool =
   | S_value_locals -> q.value_locals
   | S_in_check -> has_input q && q.in_check
   | S_out_check -> has_output q && q.out_check
-  | S_raising_input -> has_input q && q.ml2c.raising
-  | S_quiet_input -> has_input q && not q.ml2c.raising
+  | S_pre_input -> has_input q && not q.free && not q.in_check
+  | S_checked_input -> has_input q && not q.free && q.in_check
+  | S_owning_input -> has_input q && q.free
   | S_move_error ->
     has_output q && q.owned_by_ml && not (has_input q) && q.init
   | S_move_out -> has_output q && q.owned_by_ml
@@ -261,8 +263,9 @@ let schedule (o: options) (ps: param list) (call: (int) list) :
                                     end; c_values =
                                     pids S_value_locals ps 0 } in
                               let cin = pids S_in_check ps 0 in
-                              let rin = pids S_raising_input ps 0 in
-                              let qin = pids S_quiet_input ps 0 in
+                              let ain = pids S_pre_input ps 0 in
+                              let b1in = pids S_checked_input ps 0 in
+                              let b2in = pids S_owning_input ps 0 in
                               let ini = pids S_init ps 0 in
                               let frees1 = pids S_free ps 0 in
                               let cerr =
@@ -286,9 +289,10 @@ let schedule (o: options) (ps: param list) (call: (int) list) :
                               let t_call =
                                 Call (call, o.release_lock) :: t_err in
                               let t_init = Init ini :: t_call in
-                              let t_qin = Ml2c qin :: t_init in
-                              let t_rin = Ml2c rin :: t_qin in
-                              let steps1 = Check_in cin :: t_rin in
+                              let t_b2 = Ml2c b2in :: t_init in
+                              let t_b1 = Ml2c b1in :: t_b2 in
+                              let t_chk = Check_in cin :: t_b1 in
+                              let steps1 = Ml2c ain :: t_chk in
                               let p =
                                 { noalloc = noalloc1; result = result1;
                                   roots = roots1; steps = steps1 } in

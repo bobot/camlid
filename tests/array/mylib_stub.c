@@ -151,4 +151,39 @@ extern value camlid_stub_f4_byte(value array_len){
   return camlid_stub_f4(array_len1);
   
 }
+static void camlid_ml2c3(size_t array_len, value * v, intptr_t* * c){
+  CAMLparam0 ();
+  CAMLlocal1(cid_temp);
+  *c = malloc(sizeof(intptr_t)*array_len);
+  for(size_t cid_i=0; cid_i < array_len; cid_i++){
+    cid_temp=Field(*v,cid_i);
+    ((*c)[cid_i]) = Long_val(cid_temp);
+    }
+  CAMLreturn0;
+  }
+extern intptr_t camlid_stub_f_sum(value array,
+  intptr_t array_len){
+  CAMLparam1(array);
+  intptr_t ures;
+  intptr_t res;
+  intptr_t* array1 = ((intptr_t*) { 0 });
+  size_t array_len1 = ((size_t) { 0 });
+  array_len1 = (size_t)(array_len);
+  if(Wosize_val(array) < array_len1) caml_invalid_argument("array shorter than its length");
+  camlid_ml2c3(array_len1, &array, &array1);
+  res = f_sum(array1, array_len1);
+  ures = (res);
+  free(array1);
+  CAMLreturnT(intptr_t,ures);
+}
+extern value camlid_stub_f_sum_byte(value array,
+  value array_len){
+  intptr_t ures;
+  value vres;
+  intptr_t array_len1;
+  array_len1 = Long_val(array_len);
+  ures = camlid_stub_f_sum(array, array_len1);
+  vres = Val_long(ures);
+  return vres;
+}
 

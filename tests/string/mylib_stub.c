@@ -85,4 +85,27 @@ extern value camlid_stub_f_in3_byte(value string_len){
   return camlid_stub_f_in3(string_len1);
   
 }
+static void camlid_ml2c2(size_t string_len, value* v, camlid_string_fs* c){
+  *c=malloc(string_len);
+  memcpy(*c,String_val(*v),string_len);
+  }
+extern value camlid_stub_f_print_n(value string,
+  intptr_t string_len){
+  CAMLparam1(string);
+  camlid_string_fs string1 = ((camlid_string_fs) { 0 });
+  size_t string_len1 = ((size_t) { 0 });
+  string_len1 = (size_t)(string_len);
+  if(caml_string_length(string) < string_len1) caml_invalid_argument("string shorter than its length");
+  camlid_ml2c2(string_len1, &string, &string1);
+  f_print_n(string1, string_len1);
+  free(string1);
+  CAMLreturn(Val_unit);
+}
+extern value camlid_stub_f_print_n_byte(value string,
+  value string_len){
+  intptr_t string_len1;
+  string_len1 = Long_val(string_len);
+  return camlid_stub_f_print_n(string, string_len1);
+  
+}
 

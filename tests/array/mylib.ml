@@ -18,3 +18,8 @@ external f4:
   (int [@untagged]) ->
   (int array)
   = "camlid_stub_f4_byte" "camlid_stub_f4"
+external f_sum:
+  (int array) ->
+  (int [@untagged]) ->
+  (int [@untagged])
+  = "camlid_stub_f_sum_byte" "camlid_stub_f_sum"

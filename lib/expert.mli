@@ -42,6 +42,8 @@ val value : string -> Ty.mlc
 
 val array : ?init:bool -> ?owned:bool -> len:Expr.var -> Ty.mlc -> Ty.mlc
 (** [array ~len ty] is an OCaml array of [ty] and a C array of [len] elements.
+    [len] is the C value of an input without destructor nor check: an input
+    shorter than [len] is refused by a check.
     @param init allocate (and initialize the elements) when it is not an input
 *)
 

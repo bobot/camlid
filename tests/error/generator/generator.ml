@@ -6,7 +6,6 @@ let vec =
     ~copy:"vec_set" ~ml:"vec" ~c:"vec" ()
 
 let status = enum ~c:"enum status" "status" [ ("Ok", "OK"); ("Empty", "EMPTY") ]
-
 let my_error = exception_ ~registered:"Mylib.My_error" "My_error"
 
 let make =

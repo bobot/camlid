@@ -37,6 +37,10 @@
       after the call with a cleanup for the outputs (string_nt, enum,
       dispose, and the arrays and algdata containing them). Fixes a leak
       when a conversion raised after another input was copied
+    - fixed_length_array and fixed_length_string check that an input is
+      not shorter than the length (it was read out of bounds)
+    - algdata frees the fields of its value (strings leaked); the fields
+      given to t_mk_C are moved into the value
     - ?mem for custom types and value_type: the memory outside the OCaml
       heap is given to the GC (caml_alloc_custom_mem); the malloc of
       custom_ptr is always counted

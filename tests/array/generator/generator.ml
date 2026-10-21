@@ -16,4 +16,8 @@ let () =
        func "f_strings" [ a.t; a.len ] ~result:size_t);
       (let a = fixed_length_array int in
        func "f4" [ a.len; a.t ]);
+      (let a =
+         fixed_length_array ~input:true ~output:false ~len_used_in_call:true int
+       in
+       func "f_sum" [ a.t; a.len ] ~result:int);
     ]

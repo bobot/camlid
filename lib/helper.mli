@@ -175,7 +175,8 @@ val fixed_length_string :
   unit ->
   with_length
 (** A [string] given to C as [char *], allocated by the stub with the length
-    given by the OCaml argument [len].
+    given by the OCaml argument [len]. An input shorter than [len] raises
+    [Invalid_argument].
     @param len_used_in_call also give the length to the C function *)
 
 val array_len :
@@ -209,7 +210,7 @@ val fixed_length_array :
   with_length
 (** [fixed_length_array ty] is an array of [ty] given to C as [ty *], allocated
     (and its elements initialized) by the stub with the length given by the
-    OCaml argument [len].
+    OCaml argument [len]. An input shorter than [len] raises [Invalid_argument].
     @param len_used_in_call also give the length to the C function *)
 
 (** {1 C values owned by OCaml} *)
@@ -342,7 +343,7 @@ val algdata : string -> (string * (string * Ty.mlc) list) list -> Ty.mlc
     can use:
     {ul
      {- [t_mk_C(t *dst, fields...)] to build the constructor [C] (the fields are
-        given by pointers);
+        given by pointers, and moved into [dst]);
      }
      {- the macros [t_match(t *x)], [t_of_C(fields...)] and [t_otherwise], in
         the style of datatype99, where the fields are bound to pointers:
@@ -354,7 +355,10 @@ val algdata : string -> (string * (string * Ty.mlc) list) list -> Ty.mlc
           }
         ]}
      }
-    } *)
+    }
+
+    The value owns its fields: they are freed with it (e.g. the strings), so the
+    conversions with {!convert} copy them. *)
 
 val enum : ?c:string -> string -> (string * string) list -> Ty.mlc
 (** [enum name [ (constr, cst); ... ]] defines the OCaml type

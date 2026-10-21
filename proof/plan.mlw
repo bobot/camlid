@@ -140,7 +140,8 @@ module Types
   (** Selection of the parameters *)
   type sel =
     | S_boxed_input | S_input | S_output | S_init | S_free | S_value_locals
-    | S_in_check | S_out_check | S_raising_input | S_quiet_input
+    | S_in_check | S_out_check | S_pre_input | S_checked_input
+    | S_owning_input
     | S_move_error | S_move_out
     | S_input_output_owned | S_owned_unused
     | S_raising_owning_input | S_raising_output | S_not_noalloc
@@ -164,8 +165,9 @@ module Types
     | S_value_locals -> q.value_locals
     | S_in_check -> has_input q && q.in_check
     | S_out_check -> has_output q && q.out_check
-    | S_raising_input -> has_input q && q.ml2c.raising
-    | S_quiet_input -> has_input q && not q.ml2c.raising
+    | S_pre_input -> has_input q && not q.free && not q.in_check
+    | S_checked_input -> has_input q && not q.free && q.in_check
+    | S_owning_input -> has_input q && q.free
     | S_move_error ->
       has_output q && q.owned_by_ml && not has_input q && q.init
     | S_move_out -> has_output q && q.owned_by_ml
@@ -383,6 +385,10 @@ module Model
       (forall i. mem i l ->
          (prm ps i).input <> No_input /\
          ((prm ps i).input = Boxed_input -> s.vin i)) /\
+      (* a check can read the C value of the inputs without destructor nor
+         check *)
+      (forall j. 0 <= j < length ps -> (prm ps j).input <> No_input ->
+         not (prm ps j).free -> not (prm ps j).in_check -> s.st j <> Zero) /\
       (l <> Nil -> no_owned ps s)
     | Ml2c l ->
       s.lock /\ valid_idx ps l /\ distinct l /\
@@ -584,8 +590,10 @@ module Proof
   function acq_in (q: param) : cstate = if q.free then Owned else Borrowed
 
   function st0 (_q: param) : cstate = Zero
-  function st2 (q: param) : cstate =
-    if selected S_raising_input q then acq_in q else Zero
+  function st_a (q: param) : cstate =
+    if selected S_pre_input q then acq_in q else Zero
+  function st_b (q: param) : cstate =
+    if has_input q && not q.free then acq_in q else Zero
   function st3 (q: param) : cstate =
     if has_input q then acq_in q else Zero
   function st4 (q: param) : cstate =
@@ -605,10 +613,14 @@ module Proof
   predicate chk_out (ps: list param) (s: state) =
     forall i. 0 <= i < length ps -> selected S_out_check (nth i ps) -> s.chk i
 
+  (** Before the checks of the inputs *)
+  predicate before0 (ps: list param) (s: state) (f: param -> cstate) =
+    st_is ps s f /\ vals_ok ps s /\ s.lock /\ not s.called /\
+    not s.checked_error /\ no_mv s
+
   (** Before the call *)
   predicate before (ps: list param) (s: state) (f: param -> cstate) =
-    st_is ps s f /\ vals_ok ps s /\ s.lock /\ not s.called /\
-    not s.checked_error /\ no_mv s /\ chk_in ps s
+    before0 ps s f /\ chk_in ps s
 
   (** After the call *)
   predicate after (ps: list param) (o: options) (s: state)
@@ -624,29 +636,38 @@ module Proof
     ensures { vals_ok ps (gc p s) }
   = ()
 
-  let ghost l_check_in (ps: list param) (o: options) (call: list int)
+  let ghost l_ml2c_a (ps: list param) (o: options) (call: list int)
       (p: plan)
     requires { hyp ps o call p }
-    ensures { let x = Check_in (pids S_in_check ps 0) in
+    ensures { let x = Ml2c (pids S_pre_input ps 0) in
               ok_step ps o call p init_state x /\
               (p.noalloc -> step_noalloc ps p x) /\
-              before ps (next ps p init_state x) st0 }
+              before0 ps (next ps p init_state x) st_a }
   = ()
 
-  let ghost l_ml2c_r (ps: list param) (o: options) (call: list int)
+  let ghost l_check_in (ps: list param) (o: options) (call: list int)
       (p: plan) (s: state)
     requires { hyp ps o call p }
-    requires { before ps s st0 }
-    ensures { let x = Ml2c (pids S_raising_input ps 0) in
+    requires { before0 ps s st_a }
+    ensures { let x = Check_in (pids S_in_check ps 0) in
               ok_step ps o call p s x /\ (p.noalloc -> step_noalloc ps p x) /\
-              before ps (next ps p s x) st2 }
+              before ps (next ps p s x) st_a }
   = ()
 
-  let ghost l_ml2c_q (ps: list param) (o: options) (call: list int)
+  let ghost l_ml2c_b1 (ps: list param) (o: options) (call: list int)
       (p: plan) (s: state)
     requires { hyp ps o call p }
-    requires { before ps s st2 }
-    ensures { let x = Ml2c (pids S_quiet_input ps 0) in
+    requires { before ps s st_a }
+    ensures { let x = Ml2c (pids S_checked_input ps 0) in
+              ok_step ps o call p s x /\ (p.noalloc -> step_noalloc ps p x) /\
+              before ps (next ps p s x) st_b }
+  = ()
+
+  let ghost l_ml2c_b2 (ps: list param) (o: options) (call: list int)
+      (p: plan) (s: state)
+    requires { hyp ps o call p }
+    requires { before ps s st_b }
+    ensures { let x = Ml2c (pids S_owning_input ps 0) in
               ok_step ps o call p s x /\ (p.noalloc -> step_noalloc ps p x) /\
               before ps (next ps p s x) st3 }
   = ()
@@ -881,8 +902,9 @@ module Schedule
               c_values = pids S_value_locals ps 0 }
         in
         let cin = pids S_in_check ps 0 in
-        let rin = pids S_raising_input ps 0 in
-        let qin = pids S_quiet_input ps 0 in
+        let ain = pids S_pre_input ps 0 in
+        let b1in = pids S_checked_input ps 0 in
+        let b2in = pids S_owning_input ps 0 in
         let ini = pids S_init ps 0 in
         let frees = pids S_free ps 0 in
         let cerr = { moves = pids S_move_error ps 0; frees = frees } in
@@ -900,9 +922,10 @@ module Schedule
           if o.error then Cons (Check_error cerr) t_out else t_out in
         let t_call = Cons (Call call o.release_lock) t_err in
         let t_init = Cons (Init ini) t_call in
-        let t_qin = Cons (Ml2c qin) t_init in
-        let t_rin = Cons (Ml2c rin) t_qin in
-        let steps = Cons (Check_in cin) t_rin in
+        let t_b2 = Cons (Ml2c b2in) t_init in
+        let t_b1 = Cons (Ml2c b1in) t_b2 in
+        let t_chk = Cons (Check_in cin) t_b1 in
+        let steps = Cons (Ml2c ain) t_chk in
         let p = { noalloc = noalloc; result = result; roots = roots;
                   steps = steps } in
         (* proof *)
@@ -911,12 +934,14 @@ module Schedule
         assert { noalloc -> can_noalloc };
         assert { hyp ps o call p };
         let ghost s0 = init_state in
-        l_check_in ps o call p;
-        let ghost s1 = next ps p s0 (Check_in cin) in
-        l_ml2c_r ps o call p s1;
-        let ghost s2 = next ps p s1 (Ml2c rin) in
-        l_ml2c_q ps o call p s2;
-        let ghost s3 = next ps p s2 (Ml2c qin) in
+        l_ml2c_a ps o call p;
+        let ghost sa = next ps p s0 (Ml2c ain) in
+        l_check_in ps o call p sa;
+        let ghost s1 = next ps p sa (Check_in cin) in
+        l_ml2c_b1 ps o call p s1;
+        let ghost s2 = next ps p s1 (Ml2c b1in) in
+        l_ml2c_b2 ps o call p s2;
+        let ghost s3 = next ps p s2 (Ml2c b2in) in
         l_init ps o call p s3;
         let ghost s4 = next ps p s3 (Init ini) in
         l_call ps o call p s4;
@@ -946,8 +971,9 @@ module Schedule
         assert { run ps o call p s5 t_err };
         assert { run ps o call p s4 t_call };
         assert { run ps o call p s3 t_init };
-        assert { run ps o call p s2 t_qin };
-        assert { run ps o call p s1 t_rin };
+        assert { run ps o call p s2 t_b2 };
+        assert { run ps o call p s1 t_b1 };
+        assert { run ps o call p sa t_chk };
         assert { run ps o call p s0 steps };
         Ok p
 end

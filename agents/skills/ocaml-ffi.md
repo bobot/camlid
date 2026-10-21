@@ -41,6 +41,13 @@ trusted, so check them against these rules.
 - After `dispose`, the pointer is NULL: the finalizer skips it, and the
   check of the input raises `Invalid_argument`.
 
+## Bounds
+
+- A conversion that copies `len` elements or bytes from an OCaml value
+  needs a check that the value is long enough (`fixed_length_array`,
+  `fixed_length_string`). The checks run after the conversion of the
+  inputs without destructor nor check, so they can read such a length.
+
 ## Exceptions (P6)
 
 - `caml_failwith`/`caml_raise*` don't return: everything the stub owns must

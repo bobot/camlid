@@ -12,5 +12,9 @@ let () =
       func "f_out" [ output (ptr_ref string) ];
       (let str = fixed_length_string () in
        func "f_in3" [ str.t; str.len ]);
+      (let str =
+         fixed_length_string ~input:true ~output:false ~len_used_in_call:true ()
+       in
+       func "f_print_n" [ str.t; str.len ]);
     ]
     ~headers:[ "./lib.h" ]

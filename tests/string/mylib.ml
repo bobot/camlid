@@ -15,3 +15,8 @@ external f_in3:
   (int [@untagged]) ->
   string
   = "camlid_stub_f_in3_byte" "camlid_stub_f_in3"
+external f_print_n:
+  string ->
+  (int [@untagged]) ->
+  unit
+  = "camlid_stub_f_print_n_byte" "camlid_stub_f_print_n"

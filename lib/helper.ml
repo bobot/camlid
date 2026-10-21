@@ -105,7 +105,7 @@ let func ?noalloc ?release_lock ?error ?ml ?result ?ignored_result ?call_params
             rfree = Option.map bind' rty.cty.free;
             rc2ml = Ty.pure;
             rowned_by_ml = false;
-            rcheck = None;
+            rcheck = [];
           }
     | None, None -> None
   in
