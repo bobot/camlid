@@ -1101,23 +1101,22 @@ let list_or_empty ~empty ~sep pp fmt = function
   | [] -> empty fmt ()
   | l -> Fmt.list ~sep pp fmt l
 
+let result_param result =
+  {
+    pinput = PINone;
+    poutput = result.routput;
+    pused_in_call = Some (result.rc, e_var result.rc);
+    pfree = result.rfree;
+    pinit = None;
+    pinit_expr = [ (result.rc, None) ];
+    pon_error = None;
+    pml_heap = false;
+    pnoalloc_in = true;
+    pnoalloc_out = result.rnoalloc;
+  }
+
 let add_result params result =
-  match result with
-  | Some result ->
-      {
-        pinput = PINone;
-        poutput = result.routput;
-        pused_in_call = Some (result.rc, e_var result.rc);
-        pfree = result.rfree;
-        pinit = None;
-        pinit_expr = [ (result.rc, None) ];
-        pon_error = None;
-        pml_heap = false;
-        pnoalloc_in = true;
-        pnoalloc_out = result.rnoalloc;
-      }
-      :: params
-  | None -> params
+  match result with Some r -> result_param r :: params | None -> params
 
 let return_var = Var.mk "ret" e_value
 
@@ -1149,15 +1148,15 @@ type error = { cond : expr; msg : expr option; exn : exn_ option }
 
 let err_var = Var.mk "err" e_value
 
-let pp_error ~name ~params { fmt } error =
+let pp_error ~name ~moves ~frees { fmt } error =
   fmt "@[<v 2>if(%a){@," pp_expr error.cond;
   (match error.msg with
   | None ->
       fmt "@[%a = caml_copy_string(%S);@]@," pp_var err_var (name ^ " failed")
   | Some msg ->
       fmt "@[%a = caml_copy_string(%a);@]@," pp_var err_var pp_expr msg);
-  pp_scall (fun p -> p.pon_error) { fmt } params;
-  pp_scall (fun p -> p.pfree) { fmt } params;
+  pp_scall (fun p -> p.pon_error) { fmt } moves;
+  pp_scall (fun p -> p.pfree) { fmt } frees;
   (match error.exn with
   | None -> fmt "@[caml_failwith_value(%a);@]" pp_var err_var
   | Some exn ->
@@ -1171,56 +1170,66 @@ let pp_error ~name ~params { fmt } error =
         pp_var err_var);
   fmt "@]@,}@,"
 
-let is_noalloc ?noalloc ?(release_lock = false) ?error ~params ~result ~name ()
-    =
-  let params = add_result params result in
-  let outputs =
-    List.filter
-      (fun p -> match p.poutput with PONone -> false | _ -> true)
-      params
-  in
-  let single = List.length outputs = 1 in
-  let ok =
-    (not release_lock) && Option.is_none error
-    && List.length outputs <= 1
-    && List.for_all
-         (fun p ->
-           p.pnoalloc_in
-           && (p.pnoalloc_out
-              || single
-                 && match p.poutput with POUnboxable _ -> true | _ -> false))
-         params
-  in
-  match noalloc with
-  | None -> ok
-  | Some false -> false
-  | Some true when ok -> true
-  | Some true ->
-      Fmt.invalid_arg
-        "Camlid: %s can't be noalloc, a conversion allocates or the function \
-         has many results, an error check or releases the lock"
-        name
+let plan_param (p : param) : Plan.param =
+  {
+    input =
+      (match p.pinput with
+      | PINone -> No_input
+      | PIBoxed _ -> Boxed_input
+      | PIUnboxable _ -> Unboxed_input);
+    output =
+      (match p.poutput with
+      | PONone -> No_output
+      | POBoxed _ -> Boxed_output
+      | POUnboxable _ -> Unboxable_output);
+    init = Option.is_some p.pinit;
+    free = Option.is_some p.pfree;
+    on_error = Option.is_some p.pon_error;
+    value_locals = List.exists (fun (c, _) -> c.ty == e_value) p.pinit_expr;
+    ml_heap = p.pml_heap;
+    noalloc_in = p.pnoalloc_in;
+    noalloc_out = p.pnoalloc_out;
+  }
 
-let code_c_fun ?(noalloc = false) ?(release_lock = false) ?error ~params
-    ~call_params ~result ~name (fid : expr) =
-  let params = add_result params result in
-  let call_params = add_result call_params result in
-  if release_lock && List.exists (fun p -> p.pml_heap) call_params then
-    Fmt.invalid_arg
-      "Camlid: the runtime lock can't be released in %s, an argument of the C \
-       function points into the OCaml heap"
-      name;
+(** The parameters (with the result first) and the plan of a stub *)
+let plan ?noalloc ?(release_lock = false) ?error ~params ~call_params ~result
+    ~name () =
+  let result = Option.map result_param result in
+  let params = Option.to_list result @ params in
+  let call_params = Option.to_list result @ call_params in
+  let index p =
+    let rec aux i = function
+      | [] ->
+          Fmt.invalid_arg
+            "Camlid: in %s, a parameter of the call is not a parameter of the \
+             function"
+            name
+      | q :: _ when q == p -> i
+      | _ :: l -> aux (i + 1) l
+    in
+    aux 0 params
+  in
+  let options : Plan.options =
+    { noalloc; release_lock; error = Option.is_some error }
+  in
+  match
+    Plan.schedule ~name options
+      (List.map plan_param params)
+      ~call:(List.map index call_params)
+  with
+  | Ok plan -> (params, plan)
+  | Error msg -> invalid_arg msg
+
+(** Prints the plan of a stub. [params] contains the result. *)
+let code_c_fun_of_plan ?error ~(plan : Plan.plan) ~params ~name (fid : expr) =
+  let noalloc = plan.noalloc in
+  let ps = Array.of_list params in
+  let get l = List.map (fun i -> ps.(i)) l in
   let var_pinput p =
     match p.pinput with
     | PINone -> None
     | PIBoxed { ml; _ } -> Some ml
     | PIUnboxable { u; _ } -> Some u
-  in
-  let boxed_pinput p =
-    match p.pinput with
-    | PINone -> None
-    | PIBoxed { ml; _ } -> Some ml
-    | PIUnboxable _ -> None
   in
   let a2c_pinput p =
     match p.pinput with
@@ -1229,42 +1238,25 @@ let code_c_fun ?(noalloc = false) ?(release_lock = false) ?error ~params
     | PIUnboxable { u2c; _ } -> Some u2c
   in
   let inputs = List.filter_map var_pinput params in
-  let kind_of_result, unboxable_result =
-    let l =
-      List.filter_map
-        (fun p ->
-          match p.poutput with
-          | PONone -> None
-          | POBoxed { ml; _ } -> Some (ml, None)
-          | POUnboxable { u; ml; _ } -> Some (ml, Some u))
-        params
-    in
-    match l with
-    | [] -> (UnitResult, false)
-    | [ (v, None) ] -> (OneResultValue v, true)
-    | [ (ml, Some u) ] -> (OneResultUnboxed { ml; u }, true)
-    | _ -> (MultipleValues, false)
-  in
-  let var_poutput p =
+  let ml_poutput p =
     match p.poutput with
-    | PONone -> None
-    | POBoxed { ml; _ } -> Some ml
-    | POUnboxable { u; _ } when unboxable_result -> Some u
-    | POUnboxable { ml; _ } -> Some ml
+    | PONone -> assert false
+    | POBoxed { ml; _ } | POUnboxable { ml; _ } -> ml
   in
-  let boxed_poutput p =
-    match p.poutput with
-    | PONone -> None
-    | POBoxed { ml; _ } -> Some ml
-    | POUnboxable _ when unboxable_result -> None
-    | POUnboxable { ml; _ } -> Some ml
+  let kind_of_result =
+    match plan.result with
+    | Unit_result -> UnitResult
+    | One_value i -> OneResultValue (ml_poutput ps.(i))
+    | One_unboxed i -> (
+        match ps.(i).poutput with
+        | POUnboxable { u; ml; _ } -> OneResultUnboxed { ml; u }
+        | _ -> assert false)
+    | Tuple _ -> MultipleValues
   in
-  let unboxed_poutput p =
-    match p.poutput with
-    | PONone -> None
-    | POBoxed _ -> None
-    | POUnboxable { u; _ } when unboxable_result -> Some u
-    | POUnboxable _ -> None
+  let unboxable_result =
+    match plan.result with
+    | One_value _ | One_unboxed _ -> true
+    | Unit_result | Tuple _ -> false
   in
   let c2a_poutput p =
     match p.poutput with
@@ -1272,6 +1264,9 @@ let code_c_fun ?(noalloc = false) ?(release_lock = false) ?error ~params
     | POBoxed { c2ml; _ } -> Some c2ml
     | POUnboxable { c2u; _ } when unboxable_result -> Some c2u
     | POUnboxable { c2ml; _ } -> Some c2ml
+  in
+  let boxed_pinput p =
+    match p.pinput with PIBoxed { ml; _ } -> ml | _ -> assert false
   in
   (* local C variable declaration *)
   let id = ID.mk name in
@@ -1310,21 +1305,18 @@ let code_c_fun ?(noalloc = false) ?(release_lock = false) ?error ~params
             p;
           camlParam ~is_param ~first:false l)
       in
-      camlParam ~is_param:true ~first:true (List.filter_map boxed_pinput params);
+      let roots = plan.roots in
+      camlParam ~is_param:true ~first:true
+        (List.map boxed_pinput (get roots.inputs));
       (match kind_of_result with
       | UnitResult -> ()
       | OneResultValue v when noalloc -> fmt "@[value %a;@]@," pp_var v
-      | OneResultValue _ ->
+      | OneResultUnboxed { u; _ } -> fmt "@[%a %a;@]@," pp_expr u.ty pp_var u
+      | OneResultValue _ | MultipleValues ->
           camlParam ~is_param:false ~first:false
-            (List.filter_map boxed_poutput params)
-      | OneResultUnboxed _ ->
-          let pp_local pc = fmt "@[%a %a;@]@," pp_expr pc.ty pp_var pc in
-          List.iter pp_local (List.filter_map unboxed_poutput params)
-      | MultipleValues ->
-          camlParam ~is_param:false ~first:false
-            (return_var :: List.filter_map boxed_poutput params));
-      if Option.is_some error then
-        camlParam ~is_param:false ~first:false [ err_var ];
+            ((if roots.ret then [ return_var ] else [])
+            @ List.map ml_poutput (get roots.outputs)));
+      if roots.err then camlParam ~is_param:false ~first:false [ err_var ];
       (* C Locals *)
       let pp_local fmt (pc, pinit_expr) =
         Fmt.pf fmt "@[%a %a%a;@]@," pp_expr pc.ty pp_var pc
@@ -1341,46 +1333,50 @@ let code_c_fun ?(noalloc = false) ?(release_lock = false) ?error ~params
              List.filter_map
                (fun (c, _) -> if c.ty == e_value then Some c else None)
                p.pinit_expr)
-           params);
-      (* convert input variables *)
-      pp_scall a2c_pinput { fmt } params;
-      (* initialize variables *)
-      pp_scall (fun p -> p.pinit) { fmt } params;
-      (* function call *)
-      if release_lock then fmt "@[caml_enter_blocking_section();@]@,";
-      fmt "@[%a@]@," pp_expr_binds
-        (fid, List.filter_map (fun p -> p.pused_in_call) call_params);
-      if release_lock then fmt "@[caml_leave_blocking_section();@]@,";
-      Option.iter (pp_error ~name ~params { fmt }) error;
-      (* convert output variable *)
-      pp_scall c2a_poutput { fmt } params;
-      (match kind_of_result with
-      | UnitResult -> ()
-      | OneResultValue _ | OneResultUnboxed _ -> ()
-      | MultipleValues ->
-          let l = List.filter_map var_poutput params in
-          let len = List.length l in
-          let li = List.mapi (fun i v -> (i, v)) l in
-          (* create output tuple *)
-          fmt "@[%a = caml_alloc(%i,0);@]@," pp_var return_var len;
-          let pp_store fmt (i, v) =
-            Fmt.pf fmt "@[Store_field(%a, %i, %a);@]" pp_var return_var i pp_var
-              v
-          in
-          fmt "%a@]@," Fmt.(list ~sep:Fmt.cut pp_store) li);
-      (* free allocated memory *)
-      pp_scall (fun p -> p.pfree) { fmt } params;
-      (* return *)
-      (match kind_of_result with
-      | UnitResult when noalloc -> fmt "@[return Val_unit;@]"
-      | OneResultValue v when noalloc -> fmt "@[return %a;@]" pp_var v
-      | OneResultUnboxed { u; _ } when noalloc -> fmt "@[return %a;@]" pp_var u
-      | UnitResult -> fmt "@[CAMLreturn(Val_unit);@]"
-      | OneResultValue v -> fmt "@[CAMLreturn(%a);@]" pp_var v
-      | OneResultUnboxed { u; _ } ->
-          fmt "@[CAMLreturnT(%a,%a);@]" pp_expr u.ty pp_var u
-      | MultipleValues -> fmt "@[CAMLreturn(%a);@]" pp_var return_var);
+           (get roots.c_values));
+      let step : Plan.step -> unit = function
+        | Ml2c l -> pp_scall a2c_pinput { fmt } (get l)
+        | Init l -> pp_scall (fun p -> p.pinit) { fmt } (get l)
+        | Enter_blocking -> fmt "@[caml_enter_blocking_section();@]@,"
+        | Call l ->
+            fmt "@[%a@]@," pp_expr_binds
+              (fid, List.filter_map (fun p -> p.pused_in_call) (get l))
+        | Leave_blocking -> fmt "@[caml_leave_blocking_section();@]@,"
+        | Check_error { moves; frees } ->
+            pp_error ~name ~moves:(get moves) ~frees:(get frees) { fmt }
+              (Option.get error)
+        | C2ml l -> pp_scall c2a_poutput { fmt } (get l)
+        | Alloc_tuple l ->
+            let li = List.mapi (fun i v -> (i, ml_poutput v)) (get l) in
+            fmt "@[%a = caml_alloc(%i,0);@]@," pp_var return_var
+              (List.length li);
+            let pp_store fmt (i, v) =
+              Fmt.pf fmt "@[Store_field(%a, %i, %a);@]" pp_var return_var i
+                pp_var v
+            in
+            fmt "%a@]@," Fmt.(list ~sep:Fmt.cut pp_store) li
+        | Free l -> pp_scall (fun p -> p.pfree) { fmt } (get l)
+        | Return -> (
+            match kind_of_result with
+            | UnitResult when noalloc -> fmt "@[return Val_unit;@]"
+            | OneResultValue v when noalloc -> fmt "@[return %a;@]" pp_var v
+            | OneResultUnboxed { u; _ } when noalloc ->
+                fmt "@[return %a;@]" pp_var u
+            | UnitResult -> fmt "@[CAMLreturn(Val_unit);@]"
+            | OneResultValue v -> fmt "@[CAMLreturn(%a);@]" pp_var v
+            | OneResultUnboxed { u; _ } ->
+                fmt "@[CAMLreturnT(%a,%a);@]" pp_expr u.ty pp_var u
+            | MultipleValues -> fmt "@[CAMLreturn(%a);@]" pp_var return_var)
+      in
+      List.iter step plan.steps;
       fmt "@]@,@[}@]@]@.")
+
+let code_c_fun ?noalloc ?release_lock ?error ~params ~call_params ~result ~name
+    fid =
+  let params, plan =
+    plan ?noalloc ?release_lock ?error ~params ~call_params ~result ~name ()
+  in
+  code_c_fun_of_plan ?error ~plan ~params ~name fid
 
 let code_c_fun_bytecode ~params ~result fid_native =
   let params = add_result params result in
@@ -1475,12 +1471,14 @@ let code_c_fun_bytecode ~params ~result fid_native =
 
 let print_ml_fun ?noalloc ?release_lock ?error ~params ?(call_params = params)
     ?result ~mlname fid =
-  let noalloc =
-    is_noalloc ?noalloc ?release_lock ?error ~params ~result ~name:mlname ()
+  let all_params, plan =
+    plan ?noalloc ?release_lock ?error ~params ~call_params ~result ~name:mlname
+      ()
   in
+  let noalloc = plan.noalloc in
   let code_c =
-    code_c_fun ~noalloc ?release_lock ?error ~params ~call_params ~result
-      ~name:("stub_" ^ mlname) fid
+    code_c_fun_of_plan ?error ~plan ~params:all_params ~name:("stub_" ^ mlname)
+      fid
   in
   let all = add_result params result in
   let inputs =
@@ -1708,15 +1706,16 @@ module AlgData = struct
           (fun (name, tag, fields) ->
             match fields with
             | KConst _ ->
-                Fmt.pf fmt "#define %a_of_%s() break; case %a:@\n" pp_id id
-                  name pp_id tag
+                Fmt.pf fmt "#define %a_of_%s() break; case %a:@\n" pp_id id name
+                  pp_id tag
             | KNonConst (_, fields) ->
                 Fmt.pf fmt
                   "#define %a_of_%s(%a) break; case %a: \\@\n\
-                   \  for(int cid_once = 1; cid_once; cid_once = 0)"
+                  \  for(int cid_once = 1; cid_once; cid_once = 0)"
                   pp_id id name
                   Fmt.(
-                    list ~sep:(const string ", ") (using (fun (n, _, _) -> n) string))
+                    list ~sep:(const string ", ")
+                      (using (fun (n, _, _) -> n) string))
                   fields pp_id tag;
                 List.iter
                   (fun (n, _, ty) ->
@@ -1730,7 +1729,8 @@ module AlgData = struct
       in
       toplevel ~kind:H id
         "@[<hv 2>@[typedef struct {@]@ @[<hv 2>enum {@ %a} tag;@]@ @[<hv \
-         2>union {@ %a} u;@] @[}@] %a;@]@\n%a"
+         2>union {@ %a} u;@] @[}@] %a;@]@\n\
+         %a"
         Fmt.(list ~sep:comma pp_enum)
         l
         Fmt.(list ~sep:sp pp_constr)
