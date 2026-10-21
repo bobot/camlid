@@ -146,7 +146,9 @@ let selected (x: sel) (q: param) : bool =
     not (has_input q) && not (has_output q) && q.owned_by_ml
   | S_raising_owning_input -> has_input q && q.ml2c.raising && q.free
   | S_raising_output -> has_output q && q.c2ml.raising
-  | S_not_noalloc -> not (is_pure q.ml2c) || q.in_check || q.out_check
+  | S_not_noalloc ->
+    has_input q && (not (is_pure q.ml2c) || q.in_check) || has_output q && 
+                                                           q.out_check
 
 let rec pids (x: sel) (ps: param list) (n: int) : (int) list =
   match ps with

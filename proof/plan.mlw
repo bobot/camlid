@@ -19,6 +19,12 @@ their contract (`param`). It checks the order of the steps:
 
 The parameters are numbered by their position in the list.
 
+`schedule` refuses a description exactly in the cases of `sched_error`.
+`Bad_call`, `Input_output_owned`, `Owned_unused`, `Lock_ml_heap` and
+`Not_noalloc` have no safe plan in this model. `Raising_owning_input` and
+`Raising_output` refuse conversions declared raising, conservatively: a
+check (`in_check`, `out_check`) is always accepted instead.
+
 Trusted, not proved:
 
 - each C template matches its contract: the effects of the conversions,
@@ -171,7 +177,8 @@ module Types
       has_input q && q.ml2c.raising && q.free
     | S_raising_output -> has_output q && q.c2ml.raising
     | S_not_noalloc ->
-      not (is_pure q.ml2c) || q.in_check || q.out_check
+      has_input q && (not (is_pure q.ml2c) || q.in_check) ||
+      has_output q && q.out_check
     end
 
   predicate valid_idx (ps: list param) (l: list int) =
@@ -280,6 +287,7 @@ module Model
     vin : int -> bool;  (** the boxed input is a valid value *)
     vout : int -> bool;  (** the output has been converted, and is valid *)
     mv : int -> bool;  (** the C value has been moved into an OCaml value *)
+    chk : int -> bool;  (** the value has been checked *)
     vc : int -> bool;  (** the C locals of type `value` are valid *)
     vret : bool;
     lock : bool;  (** the runtime lock is held *)
@@ -293,6 +301,7 @@ module Model
     vin = (fun _ -> true);
     vout = (fun _ -> false);
     mv = (fun _ -> false);
+    chk = (fun _ -> false);
     vc = (fun _ -> true);
     vret = false;
     lock = true;
@@ -379,6 +388,7 @@ module Model
       s.lock /\ valid_idx ps l /\ distinct l /\
       (forall i. mem i l ->
          (prm ps i).input <> No_input /\ s.st i = Zero /\
+         ((prm ps i).in_check -> s.chk i) /\
          ((prm ps i).input = Boxed_input -> s.vin i)) /\
       (any_alloc_in ps l -> forall i. mem i l ->
          (prm ps i).input = Boxed_input -> mem i p.roots.inputs) /\
@@ -392,6 +402,7 @@ module Model
       valid_idx ps l /\ inputs_converted ps s /\
       (forall i. mem i l ->
          s.st i <> Moved /\ s.st i <> Freed /\
+         ((prm ps i).init -> s.st i <> Zero) /\
          ((prm ps i).value_locals -> s.vc i) /\
          (release -> not (prm ps i).ml_heap /\ not (prm ps i).value_locals))
     | Check_error c ->
@@ -413,6 +424,7 @@ module Model
          ((prm ps i).owned_by_ml ->
             (prm ps i).input = No_input /\ s.st i = Owned /\ not s.mv i) /\
          ((prm ps i).value_locals -> s.vc i) /\
+         ((prm ps i).out_check -> s.chk i) /\
          not (c2ml_eff ps p i).raising) /\
       (any_alloc_out ps p l -> forall i. mem i l -> mem i p.roots.outputs)
     | Alloc_tuple l ->
@@ -433,11 +445,10 @@ module Model
   (** The state after a step that didn't raise *)
   function next (ps: list param) (p: plan) (s: state) (x: step) : state =
     match x with
-    | Check_in _ | Check_error _ | Check_out _ _ | Return ->
-      match x with
-      | Check_error _ -> { s with checked_error = true }
-      | _ -> s
-      end
+    | Check_in l | Check_out l _ ->
+      { s with chk = (fun i -> s.chk i || mem i l) }
+    | Check_error _ -> { s with checked_error = true }
+    | Return -> s
     | Ml2c l ->
       let s1 = { s with st = (fun i ->
         if mem i l then (if (prm ps i).free then Owned else Borrowed)
@@ -588,16 +599,22 @@ module Proof
 
   predicate no_mv (s: state) = forall i. not s.mv i
 
+  predicate chk_in (ps: list param) (s: state) =
+    forall i. 0 <= i < length ps -> selected S_in_check (nth i ps) -> s.chk i
+
+  predicate chk_out (ps: list param) (s: state) =
+    forall i. 0 <= i < length ps -> selected S_out_check (nth i ps) -> s.chk i
+
   (** Before the call *)
   predicate before (ps: list param) (s: state) (f: param -> cstate) =
     st_is ps s f /\ vals_ok ps s /\ s.lock /\ not s.called /\
-    not s.checked_error /\ no_mv s
+    not s.checked_error /\ no_mv s /\ chk_in ps s
 
   (** After the call *)
   predicate after (ps: list param) (o: options) (s: state)
       (f: param -> cstate) =
     st_is ps s f /\ vals_ok ps s /\ s.lock /\ s.called /\
-    s.unlocked_call = o.release_lock
+    s.unlocked_call = o.release_lock /\ chk_in ps s
 
   let ghost gc_ok (ps: list param) (o: options) (call: list int) (p: plan)
       (s: state)
@@ -613,8 +630,7 @@ module Proof
     ensures { let x = Check_in (pids S_in_check ps 0) in
               ok_step ps o call p init_state x /\
               (p.noalloc -> step_noalloc ps p x) /\
-              next ps p init_state x = init_state }
-    ensures { before ps init_state st0 }
+              before ps (next ps p init_state x) st0 }
   = ()
 
   let ghost l_ml2c_r (ps: list param) (o: options) (call: list int)
@@ -674,7 +690,9 @@ module Proof
                         { moves = pids S_move_out ps 0;
                           frees = pids S_free ps 0 } in
               ok_step ps o call p s x /\ (p.noalloc -> step_noalloc ps p x) /\
-              next ps p s x = s }
+              after ps o (next ps p s x) st5 /\ no_mv (next ps p s x) /\
+              (o.error -> (next ps p s x).checked_error) /\
+              chk_out ps (next ps p s x) }
   = match pids S_out_check ps 0 with
     | Nil -> ()
     | Cons i _ ->
@@ -687,6 +705,7 @@ module Proof
       (p: plan) (s: state)
     requires { hyp ps o call p }
     requires { after ps o s st5 /\ no_mv s /\ (o.error -> s.checked_error) }
+    requires { chk_out ps s }
     ensures { let x = C2ml (pids S_output ps 0) in
               ok_step ps o call p s x /\ (p.noalloc -> step_noalloc ps p x) /\
               after ps o (next ps p s x) st8 /\
@@ -893,8 +912,9 @@ module Schedule
         assert { hyp ps o call p };
         let ghost s0 = init_state in
         l_check_in ps o call p;
-        l_ml2c_r ps o call p s0;
-        let ghost s2 = next ps p s0 (Ml2c rin) in
+        let ghost s1 = next ps p s0 (Check_in cin) in
+        l_ml2c_r ps o call p s1;
+        let ghost s2 = next ps p s1 (Ml2c rin) in
         l_ml2c_q ps o call p s2;
         let ghost s3 = next ps p s2 (Ml2c qin) in
         l_init ps o call p s3;
@@ -907,8 +927,9 @@ module Schedule
             next ps p s5 (Check_error cerr) end
           else s5 in
         l_check_out ps o call p s6;
-        l_c2ml ps o call p s6;
-        let ghost s8 = next ps p s6 (C2ml outputs) in
+        let ghost s7 = next ps p s6 (Check_out out_checks cout) in
+        l_c2ml ps o call p s7;
+        let ghost s8 = next ps p s7 (C2ml outputs) in
         let ghost s9 =
           match result with
           | Tuple l -> l_tuple ps o call p s8 l; next ps p s8 (Alloc_tuple l)
@@ -920,13 +941,13 @@ module Schedule
         assert { run ps o call p s10 (Cons Return Nil) };
         assert { run ps o call p s9 t_free };
         assert { run ps o call p s8 t_tuple };
-        assert { run ps o call p s6 t_c2ml };
+        assert { run ps o call p s7 t_c2ml };
         assert { run ps o call p s6 t_out };
         assert { run ps o call p s5 t_err };
         assert { run ps o call p s4 t_call };
         assert { run ps o call p s3 t_init };
         assert { run ps o call p s2 t_qin };
-        assert { run ps o call p s0 t_rin };
+        assert { run ps o call p s1 t_rin };
         assert { run ps o call p s0 steps };
         Ok p
 end
