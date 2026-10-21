@@ -234,4 +234,4 @@ the generated stubs.
 - The ppx is not needed for the lint: the generator runs during the build,
   and only the final text has the computed names. A quotation ppx
   (`{%c| ... |}`) may come later as sugar that builds the same data.
-- The minimum OCaml version can be raised (proposed: 4.14).
+- The minimum OCaml version is 4.14.

@@ -6,7 +6,7 @@ Keep the generic parts in sync with it. The section "In camlid" is local. -->
 
 - Proofs go in `proof/*.mlw`, with the hints in `proof/why3find.proofs/`.
   The extracted OCaml (`lib/*_gen.ml`) is committed, so building camlid
-  doesn't need Why3. It must compile with OCaml 4.11.
+  doesn't need Why3. It must compile with OCaml 4.14.
 - Prove what `agents/design/safe-stubs.md` lists (memory safety of the stub
   plan), not the full behaviour. The C templates are trusted and tested.
 - Environment (2026-10-21): why3 1.8.2 and why3find 1.3.0 are installed, and

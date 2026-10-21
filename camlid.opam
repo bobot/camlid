@@ -9,7 +9,7 @@ bug-reports: "https://github.com/bobot/camlid/issues"
 depends: [
   "dune" {>= "3.19"}
   "fmt" {>= "0.10.0"}
-  "ocaml" {>= "4.11"}
+  "ocaml" {>= "4.14"}
   "odoc" {with-doc}
 ]
 build: [

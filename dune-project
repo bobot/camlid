@@ -12,4 +12,4 @@
 (package
  (name camlid)
  (synopsis "OCaml library for generating C stubs")
- (depends (fmt (>= 0.10.0)) (ocaml (>= 4.11))))
+ (depends (fmt (>= 0.10.0)) (ocaml (>= 4.14))))

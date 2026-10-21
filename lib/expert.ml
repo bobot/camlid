@@ -74,7 +74,7 @@ let builtin_mltypes ~unbox_attribute ~unbox_version ?u_type ~c_type ~c2ml ~ml2c
     owned_by_ml = false;
     ml_heap = false;
     ml2c_noalloc = true;
-    c2ml_noalloc = String.length c2ml >= 4 && String.sub c2ml 0 4 = "Val_";
+    c2ml_noalloc = String.starts_with ~prefix:"Val_" c2ml;
   }
 
 let string_nt_alias = mlalias "string_nt" "string"

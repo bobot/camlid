@@ -29,8 +29,8 @@ it follows the OCaml FFI rules, and handles C values like C++ objects
 | documentation, must give no warnings | `dune build @doc` |
 | memory check of a test | `valgrind --leak-check=full --errors-for-leak-kinds=definite --error-exitcode=1 _build/default/tests/<t>/app.exe` |
 
-The minimum OCaml version is 4.11: no `String.starts_with`, `In_channel`,
-`Seq` functions newer than 4.11, and so on. The generated C is C11 and is
+The minimum OCaml version is 4.14 (also tested with 5.x in CI): no
+function newer than 4.14 in `lib/`. The generated C is C11 and is
 compiled with `-Wall -Werror -Wconversion --pedantic-errors` in the tests.
 
 ## Knowledge base: `agents/`
