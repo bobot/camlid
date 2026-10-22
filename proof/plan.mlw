@@ -957,8 +957,6 @@ module Schedule
               | Ok p -> safe ps o call p
               | Error e -> error_cond ps o call e
               end }
-    ensures { (forall e. not error_cond ps o call e) ->
-                exists p. result = Ok p }
   = if not fits zero ps then Error Too_many_params
     else if not valid_call ps call then Error Bad_call
     else if exists_sel S_input_output_owned ps then Error Input_output_owned

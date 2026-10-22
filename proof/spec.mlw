@@ -1,0 +1,536 @@
+(** # What a safe stub is
+
+This file is the specification to review. It describes the memory of a
+stub as *blocks*, like the memory models of Frama-C (Eva, WP) and the OCaml
+FFI semantics of Melocoton (Guéneau et al., OOPSLA 2023). A variable
+points to blocks, a block is alive or dead, and has an owner.
+
+A step of a stub (`plan.Types.step`) is a list of *actions*. An action
+says which variables it reads and defines, which blocks it creates, frees
+or gives to OCaml, and its effects on the OCaml runtime. The safety rules
+are written once, for every action (`pre_action`). The table
+(`actions_of`, `branch_of`) gives the actions of each step, from the
+contract of the parameters (`plan.Types.param`).
+
+Trusted, so to be reviewed:
+
+- the table: each action describes what the printer generates
+  (`Expert.code_c_fun_of_plan`) and what the C templates of the types do;
+- the generic rules (`pre_action`, `post_action`, `gc`);
+- the destructor of a C value accepts its initial value (the frees of the
+  error path rely on it);
+- the aliasing hypothesis (`aliasing`): which blocks the C function can
+  make its outputs point to. It is a parameter of the specification.
+
+## Positions, variables and blocks
+
+A *position* (`pos`) is the index of a parameter in the parameter list of
+the stub: the result of the C function first (if any), then the
+parameters given to `Helper.func` or `Expert.print_ml_fun`. The OCaml
+`external` takes the inputs in this order. The C function takes the
+positions in `call`, in any order, possibly repeated.
+
+Each position has a C variable, its C locals of type `value`, an OCaml
+input and an OCaml output; the stub also has the tuple of the results and
+the message of an exception. The blocks are named by the variable that
+creates them (one block per allocation site), so there are finitely many.
+
+## Relation to Melocoton
+
+- our OCaml blocks are its runtime blocks, our C blocks its C memory;
+- `gc` is its `GC(θ)` change at each allocation: a registered variable
+  (`registerroot`, our `rooted`) keeps pointing to its block, any other
+  pointer into the OCaml heap is lost;
+- `owned_by_ml` is its custom blocks (`alloc_custom`, `read_custom`): the
+  C memory is kept alive by the OCaml block (our `Kept`);
+- outside Melocoton: exceptions (`may_raise`), the release of the runtime
+  lock (`released`), finalizers (the owner `Kept`), `noalloc`. *)
+
+module Spec
+
+  use int.Int
+  use list.List
+  use list.Mem as L
+  use list.Length
+  use list.NthNoOpt
+  use list.Append
+  use set.Set
+  use option.Option
+  use plan.OInt
+  use plan.Types
+
+  (** The position of a parameter, in the list of the parameters of the
+      stub, the result of the C function first *)
+  type pos = int
+
+  (** ## Variables and blocks *)
+
+  type var =
+    | C pos  (** the C variable of the parameter *)
+    | Vloc pos  (** its C locals of type `value` *)
+    | In pos  (** its OCaml input, the argument of the stub *)
+    | Out pos  (** its OCaml output *)
+    | Tup  (** the tuple of the results *)
+    | Msg  (** the message of an exception *)
+
+  type block =
+    | MlIn pos  (** the OCaml block of the input *)
+    | MlOut pos  (** the OCaml block of the output *)
+    | MlLoc pos  (** the OCaml blocks of the C locals of type `value` *)
+    | MlTuple
+    | MlMsg
+    | Own pos
+        (** the C memory owned by the C value, freed by its destructor *)
+    | Data pos
+        (** the C memory stored in the OCaml block (`owned_by_ml`): of the
+            input, or moved into the output *)
+
+  predicate is_ml (b: block) =
+    match b with
+    | MlIn _ | MlOut _ | MlLoc _ | MlTuple | MlMsg -> true
+    | Own _ | Data _ -> false
+    end
+
+  (** Who must free a block *)
+  type owner =
+    | Stub  (** the stub: free it, or give it to OCaml, before leaving *)
+    | Gc  (** an OCaml block, collected by the GC *)
+    | Kept block  (** C memory freed by the finalizer of an OCaml block *)
+
+  type bstate = Unborn | Live owner | Dead
+
+  (** The aliasing hypothesis on the C function, not checked by camlid.
+      Without it (`no_alias`) the outputs of the C function point to new
+      blocks or to memory outside the stub (globals of the C library). *)
+  type aliasing = {
+    call_aliases : pos -> set pos;
+      (** after the call, the C value `i` can point to the blocks of the C
+          values `call_aliases i` *)
+    out_keeps : pos -> set pos;
+      (** the OCaml output `i` keeps alive the OCaml inputs `out_keeps i`
+          (`Expert.keep_alive`, `with_parent`) *)
+  }
+
+  constant no_alias : aliasing =
+    { call_aliases = (fun _ -> empty); out_keeps = (fun _ -> empty) }
+
+  (** ## Actions *)
+
+  type action = {
+    used : set var;  (** variables read *)
+    defines : set var;  (** variables assigned *)
+    points_to : var -> set block;  (** where the assigned variables point *)
+    creates : set block;  (** new blocks *)
+    transfers : set block;  (** blocks that change owner *)
+    owner_of : block -> owner;  (** the owner of new and transferred blocks *)
+    deletes : set block;  (** blocks freed *)
+    reverts : set block;  (** blocks not created after all *)
+    stores : block -> set block;
+      (** the C memory a new OCaml block points to *)
+    keeps_alive : block -> set block;
+      (** the OCaml blocks a new OCaml block keeps alive *)
+    checks : set pos;  (** values checked *)
+    checked : set pos;  (** values that must have been checked before *)
+    allocates : bool;  (** can allocate in the OCaml heap (the GC can run) *)
+    may_raise : bool;  (** can raise an OCaml exception *)
+    exits : bool;  (** leaves the stub *)
+    released : bool;  (** runs with the runtime lock released *)
+  }
+
+  constant nop : action = {
+    used = empty; defines = empty; points_to = (fun _ -> empty);
+    creates = empty; transfers = empty; owner_of = (fun _ -> Stub);
+    deletes = empty; reverts = empty;
+    stores = (fun _ -> empty); keeps_alive = (fun _ -> empty);
+    checks = empty; checked = empty;
+    allocates = false; may_raise = false; exits = false; released = false;
+  }
+
+  (** ## The state of a stub *)
+
+  type state = {
+    st : block -> bstate;
+    points : var -> set block;
+    valid : set var;  (** variables with a usable value *)
+    refers : block -> set block;  (** the C memory an OCaml block points to *)
+    keeps : block -> set block;  (** the OCaml blocks it keeps alive *)
+    done_checks : set pos;
+  }
+
+  predicate in_range (ps: list param) (i: pos) = 0 <= i < length ps
+
+  function prm (ps: list param) (i: pos) : param = nth i ps
+
+  predicate boxed (ps: list param) (i: pos) =
+    in_range ps i /\ (prm ps i).input = Boxed_input
+
+  predicate locals (ps: list param) (i: pos) =
+    in_range ps i /\ (prm ps i).value_locals
+
+  (** The variables registered with the GC (`CAMLparam`, `CAMLlocal`). A C
+      variable is registered when it is a `value` (`ml_heap`) *)
+  predicate rooted (ps: list param) (p: plan) (v: var) =
+    match v with
+    | In i -> L.mem i (ints p.roots.inputs)
+    | Out i -> L.mem i (ints p.roots.outputs)
+    | Vloc i -> L.mem i (ints p.roots.c_values)
+    | C i -> L.mem i (ints p.roots.c_values) /\ (prm ps i).ml_heap
+    | Tup -> p.roots.ret
+    | Msg -> p.roots.err
+    end
+
+  (** At the start: the OCaml inputs and the C locals of type `value` are
+      valid; a custom block input keeps its C memory *)
+  function start (ps: list param) : state = {
+    st = (fun b -> match b with
+          | MlIn i -> if boxed ps i then Live Gc else Unborn
+          | MlLoc i -> if locals ps i then Live Gc else Unborn
+          | Data i ->
+            if boxed ps i /\ (prm ps i).owned_by_ml then Live (Kept (MlIn i))
+            else Unborn
+          | _ -> Unborn
+          end);
+    points = (fun v -> match v with
+              | In i -> if boxed ps i then singleton (MlIn i) else empty
+              | Vloc i -> if locals ps i then singleton (MlLoc i) else empty
+              | _ -> empty
+              end);
+    valid = (fun v -> match v with
+             | In i -> boxed ps i
+             | Vloc i -> locals ps i
+             | _ -> false
+             end);
+    refers = (fun b -> match b with
+              | MlIn i ->
+                if boxed ps i /\ (prm ps i).owned_by_ml
+                then singleton (Data i) else empty
+              | _ -> empty
+              end);
+    keeps = (fun _ -> empty);
+    done_checks = empty;
+  }
+
+  (** The GC can run: it moves the OCaml blocks and collects those that
+      are not registered. A registered variable is updated; an
+      unregistered OCaml variable, or a C variable pointing into the OCaml
+      heap, is lost. The C memory kept by a collected block is freed by its
+      finalizer. *)
+  predicate survives (ps: list param) (p: plan) (s: state) (b: block) =
+    exists v. rooted ps p v /\ mem v s.valid /\ mem b (s.points v)
+
+  function gc (ps: list param) (p: plan) (s: state) : state =
+    { s with
+      st = (fun b -> match s.st b with
+            | Live Gc -> if survives ps p s b then Live Gc else Dead
+            | Live (Kept k) ->
+              if survives ps p s k then Live (Kept k) else Dead
+            | x -> x
+            end);
+      valid = (fun v -> mem v s.valid /\
+                        (rooted ps p v \/
+                         match v with
+                         | C _ -> forall b. mem b (s.points v) -> not is_ml b
+                         | _ -> false
+                         end)) }
+
+  (** ## The rules, for every action *)
+
+  predicate live (s: state) (b: block) =
+    match s.st b with Live _ -> true | _ -> false end
+
+  predicate owned (s: state) (b: block) = s.st b = Live Stub
+
+  (** An OCaml block only points to C memory that it keeps alive, itself or
+      through a block it keeps alive *)
+  predicate refers_kept (s: state) =
+    forall b c. live s b -> mem c (s.refers b) ->
+      s.st c = Live (Kept b) \/
+      exists k. mem k (s.keeps b) /\ s.st c = Live (Kept k)
+
+  predicate pre_action (p: plan) (a: action) (s: state) =
+    (* read only valid variables pointing to live blocks (P2, P3) *)
+    (forall v. mem v a.used ->
+       mem v s.valid /\ forall b. mem b (s.points v) -> live s b) /\
+    (* a block is created once *)
+    (forall b. mem b a.creates -> s.st b = Unborn) /\
+    (* give to OCaml only the blocks owned by the stub, once (P5) *)
+    (forall b. mem b a.transfers -> owned s b) /\
+    (* free only owned blocks, or initial values (P1) *)
+    (forall b. mem b a.deletes -> owned s b \/ s.st b = Unborn) /\
+    subset a.checked s.done_checks /\
+    (* nothing owned by the stub when leaving it, and the OCaml blocks
+       keep alive what they point to (P1, P6) *)
+    ((a.may_raise \/ a.exits) ->
+       (forall b. not owned s b) /\ refers_kept s) /\
+    (* without the runtime lock, nothing in the OCaml heap (P4) *)
+    (a.released -> forall v b. mem v a.used -> mem b (s.points v) ->
+       not is_ml b) /\
+    (* a noalloc stub doesn't use the runtime (P3) *)
+    (p.noalloc -> not a.allocates /\ not a.may_raise /\ not a.released)
+
+  function post_action (ps: list param) (p: plan) (a: action) (s: state)
+      : state =
+    let s0 = if a.allocates \/ a.released then gc ps p s else s in
+    { st = (fun b ->
+        if mem b a.deletes then Dead
+        else if mem b a.reverts then Unborn
+        else if mem b a.creates \/ mem b a.transfers then Live (a.owner_of b)
+        else s0.st b);
+      points = (fun v -> if mem v a.defines then a.points_to v
+                         else s0.points v);
+      valid = union s0.valid a.defines;
+      refers = (fun b -> if mem b a.creates then a.stores b
+                         else s0.refers b);
+      keeps = (fun b -> if mem b a.creates then a.keeps_alive b
+                        else s0.keeps b);
+      done_checks = union s0.done_checks a.checks;
+    }
+
+  predicate run_actions (ps: list param) (p: plan) (s: state)
+      (l: list action) =
+    match l with
+    | Nil -> true
+    | Cons a r ->
+      pre_action p a s /\ run_actions ps p (post_action ps p a s) r
+    end
+
+  function after (ps: list param) (p: plan) (s: state) (l: list action)
+      : state =
+    match l with
+    | Nil -> s
+    | Cons a r -> after ps p (post_action ps p a s) r
+    end
+
+  (** ## The table: the actions of each step *)
+
+  function only (b: bool) (s: set 'a) : set 'a = if b then s else empty
+
+  function positions (l: list t) : set pos = fun i -> L.mem i (ints l)
+
+  function vars (f: pos -> var) (s: set pos) : set var =
+    fun v -> exists i. mem i s /\ v = f i
+
+  (** The C memory of the C value `i`, owned by the stub or by OCaml. The
+      C value of a `value` (`ml_heap`) points into the OCaml heap. *)
+  function cblocks (ps: list param) (i: pos) : set block =
+    let q = prm ps i in
+    fun b -> in_range ps i /\
+      (b = Own i /\ q.free \/
+       b = Data i /\ q.owned_by_ml \/
+       b = MlIn i /\ q.ml_heap /\ q.input = Boxed_input)
+
+  (** The blocks created when the stub produces the C value `i`
+      (constructor or C function) *)
+  function new_blocks (ps: list param) (i: pos) : set block =
+    let q = prm ps i in
+    fun b -> in_range ps i /\
+      (b = Own i /\ q.free \/ b = Data i /\ q.owned_by_ml)
+
+  (** After the call: the C value can also point to the blocks of the
+      values it aliases *)
+  function call_blocks (al: aliasing) (ps: list param) (i: pos)
+      : set block =
+    fun b -> mem b (cblocks ps i) \/
+             exists j. mem j (al.call_aliases i) /\ mem b (cblocks ps j)
+
+  (** The inputs without destructor nor check, which a check can read *)
+  function pre_inputs (ps: list param) : set pos =
+    fun i -> in_range ps i /\ (prm ps i).input <> No_input /\
+             not (prm ps i).free /\ not (prm ps i).in_check
+
+  function all_inputs (ps: list param) : set pos =
+    fun i -> in_range ps i /\ (prm ps i).input <> No_input
+
+  (** Produced by the C function: not an input, no constructor *)
+  function produced (ps: list param) : set pos =
+    fun i -> in_range ps i /\ (prm ps i).input = No_input /\
+             not (prm ps i).init
+
+  function blocks_of (ps: list param) (s: set pos) : set block =
+    fun b -> exists i. mem i s /\ mem b (new_blocks ps i)
+
+  (** The conversion of the output `i`: a single unboxed result is
+      returned as a C value *)
+  function out_effects (ps: list param) (p: plan) (i: pos) : effects =
+    match p.result with
+    | One_unboxed j -> if to_int j = i then { alloc = false; raising = false }
+                       else (prm ps i).c2ml
+    | _ -> (prm ps i).c2ml
+    end
+
+  (** `ml2c` of the input `i`: a copy is owned by the stub when it has a
+      destructor; the C value of a custom block is borrowed *)
+  function act_ml2c (ps: list param) (i: pos) : action =
+    let q = prm ps i in
+    { nop with
+      used = only (q.input = Boxed_input) (singleton (In i));
+      defines = singleton (C i);
+      points_to = (fun _ -> cblocks ps i);
+      creates = only q.free (singleton (Own i));
+      checked = only q.in_check (singleton i);
+      allocates = q.ml2c.alloc; may_raise = q.ml2c.raising }
+
+  (** The check of the input `i`: reads its OCaml value and the C values of
+      the inputs without destructor nor check *)
+  function act_check_in (ps: list param) (i: pos) : action =
+    { nop with
+      used = union (only (boxed ps i) (singleton (In i)))
+                    (vars (fun j -> C j) (pre_inputs ps));
+      checks = singleton i; may_raise = true }
+
+  (** The constructor of `i`, which can read the inputs (`init_args`) *)
+  function act_init (ps: list param) (i: pos) : action =
+    { nop with
+      used = vars (fun j -> C j) (all_inputs ps);
+      defines = singleton (C i);
+      points_to = (fun _ -> cblocks ps i);
+      creates = new_blocks ps i }
+
+  (** The C function: reads its arguments, can modify them through
+      pointers, and produces the parameters without input nor
+      constructor *)
+  function act_call (al: aliasing) (ps: list param) (l: list t)
+      (release: bool) : action =
+    let args = positions l in
+    { nop with
+      used = (fun v -> match v with
+               | C i -> mem i args /\ not mem i (produced ps)
+               | Vloc i -> mem i args /\ locals ps i
+               | _ -> false
+               end);
+      defines = vars (fun i -> C i) (union args (produced ps));
+      points_to = (fun v -> match v with
+                   | C i -> call_blocks al ps i
+                   | _ -> empty
+                   end);
+      creates = blocks_of ps (produced ps);
+      released = release }
+
+  (** `c2ml` of the output `i`. For a custom block (`owned_by_ml`), the
+      block stores the C value and keeps its `Data`; a container
+      (`owned_by_ml` and `free`) keeps its `Own` memory, freed later. *)
+  function act_c2ml (al: aliasing) (ps: list param) (p: plan) (i: pos)
+      : action =
+    let q = prm ps i in
+    { nop with
+      used = union (singleton (C i)) (only q.value_locals (singleton (Vloc i)));
+      defines = singleton (Out i);
+      points_to = (fun _ -> singleton (MlOut i));
+      creates = singleton (MlOut i);
+      transfers = only q.owned_by_ml (singleton (Data i));
+      owner_of = (fun b -> if b = MlOut i then Gc else Kept (MlOut i));
+      stores = (fun _ ->
+        only q.owned_by_ml (remove (Own i) (call_blocks al ps i)));
+      keeps_alive = (fun _ ->
+        fun b -> exists j. mem j (al.out_keeps i) /\ b = MlIn j);
+      checked = only q.out_check (singleton i);
+      allocates = (out_effects ps p i).alloc;
+      may_raise = (out_effects ps p i).raising }
+
+  (** The check of the output `i`: reads its C value *)
+  function act_check_out (ps: list param) (i: pos) : action =
+    { nop with
+      used = union (singleton (C i))
+                    (only (locals ps i) (singleton (Vloc i)));
+      checks = singleton i }
+
+  (** The destructor of `i`, which accepts the initial value *)
+  function act_free (i: pos) : action =
+    { nop with deletes = singleton (Own i) }
+
+  function map_act (f: pos -> action) (l: list int) : list action =
+    match l with Nil -> Nil | Cons i r -> Cons (f i) (map_act f r) end
+
+  (** Before raising: the message, the moves, the frees, then raise *)
+  function act_cleanup (al: aliasing) (ps: list param) (p: plan)
+      (c: cleanup) : list action =
+    Cons { nop with defines = singleton Msg;
+                    points_to = (fun _ -> singleton MlMsg);
+                    creates = singleton MlMsg; owner_of = (fun _ -> Gc);
+                    allocates = true }
+      (* moved only to be finalized: the output need not be checked *)
+      (map_act (fun i -> { (act_c2ml al ps p i) with checked = empty })
+         (ints c.moves) ++
+       map_act act_free (ints c.frees) ++
+       Cons { nop with used = singleton Msg; may_raise = true; exits = true }
+         Nil)
+
+  (** The actions of a step when it doesn't fail *)
+  function actions_of (al: aliasing) (ps: list param) (p: plan) (x: step)
+      : list action =
+    match x with
+    | Check_in l -> map_act (act_check_in ps) (ints l)
+    | Ml2c l -> map_act (act_ml2c ps) (ints l)
+    | Init l -> map_act (act_init ps) (ints l)
+    | Call l release -> Cons (act_call al ps l release) Nil
+    | Check_error _ -> Nil
+    | Check_out l _ -> map_act (act_check_out ps) (ints l)
+    | C2ml l -> map_act (act_c2ml al ps p) (ints l)
+    | Alloc_tuple l ->
+      Cons { nop with defines = singleton Tup;
+                      points_to = (fun _ -> singleton MlTuple);
+                      creates = singleton MlTuple; owner_of = (fun _ -> Gc);
+                      allocates = true }
+        (Cons { nop with
+                used = add Tup (vars (fun i -> Out i) (positions l)) } Nil)
+    | Free l -> map_act act_free (ints l)
+    | Return ->
+      Cons { nop with
+             used = (match p.result with
+                      | Unit_result | One_unboxed _ -> empty
+                      | One_value i -> singleton (Out (to_int i))
+                      | Tuple _ -> singleton Tup end);
+             exits = true } Nil
+    end
+
+  (** The actions of a step when it fails *)
+  function branch_of (al: aliasing) (ps: list param) (p: plan) (x: step)
+      : list action =
+    match x with
+    | Check_error c ->
+      (* the C function failed: it produced nothing *)
+      Cons { nop with reverts = blocks_of ps (produced ps) }
+        (act_cleanup al ps p c)
+    | Check_out l c ->
+      map_act (act_check_out ps) (ints l) ++ act_cleanup al ps p c
+    | _ -> Nil
+    end
+
+  (** ## A safe plan *)
+
+  (** Each step is safe, with its failure, and the stub ends with
+      `Return` *)
+  predicate run_steps (al: aliasing) (ps: list param) (p: plan) (s: state)
+      (l: list step) =
+    match l with
+    | Nil -> false
+    | Cons x r ->
+      run_actions ps p s (branch_of al ps p x) /\
+      run_actions ps p s (actions_of al ps p x) /\
+      (if x = Return then r = Nil
+       else run_steps al ps p (after ps p s (actions_of al ps p x)) r)
+    end
+
+  (** The shape of the plan: the C function is called once, with the
+      requested arguments, and its result is checked when asked *)
+  predicate shape (o: options) (call: list t) (called: bool)
+      (checked: bool) (l: list step) =
+    match l with
+    | Nil -> false
+    | Cons (Call l' release) r ->
+      not called /\ l' = call /\ release = o.release_lock /\
+      shape o call true checked r
+    | Cons (Check_error _) r -> called /\ shape o call called true r
+    | Cons Return _ -> called /\ (o.error -> checked)
+    | Cons _ r -> shape o call called checked r
+    end
+
+  predicate safe_spec (al: aliasing) (ps: list param) (o: options)
+      (call: list t) (p: plan) =
+    (p.noalloc -> forall v. not rooted ps p v) /\
+    (o.want_noalloc = Some true -> p.noalloc) /\
+    (o.want_noalloc = Some false -> not p.noalloc) /\
+    shape o call false false p.steps /\
+    run_steps al ps p (start ps) p.steps
+
+end

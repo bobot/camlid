@@ -7,6 +7,14 @@ conversions. Points 4 (C API without `*%a`) and 5 (`Unchecked`) are not
 started. The model and its limits are described in the header of
 `proof/plan.mlw`.
 
+Status (2026-10-22): `proof/spec.mlw` is the specification for reviewers,
+not yet linked to `plan.mlw`. It models the memory as blocks (OCaml blocks
+and C memory, one per allocation site) with an owner, variables pointing
+to blocks, and the GC as in Melocoton. The aliasing of the C function is a
+parameter of the spec (`aliasing`). Next: prove that `schedule` satisfies
+`safe_spec` for `no_alias`, then decide how a template declares its
+aliases (`keep_alive`, `with_parent`).
+
 ## Goal
 
 Camlid has three kinds of users:
