@@ -6,7 +6,7 @@ Status: 2026-10-21, commit f182722.
 
 | file | role |
 |---|---|
-| `lib/plan.ml`, `lib/plan_gen.ml` | the scheduler of the stub steps, proved in `proof/plan.mlw` and extracted (`make extract`); never edit `plan_gen.ml` |
+| `lib/plan.ml`, `lib/plan_gen.ml` | the scheduler of the stub steps, proved in `proof/schedule.mlw` and extracted (`make extract`); never edit `plan_gen.ml` |
 | `lib/expr.ml` | identifiers, variables, expressions (`{ expr : unit Fmt.t }`), definitions, and `final_print` |
 | `lib/ty.ml` | the records: `mlc` (a type template), `param` (an instantiated parameter), `result` |
 | `lib/expert.ml` | type constructors (strings, arrays, custom, abstract, value_type, parent/child, enum, algdata, ...), `param`, and stub generation (`code_c_fun`, `code_c_fun_bytecode`, `print_ml_fun`) |
@@ -47,11 +47,14 @@ outside closures.
 
 `Plan.schedule` works on an abstract view of the parameters (`Plan.param`)
 and decides the order of the steps, the GC roots, noalloc and the
-refusals. It is proved in Why3 (`proof/plan.mlw`): change it there, prove
+refusals. It is proved in Why3 (`proof/schedule.mlw`) against the
+specification `proof/spec.mlw`: change it there, prove
 (`make prove`), then `make extract`. `Expert.code_c_fun_of_plan` only prints the plan. The order is: formals, `CAMLparam`/`CAMLlocal` (omitted when noalloc), C
-locals with `init_expr`, ml2c of the inputs, init of the others,
+locals with `init_expr`, ml2c of the inputs (the one with unregistered
+OCaml values last), init of the others,
 `caml_enter_blocking_section`, call, leave, error check (message, move the
-outputs owned by OCaml, frees, raise), c2ml of the outputs, tuple, frees,
+outputs owned by OCaml, frees, raise), c2ml of the outputs (the one with
+unregistered OCaml values first), tuple, frees,
 return. The bytecode stub (`_byte`) converts the unboxed arguments and calls
 the native one. `print_ml_fun` writes the `external`, with `[@unboxed]`,
 `[@untagged]` and `[@@noalloc]`.

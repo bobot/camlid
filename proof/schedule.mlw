@@ -1,0 +1,1596 @@
+(** # `schedule`, proved safe in the specification
+
+`schedule` (module `Schedule`) chooses the steps of a stub, and is
+extracted to `lib/plan_gen.ml`. It is proved to give plans that satisfy
+`spec.Spec.safe_spec`, without aliasing (`no_alias`), and refuses a
+description exactly in the cases of `sched_error`.
+
+The proof (module `Proof`) describes the state of the specification
+after each step by a phase per position (`ph`): the C value is
+initial, owned, borrowed, moved or freed, the output is converted, the
+value is checked. *)
+
+module Proof
+
+  use int.Int
+  use list.List
+  use list.Mem as L
+  use list.Length
+  use list.NthNoOpt
+  use list.Distinct
+  use list.Append
+  use set.Set
+  use map.MapExt
+  use option.Option
+  use plan.OInt
+  use plan.Types
+  use plan.Lists
+  use spec.Spec
+
+  (** ## What `schedule` checked and built *)
+
+  predicate no_sel (x: sel) (ps: list param) =
+    forall i. in_range ps i -> not selected x (prm ps i)
+
+  function out_roots (r: result_kind) : list int =
+    match r with
+    | Unit_result | One_unboxed _ -> Nil
+    | One_value i -> Cons (to_int i) Nil
+    | Tuple l -> ints l
+    end
+
+  predicate is_tuple (r: result_kind) =
+    match r with Tuple _ -> true | _ -> false end
+
+  let function tup_of (r: result_kind) : bool =
+    match r with Tuple _ -> true | _ -> false end
+
+  constant no_roots : gc_roots =
+    { inputs = Nil; outputs = Nil; ret = false; err = false; c_values = Nil }
+
+  predicate roots_ok (ps: list param) (o: options) (p: plan) =
+    if p.noalloc then p.roots = no_roots
+    else
+      ints p.roots.inputs = ipids S_boxed_input ps 0 /\
+      ints p.roots.outputs = out_roots p.result /\
+      (p.roots.ret <-> is_tuple p.result) /\
+      (p.roots.err <-> (o.error \/ ipids S_out_check ps 0 <> Nil)) /\
+      ints p.roots.c_values = ipids S_value_locals ps 0
+
+  predicate result_ok (ps: list param) (r: result_kind) =
+    match ipids S_output ps 0 with
+    | Nil -> r = Unit_result
+    | Cons i Nil ->
+      match r with
+      | One_value j -> to_int j = i /\ not unboxable_output (nth i ps)
+      | One_unboxed j -> to_int j = i /\ unboxable_output (nth i ps)
+      | _ -> false
+      end
+    | l -> match r with Tuple l' -> ints l' = l | _ -> false end
+    end
+
+  predicate hyp (ps: list param) (o: options) (call: list t) (p: plan) =
+    valid_idx ps (ints call) /\
+    no_sel S_input_output_owned ps /\ no_sel S_owned_unused ps /\
+    no_sel S_raising_owning_input ps /\ no_sel S_raising_output ps /\
+    no_sel S_raising_heap ps /\
+    (forall i j. in_range ps i -> in_range ps j ->
+       heap_input (prm ps i) -> heap_input (prm ps j) -> i = j) /\
+    (o.release_lock ->
+       no_sel S_heap_input ps /\
+       forall i. L.mem i (ints call) ->
+         not (prm ps i).ml_heap /\ not (prm ps i).value_locals) /\
+    (p.noalloc ->
+       not o.release_lock /\ not o.error /\ no_sel S_not_noalloc ps /\
+       match ipids S_output ps 0 with
+       | Nil -> true
+       | Cons i Nil ->
+         is_pure (nth i ps).c2ml \/ unboxable_output (nth i ps)
+       | _ -> false
+       end) /\
+    roots_ok ps o p /\
+    result_ok ps p.result
+
+  (** ## Phases *)
+
+  type cs =
+    | KZ  (** initial value *)
+    | KO  (** owned by the stub *)
+    | KB  (** borrowed *)
+    | KM  (** moved into an OCaml value *)
+    | KF  (** freed *)
+
+  type ph = {
+    cv : cs;  (** the C value *)
+    mv : bool;  (** its `Data` is moved into the OCaml output *)
+    vo : bool;  (** the OCaml output is converted *)
+    ck : bool;  (** checked *)
+  }
+
+  (** The state of the blocks and variables of position `i` in phase `h`.
+      `hv`: no GC since the conversion of the input with unregistered
+      OCaml values. *)
+  predicate pos_ok (ps: list param) (hv: bool) (h: ph) (i: pos) (s: state) =
+    let q = prm ps i in
+    ((h.cv = KO \/ h.cv = KB) -> (heap_input q -> hv) ->
+       mem (C i) s.valid /\
+       forall b. mem b (s.points (C i)) -> mem b (cblocks ps i)) /\
+    (q.free -> h.cv = KZ \/ h.cv = KO \/ h.cv = KF) /\
+    (if q.free then
+       (h.cv = KZ -> s.st (Own i) = Unborn) /\
+       (h.cv = KO -> s.st (Own i) = Live Stub) /\
+       (h.cv = KF -> s.st (Own i) = Dead)
+     else s.st (Own i) = Unborn) /\
+    (if q.owned_by_ml then
+       if boxed_input q then s.st (Data i) = Live (Kept (MlIn i))
+       else if h.mv then s.st (Data i) = Live (Kept (MlOut i))
+       else if h.cv = KO then s.st (Data i) = Live Stub
+       else s.st (Data i) = Unborn
+     else s.st (Data i) = Unborn) /\
+    (h.mv -> h.vo /\ q.owned_by_ml) /\
+    (boxed_input q ->
+       mem (In i) s.valid /\
+       (forall b. mem b (s.points (In i)) <-> b = MlIn i) /\
+       s.st (MlIn i) = Live Gc) /\
+    (q.value_locals ->
+       mem (Vloc i) s.valid /\
+       (forall b. mem b (s.points (Vloc i)) <-> b = MlLoc i) /\
+       s.st (MlLoc i) = Live Gc) /\
+    (if h.vo then
+       mem (Out i) s.valid /\
+       (forall b. mem b (s.points (Out i)) <-> b = MlOut i) /\
+       s.st (MlOut i) = Live Gc
+     else s.st (MlOut i) = Unborn) /\
+    (h.ck -> mem i s.done_checks)
+
+  predicate glob (ps: list param) (tup msg: bool) (s: state) =
+    (forall b. owned s b ->
+       exists i. in_range ps i /\ (b = Own i \/ b = Data i)) /\
+    (forall b c. live s b -> mem c (s.refers b) ->
+       s.st c = Live (Kept b) /\ s.st b = Live Gc) /\
+    (if tup then
+       mem Tup s.valid /\ (forall b. mem b (s.points Tup) <-> b = MlTuple) /\
+       s.st MlTuple = Live Gc
+     else s.st MlTuple = Unborn) /\
+    (if msg then
+       mem Msg s.valid /\ (forall b. mem b (s.points Msg) <-> b = MlMsg) /\
+       s.st MlMsg = Live Gc
+     else s.st MlMsg = Unborn)
+
+  predicate inv (ps: list param) (f: pos -> ph) (hv tup msg: bool)
+      (s: state) =
+    glob ps tup msg s /\ forall i. in_range ps i -> pos_ok ps hv (f i) i s
+
+  (** Nothing is owned by the stub *)
+  predicate nothing_owned (ps: list param) (f: pos -> ph) =
+    forall i. in_range ps i -> (f i).cv = KO ->
+      not (prm ps i).free /\
+      ((prm ps i).owned_by_ml -> boxed_input (prm ps i) \/ (f i).mv)
+
+  lemma no_owned: forall ps f hv tup msg s.
+    inv ps f hv tup msg s -> nothing_owned ps f -> forall b. not owned s b
+
+  predicate gc_roots_ok (ps: list param) (p: plan) (f: pos -> ph)
+      (tup msg: bool) =
+    not p.noalloc /\
+    (forall i. in_range ps i -> (f i).vo -> rooted ps p (Out i)) /\
+    (tup -> p.roots.ret) /\ (msg -> p.roots.err)
+
+  let lemma gc_pos (ps: list param) (o: options) (call: list t) (p: plan)
+      (f: pos -> ph) (hv tup msg: bool) (s: state) (i: pos)
+    requires { hyp ps o call p }
+    requires { gc_roots_ok ps p f tup msg }
+    requires { inv ps f hv tup msg s }
+    requires { in_range ps i }
+    ensures { pos_ok ps false (f i) i (gc ps p s) }
+  = let q = prm ps i in
+    let h = f i in
+    let ghost s' = gc ps p s in
+    assert { pos_ok ps hv h i s };
+    assert { boxed_input q ->
+               rooted ps p (In i) /\ mem (MlIn i) (s.points (In i)) /\
+               survives ps p s (MlIn i) /\ s'.st (MlIn i) = Live Gc /\
+               mem (In i) s'.valid };
+    assert { q.value_locals ->
+               rooted ps p (Vloc i) /\ mem (MlLoc i) (s.points (Vloc i)) /\
+               survives ps p s (MlLoc i) /\ s'.st (MlLoc i) = Live Gc /\
+               mem (Vloc i) s'.valid };
+    assert { h.vo ->
+               rooted ps p (Out i) /\ mem (MlOut i) (s.points (Out i)) /\
+               survives ps p s (MlOut i) /\ s'.st (MlOut i) = Live Gc /\
+               mem (Out i) s'.valid };
+    assert { not h.vo -> s'.st (MlOut i) = Unborn };
+    assert { q.ml_heap -> q.value_locals -> rooted ps p (C i) };
+    assert { (h.cv = KO \/ h.cv = KB) -> not heap_input q ->
+               mem (C i) s'.valid };
+    assert { s'.st (Own i) = s.st (Own i) };
+    assert { q.owned_by_ml -> boxed_input q ->
+               s'.st (Data i) = Live (Kept (MlIn i)) };
+    assert { q.owned_by_ml -> not boxed_input q -> h.mv ->
+               s'.st (Data i) = Live (Kept (MlOut i)) };
+    assert { not (q.owned_by_ml /\ (boxed_input q \/ h.mv)) ->
+               s'.st (Data i) = s.st (Data i) }
+
+  let lemma gc_inv (ps: list param) (o: options) (call: list t) (p: plan)
+      (f: pos -> ph) (hv tup msg: bool) (s: state)
+    requires { hyp ps o call p }
+    requires { gc_roots_ok ps p f tup msg }
+    requires { inv ps f hv tup msg s }
+    ensures { inv ps f false tup msg (gc ps p s) }
+  = let ghost s' = gc ps p s in
+    assert { forall i. in_range ps i -> pos_ok ps false (f i) i s' };
+    assert { tup -> mem MlTuple (s.points Tup) /\ survives ps p s MlTuple };
+    assert { msg -> mem MlMsg (s.points Msg) /\ survives ps p s MlMsg };
+    assert { forall b. owned s' b -> owned s b };
+    assert { forall b c. live s' b -> mem c (s'.refers b) ->
+               s.st b = Live Gc /\ survives ps p s b /\
+               s'.st c = Live (Kept b) /\ s'.st b = Live Gc };
+    assert { tup -> mem Tup s'.valid /\ s'.st MlTuple = Live Gc };
+    assert { not tup -> s'.st MlTuple = Unborn };
+    assert { msg -> mem Msg s'.valid /\ s'.st MlMsg = Live Gc };
+    assert { not msg -> s'.st MlMsg = Unborn };
+    assert { s'.points = s.points };
+    assert { glob ps tup msg s' }
+
+  lemma owned_input: forall ps o call p i. hyp ps o call p -> in_range ps i ->
+    has_input (prm ps i) -> (prm ps i).owned_by_ml -> boxed_input (prm ps i)
+
+  function upd (f: pos -> ph) (i: pos) (h: ph) : pos -> ph =
+    fun j -> if j = i then h else f j
+
+  lemma start_inv: forall ps.
+    inv ps (fun _ -> { cv = KZ; mv = false; vo = false; ck = false })
+      true false false (start ps)
+
+  (** ## The actions *)
+
+  function acq_in (q: param) : cs = if q.free then KO else KB
+  function acquired (q: param) : cs =
+    if q.free || q.owned_by_ml then KO else KB
+
+  predicate converted (h: ph) = h.cv = KO \/ h.cv = KB
+
+  (** The C value of an input is defined after `ml2c` *)
+  let lemma l_ml2c (ps: list param) (o: options) (call: list t) (p: plan)
+      (f: pos -> ph) (hv tup msg: bool) (s: state) (i: pos)
+    requires { hyp ps o call p }
+    requires { inv ps f hv tup msg s }
+    requires { in_range ps i /\ has_input (prm ps i) }
+    requires { (f i).cv = KZ /\ not (f i).vo }
+    requires { (prm ps i).in_check -> mem i s.done_checks }
+    requires { (prm ps i).ml2c.raising -> nothing_owned ps f }
+    requires { (prm ps i).ml2c.alloc -> gc_roots_ok ps p f tup msg }
+    requires { p.noalloc -> is_pure (prm ps i).ml2c }
+    ensures { pre_action p (act_ml2c ps i) s }
+    ensures { inv ps (upd f i { (f i) with cv = acq_in (prm ps i) })
+                (if heap_input (prm ps i) then true
+                 else hv && not (prm ps i).ml2c.alloc)
+                tup msg (post_action ps p (act_ml2c ps i) s) }
+  = let q = prm ps i in
+    let a = act_ml2c ps i in
+    let ghost hv0 = hv && not q.ml2c.alloc in
+    let ghost s0 = if q.ml2c.alloc then gc ps p s else s in
+    if q.ml2c.alloc then gc_inv ps o call p f hv tup msg s;
+    assert { inv ps f hv0 tup msg s0 };
+    let ghost s1 = post_action ps p a s in
+    assert { forall j. in_range ps j -> j <> i ->
+               pos_ok ps hv0 (f j) j s0 -> pos_ok ps hv0 (f j) j s1 };
+    assert { mem (C i) s1.valid /\
+             forall b. mem b (s1.points (C i)) -> mem b (cblocks ps i) };
+    assert { q.free -> s1.st (Own i) = Live Stub };
+    assert { not q.free -> s1.st (Own i) = Unborn };
+    assert { q.owned_by_ml -> boxed_input q };
+    assert { s1.st (Data i) = s.st (Data i) };
+    assert { forall v. v <> C i -> s1.points v = s0.points v };
+    assert { forall v. v <> C i -> mem v s1.valid <-> mem v s0.valid };
+    assert { forall b. b <> Own i -> s1.st b = s0.st b };
+    assert { pos_ok ps true { (f i) with cv = acq_in q } i s1 };
+    assert { glob ps tup msg s0 };
+    assert { forall b. b <> Own i -> s1.refers b = s0.refers b };
+    assert { q.free -> forall c. not mem c (s1.refers (Own i)) };
+    assert { not q.free -> s1.refers (Own i) = s0.refers (Own i) /\
+             s1.st (Own i) = Unborn };
+    assert { forall b c. live s1 b -> mem c (s1.refers b) ->
+               b <> Own i /\ live s0 b /\ s0.st c = Live (Kept b) /\ c <> Own i };
+    assert { forall b. owned s1 b -> b = Own i \/ owned s0 b };
+    assert { glob ps tup msg s1 }
+
+  lemma output_owned: forall ps o call p i. hyp ps o call p ->
+    in_range ps i -> has_output (prm ps i) -> (prm ps i).owned_by_ml ->
+    not has_input (prm ps i) /\ boxed_output (prm ps i)
+
+  lemma call_blocks_no_alias: forall ps i.
+    call_blocks no_alias ps i = cblocks ps i
+
+  (** A converted C value can be read *)
+  lemma read_c: forall ps o call p f hv tup msg s i.
+    hyp ps o call p -> inv ps f hv tup msg s -> in_range ps i ->
+    converted (f i) -> (heap_input (prm ps i) -> hv) ->
+    ((prm ps i).owned_by_ml -> boxed_input (prm ps i) \/ (f i).cv = KO) ->
+    mem (C i) s.valid /\ forall b. mem b (s.points (C i)) -> live s b
+
+  (** The check of an input *)
+  let lemma l_check_in (ps: list param) (o: options) (call: list t)
+      (p: plan) (f: pos -> ph) (hv tup msg: bool) (s: state) (i: pos)
+    requires { hyp ps o call p }
+    requires { inv ps f hv tup msg s }
+    requires { in_range ps i /\ selected S_in_check (prm ps i) }
+    requires { forall j. in_range ps j -> selected S_pre_input (prm ps j) ->
+                 (f j).cv = KB }
+    requires { nothing_owned ps f }
+    requires { not p.noalloc }
+    ensures { pre_action p (act_check_in ps i) s }
+    ensures { inv ps (upd f i { (f i) with ck = true }) hv tup msg
+                (post_action ps p (act_check_in ps i) s) }
+  = let ghost s1 = post_action ps p (act_check_in ps i) s in
+    assert { forall j. in_range ps j -> selected S_pre_input (prm ps j) ->
+               mem (C j) s.valid /\ forall b. mem b (s.points (C j)) -> live s b };
+    assert { s1.st = s.st /\ s1.points = s.points /\ s1.refers = s.refers };
+    assert { forall v. mem v s1.valid <-> mem v s.valid };
+    assert { forall j. in_range ps j -> pos_ok ps hv (upd f i { (f i) with ck = true } j) j s1 }
+
+  (** The constructor of a parameter that is not an input *)
+  let lemma l_init (ps: list param) (o: options) (call: list t)
+      (p: plan) (f: pos -> ph) (hv tup msg: bool) (s: state) (i: pos)
+    requires { hyp ps o call p }
+    requires { inv ps f hv tup msg s }
+    requires { in_range ps i /\ not has_input (prm ps i) }
+    requires { (f i).cv = KZ /\ not (f i).vo /\ not (f i).mv }
+    requires { forall j. in_range ps j -> has_input (prm ps j) ->
+                 converted (f j) /\ (heap_input (prm ps j) -> hv) }
+    ensures { pre_action p (act_init ps i) s }
+    ensures { inv ps (upd f i { (f i) with cv = acquired (prm ps i) })
+                hv tup msg (post_action ps p (act_init ps i) s) }
+  = let q = prm ps i in
+    let ghost s1 = post_action ps p (act_init ps i) s in
+    assert { forall j. in_range ps j -> has_input (prm ps j) ->
+               mem (C j) s.valid /\ forall b. mem b (s.points (C j)) -> live s b };
+    assert { forall b. mem b (new_blocks ps i) -> s.st b = Unborn };
+    assert { mem (C i) s1.valid /\
+             forall b. mem b (s1.points (C i)) -> mem b (cblocks ps i) };
+    assert { q.free -> s1.st (Own i) = Live Stub };
+    assert { not q.free -> s1.st (Own i) = Unborn };
+    assert { q.owned_by_ml -> s1.st (Data i) = Live Stub };
+    assert { not q.owned_by_ml -> s1.st (Data i) = Unborn };
+    assert { forall v. v <> C i -> s1.points v = s.points v };
+    assert { forall v. v <> C i -> mem v s1.valid <-> mem v s.valid };
+    assert { forall b. b <> Own i -> b <> Data i -> s1.st b = s.st b };
+    assert { forall b. b <> Own i -> b <> Data i -> s1.refers b = s.refers b };
+    assert { forall b. mem b (new_blocks ps i) -> forall c. not mem c (s1.refers b) };
+    assert { forall b. not mem b (new_blocks ps i) -> s1.refers b = s.refers b };
+    assert { forall b. owned s1 b -> b = Own i \/ b = Data i \/ owned s b };
+    assert { forall b c. live s1 b -> mem c (s1.refers b) ->
+               live s b /\ s.st c = Live (Kept b) /\ c <> Own i /\ c <> Data i };
+    assert { glob ps tup msg s1 };
+    assert { pos_ok ps hv { (f i) with cv = acquired q } i s1 };
+    assert { forall j. in_range ps j -> j <> i ->
+               pos_ok ps hv (f j) j s -> pos_ok ps hv (f j) j s1 }
+
+  (** The check of an output *)
+  let lemma l_check_out (ps: list param) (o: options) (call: list t)
+      (p: plan) (f: pos -> ph) (hv tup msg: bool) (s: state) (i: pos)
+    requires { hyp ps o call p }
+    requires { inv ps f hv tup msg s }
+    requires { in_range ps i /\ has_output (prm ps i) }
+    requires { converted (f i) /\ (heap_input (prm ps i) -> hv) }
+    requires { (prm ps i).owned_by_ml -> (f i).cv = KO }
+    ensures { pre_action p (act_check_out ps i) s }
+    ensures { inv ps (upd f i { (f i) with ck = true }) hv tup msg
+                (post_action ps p (act_check_out ps i) s) }
+  = let ghost s1 = post_action ps p (act_check_out ps i) s in
+    assert { s1.st = s.st /\ s1.points = s.points /\ s1.refers = s.refers };
+    assert { forall v. mem v s1.valid <-> mem v s.valid };
+    assert { forall j. in_range ps j -> pos_ok ps hv (upd f i { (f i) with ck = true } j) j s1 }
+
+  function conv_ph (q: param) (h: ph) : ph =
+    { h with vo = true; mv = q.owned_by_ml;
+             cv = if q.owned_by_ml && not q.free then KM else h.cv }
+
+  (** The conversion of an output, checked or moved for the cleanup *)
+  let lemma l_c2ml (ps: list param) (o: options) (call: list t)
+      (p: plan) (f: pos -> ph) (hv tup msg: bool) (s: state) (i: pos)
+      (a: action)
+    requires { hyp ps o call p }
+    requires { inv ps f hv tup msg s }
+    requires { a = act_c2ml no_alias ps p i \/
+               a = act_move no_alias ps p i }
+    requires { subset a.checked s.done_checks }
+    requires { in_range ps i /\ has_output (prm ps i) }
+    requires { converted (f i) /\ not (f i).vo /\ not (f i).mv }
+    requires { heap_input (prm ps i) -> hv }
+    requires { (prm ps i).owned_by_ml -> (f i).cv = KO }
+    requires { not (out_effects ps p i).raising }
+    requires { (out_effects ps p i).alloc -> gc_roots_ok ps p f tup msg }
+    requires { p.noalloc -> not (out_effects ps p i).alloc }
+    ensures { pre_action p a s }
+    ensures { inv ps (upd f i (conv_ph (prm ps i) (f i)))
+                (hv && not (out_effects ps p i).alloc) tup msg
+                (post_action ps p a s) }
+  = let q = prm ps i in
+    let alloc = (out_effects ps p i).alloc in
+    let ghost hv0 = hv && not alloc in
+    let ghost s0 = if alloc then gc ps p s else s in
+    if alloc then gc_inv ps o call p f hv tup msg s;
+    assert { inv ps f hv0 tup msg s0 };
+    let ghost s1 = post_action ps p a s in
+    assert { mem (C i) s.valid /\ forall b. mem b (s.points (C i)) -> live s b };
+    assert { s.st (MlOut i) = Unborn };
+    assert { q.owned_by_ml -> not has_input q /\ s.st (Data i) = Live Stub /\
+             s0.st (Data i) = Live Stub };
+    assert { forall c. mem c (s1.refers (MlOut i)) ->
+               q.owned_by_ml /\ c = Data i };
+    assert { s1.st (MlOut i) = Live Gc };
+    assert { q.owned_by_ml -> s1.st (Data i) = Live (Kept (MlOut i)) };
+    assert { not q.owned_by_ml -> s1.st (Data i) = s0.st (Data i) };
+    assert { mem (Out i) s1.valid };
+    assert { forall b. mem b (s1.points (Out i)) <-> b = MlOut i };
+    assert { forall v. v <> Out i -> s1.points v = s0.points v };
+    assert { forall v. v <> Out i -> mem v s1.valid <-> mem v s0.valid };
+    assert { forall b. b <> MlOut i -> b <> Data i -> s1.st b = s0.st b };
+    assert { forall b. b <> MlOut i -> s1.refers b = s0.refers b };
+    assert { s1.done_checks = s0.done_checks };
+    assert { glob ps tup msg s0 };
+    assert { forall b. owned s1 b -> owned s0 b };
+    assert { forall b c. live s1 b -> mem c (s1.refers b) ->
+               s1.st c = Live (Kept b) /\ s1.st b = Live Gc };
+    assert { glob ps tup msg s1 };
+    assert { pos_ok ps hv0 (conv_ph q (f i)) i s1 };
+    assert { forall j. in_range ps j -> j <> i ->
+               pos_ok ps hv0 (f j) j s0 -> pos_ok ps hv0 (f j) j s1 }
+
+  (** The destructor *)
+  let lemma l_free (ps: list param) (o: options) (call: list t)
+      (p: plan) (f: pos -> ph) (hv tup msg: bool) (s: state) (i: pos)
+    requires { hyp ps o call p }
+    requires { inv ps f hv tup msg s }
+    requires { in_range ps i /\ (prm ps i).free }
+    requires { (f i).cv = KZ \/ (f i).cv = KO }
+    requires { (prm ps i).owned_by_ml -> not boxed_input (prm ps i) ->
+               (f i).cv = KO -> (f i).mv }
+    ensures { pre_action p (act_free i) s }
+    ensures { inv ps (upd f i { (f i) with cv = KF }) hv tup msg
+                (post_action ps p (act_free i) s) }
+  = let ghost s1 = post_action ps p (act_free i) s in
+    assert { s1.st (Own i) = Dead };
+    assert { forall b. b <> Own i -> s1.st b = s.st b };
+    assert { s1.points = s.points /\ s1.refers = s.refers };
+    assert { forall v. mem v s1.valid <-> mem v s.valid };
+    assert { forall b. owned s1 b -> owned s b };
+    assert { forall b c. live s1 b -> mem c (s1.refers b) -> c <> Own i };
+    assert { glob ps tup msg s1 };
+    assert { forall j. in_range ps j ->
+               pos_ok ps hv (upd f i { (f i) with cv = KF } j) j s1 }
+
+  (** The allocation of the message of an exception *)
+  let lemma l_msg (ps: list param) (o: options) (call: list t)
+      (p: plan) (f: pos -> ph) (hv tup: bool) (s: state)
+    requires { hyp ps o call p }
+    requires { inv ps f hv tup false s }
+    requires { gc_roots_ok ps p f tup false /\ p.roots.err }
+    ensures { pre_action p (msg_action) s }
+    ensures { inv ps f false tup true (post_action ps p msg_action s) }
+  = gc_inv ps o call p f hv tup false s;
+    let ghost s0 = gc ps p s in
+    let ghost s1 = post_action ps p msg_action s in
+    assert { s0.st MlMsg = Unborn };
+    assert { forall b. b <> MlMsg -> s1.st b = s0.st b };
+    assert { forall v. v <> Msg -> s1.points v = s0.points v };
+    assert { forall v. v <> Msg -> mem v s1.valid <-> mem v s0.valid };
+    assert { forall b. b <> MlMsg -> s1.refers b = s0.refers b };
+    assert { forall c. not mem c (s1.refers MlMsg) };
+    assert { glob ps tup true s1 };
+    assert { forall j. in_range ps j -> pos_ok ps false (f j) j s0 ->
+               pos_ok ps false (f j) j s1 }
+
+  (** Leaving the stub, raising or returning *)
+  let lemma l_exit (ps: list param) (o: options) (call: list t)
+      (p: plan) (f: pos -> ph) (hv tup msg: bool) (s: state) (a: action)
+    requires { hyp ps o call p }
+    requires { inv ps f hv tup msg s }
+    requires { nothing_owned ps f }
+    requires { a = { nop with used = a.used; may_raise = a.may_raise;
+                              exits = true } }
+    requires { forall v. mem v a.used ->
+                 mem v s.valid /\ forall b. mem b (s.points v) -> live s b }
+    requires { p.noalloc -> not a.may_raise }
+    ensures { pre_action p a s }
+  = ()
+
+  (** The allocation of the tuple, then the stores *)
+  let lemma l_tuple (ps: list param) (o: options) (call: list t)
+      (p: plan) (f: pos -> ph) (hv msg: bool) (s: state) (l: list t)
+    requires { hyp ps o call p }
+    requires { inv ps f hv false msg s }
+    requires { gc_roots_ok ps p f false msg /\ p.roots.ret }
+    requires { forall i. L.mem i (ints l) -> in_range ps i /\ (f i).vo }
+    ensures { pre_action p tuple_alloc s }
+    ensures { let s1 = post_action ps p tuple_alloc s in
+              inv ps f false true msg s1 /\
+              pre_action p (tuple_store l) s1 /\
+              inv ps f false true msg (post_action ps p (tuple_store l) s1) }
+  = gc_inv ps o call p f hv false msg s;
+    let ghost s0 = gc ps p s in
+    let ghost s1 = post_action ps p tuple_alloc s in
+    assert { s0.st MlTuple = Unborn };
+    assert { forall b. b <> MlTuple -> s1.st b = s0.st b };
+    assert { forall v. v <> Tup -> s1.points v = s0.points v };
+    assert { forall v. v <> Tup -> mem v s1.valid <-> mem v s0.valid };
+    assert { forall b. b <> MlTuple -> s1.refers b = s0.refers b };
+    assert { forall c. not mem c (s1.refers MlTuple) };
+    assert { glob ps true msg s1 };
+    assert { forall j. in_range ps j -> pos_ok ps false (f j) j s0 ->
+               pos_ok ps false (f j) j s1 };
+    let ghost s2 = post_action ps p (tuple_store l) s1 in
+    assert { s2.st = s1.st /\ s2.points = s1.points /\ s2.refers = s1.refers };
+    assert { forall v. mem v s2.valid <-> mem v s1.valid };
+    assert { s2.done_checks = s1.done_checks };
+    assert { inv ps f false true msg s1 };
+    assert { forall i. L.mem i (ints l) ->
+               mem (Out i) s1.valid /\ forall b. mem b (s1.points (Out i)) -> live s1 b };
+    assert { mem Tup s1.valid /\ forall b. mem b (s1.points Tup) -> live s1 b };
+    assert { pre_action p (tuple_store l) s1 };
+    assert { glob ps true msg s2 };
+    assert { forall j. in_range ps j -> pos_ok ps false (f j) j s2 }
+
+  (** ## Running a list of actions *)
+
+  function lset (l: list int) : set int = fun i -> L.mem i l
+
+  let rec lemma run_map (ps: list param) (p: plan) (a: pos -> action)
+      (iv: set pos -> state -> bool) (l: list int) (d: set pos) (s: state)
+    requires { distinct l }
+    requires { forall i. L.mem i l -> not mem i d }
+    requires { iv d s }
+    requires { forall d' s' i. iv d' s' -> L.mem i l -> not mem i d' ->
+                 pre_action p (a i) s' /\
+                 iv (add i d') (post_action ps p (a i) s') }
+    variant { l }
+    ensures { run_actions ps p s (map_act a l) }
+    ensures { iv (union d (lset l)) (after ps p s (map_act a l)) }
+  = match l with
+    | Nil -> assert { union d (lset l) == d }
+    | Cons i r ->
+      run_map ps p a iv r (add i d) (post_action ps p (a i) s);
+      assert { union (add i d) (lset r) == union d (lset l) }
+    end
+
+  let rec lemma run_append (ps: list param) (p: plan) (s: state)
+      (l1 l2: list action)
+    variant { l1 }
+    ensures { run_actions ps p s (l1 ++ l2) <->
+              run_actions ps p s l1 /\ run_actions ps p (after ps p s l1) l2 }
+    ensures { after ps p s (l1 ++ l2) = after ps p (after ps p s l1) l2 }
+  = match l1 with
+    | Nil -> ()
+    | Cons a r -> run_append ps p (post_action ps p a s) r l2
+    end
+
+  (** ## Running the steps *)
+
+  function mix (d: set pos) (f g: pos -> ph) : pos -> ph =
+    fun i -> if mem i d then g i else f i
+
+  lemma mix_upd: forall d f g i.
+    upd (mix d f g) i (g i) = mix (add i d) f g
+
+  lemma inv_ext: forall ps f g hv tup msg s.
+    inv ps f hv tup msg s -> (forall i. in_range ps i -> f i = g i) ->
+    inv ps g hv tup msg s
+
+  (** The invariant until the GC after the conversion of an input with
+      unregistered OCaml values *)
+  predicate inv_h (ps: list param) (f: pos -> ph) (tup msg: bool) (s: state) =
+    exists hv. inv ps f hv tup msg s /\
+      forall j. in_range ps j -> heap_input (prm ps j) -> converted (f j) -> hv
+
+  predicate inv_a (ps: list param) (f: pos -> ph) (tup msg: bool) (s: state) =
+    exists hv. inv ps f hv tup msg s
+
+  lemma inv_h_ext: forall ps f g tup msg s.
+    inv_h ps f tup msg s -> (forall i. in_range ps i -> f i = g i) ->
+    inv_h ps g tup msg s
+
+  lemma inv_a_ext: forall ps f g tup msg s.
+    inv_a ps f tup msg s -> (forall i. in_range ps i -> f i = g i) ->
+    inv_a ps g tup msg s
+
+  lemma nothing_owned_mix: forall ps d f g.
+    nothing_owned ps f -> nothing_owned ps g -> nothing_owned ps (mix d f g)
+
+  lemma gc_roots_ok_mix: forall ps p d f g tup msg.
+    gc_roots_ok ps p f tup msg -> gc_roots_ok ps p g tup msg ->
+    gc_roots_ok ps p (mix d f g) tup msg
+
+  (** The conditions of a list of `ml2c` from `f` to `g` *)
+  predicate ml2c_ok (ps: list param) (p: plan) (f g: pos -> ph)
+      (tup msg: bool) (l: list int) =
+    distinct l /\
+    (forall i. in_range ps i -> not L.mem i l -> g i = f i) /\
+    forall i. L.mem i l ->
+      in_range ps i /\ has_input (prm ps i) /\
+      (f i).cv = KZ /\ not (f i).vo /\
+      g i = { (f i) with cv = acq_in (prm ps i) } /\
+      ((prm ps i).in_check -> (f i).ck) /\
+      ((prm ps i).ml2c.raising -> nothing_owned ps f /\ nothing_owned ps g) /\
+      ((prm ps i).ml2c.alloc ->
+         gc_roots_ok ps p f tup msg /\ gc_roots_ok ps p g tup msg /\
+         (heap_input (prm ps i) \/
+          forall j. in_range ps j -> heap_input (prm ps j) ->
+            not converted (f j) /\ not converted (g j))) /\
+      (p.noalloc -> is_pure (prm ps i).ml2c)
+
+  let lemma e_ml2c (ps: list param) (o: options) (call: list t) (p: plan)
+      (f g: pos -> ph) (tup msg: bool) (l: list int) (d: set pos)
+      (s: state) (i: pos)
+    requires { hyp ps o call p }
+    requires { ml2c_ok ps p f g tup msg l }
+    requires { inv_h ps (mix d f g) tup msg s }
+    requires { L.mem i l /\ not mem i d }
+    ensures { pre_action p (act_ml2c ps i) s }
+    ensures { inv_h ps (mix (add i d) f g) tup msg
+                (post_action ps p (act_ml2c ps i) s) }
+  = let ghost m = pure { mix d f g } in
+    let ghost hv = any bool ensures { inv ps m result tup msg s /\
+      forall j. in_range ps j -> heap_input (prm ps j) -> converted (m j) ->
+        result } in
+    assert { m i = f i };
+    assert { (prm ps i).in_check -> mem i s.done_checks };
+    l_ml2c ps o call p m hv tup msg s i;
+    assert { upd m i { (m i) with cv = acq_in (prm ps i) } =
+             mix (add i d) f g }
+
+  let lemma run_ml2c (ps: list param) (o: options) (call: list t) (p: plan)
+      (f g: pos -> ph) (tup msg: bool) (l: list int) (s: state)
+    requires { hyp ps o call p }
+    requires { ml2c_ok ps p f g tup msg l }
+    requires { inv_h ps f tup msg s }
+    ensures { run_actions ps p s (map_act (act_ml2c ps) l) }
+    ensures { inv_h ps g tup msg (after ps p s (map_act (act_ml2c ps) l)) }
+  = assert { mix empty f g = f };
+    run_map ps p (pure { act_ml2c ps })
+      (pure { fun d s -> inv_h ps (mix d f g) tup msg s }) l empty s;
+    assert { forall i. in_range ps i -> mix (union empty (lset l)) f g i = g i }
+
+  (** The conditions of the other lists of actions from `f` to `g` *)
+  predicate frame (ps: list param) (f g: pos -> ph) (l: list int) =
+    distinct l /\
+    (forall i. in_range ps i -> not L.mem i l -> g i = f i) /\
+    (forall i. L.mem i l -> in_range ps i)
+
+  predicate check_in_ok (ps: list param) (p: plan) (f g: pos -> ph)
+      (l: list int) =
+    frame ps f g l /\
+    (l <> Nil -> not p.noalloc /\ nothing_owned ps f /\ nothing_owned ps g) /\
+    (forall j. in_range ps j -> selected S_pre_input (prm ps j) ->
+       (f j).cv = KB /\ (g j).cv = KB) /\
+    forall i. L.mem i l ->
+      selected S_in_check (prm ps i) /\ g i = { (f i) with ck = true }
+
+  let lemma e_check_in (ps: list param) (o: options) (call: list t)
+      (p: plan) (f g: pos -> ph) (tup msg: bool) (l: list int) (d: set pos)
+      (s: state) (i: pos)
+    requires { hyp ps o call p }
+    requires { check_in_ok ps p f g l }
+    requires { inv_h ps (mix d f g) tup msg s }
+    requires { L.mem i l /\ not mem i d }
+    ensures { pre_action p (act_check_in ps i) s }
+    ensures { inv_h ps (mix (add i d) f g) tup msg
+                (post_action ps p (act_check_in ps i) s) }
+  = let ghost m = pure { mix d f g } in
+    let ghost hv = any bool ensures { inv ps m result tup msg s /\
+      forall j. in_range ps j -> heap_input (prm ps j) -> converted (m j) ->
+        result } in
+    assert { m i = f i };
+    l_check_in ps o call p m hv tup msg s i;
+    assert { upd m i { (m i) with ck = true } = mix (add i d) f g }
+
+  let lemma run_check_in (ps: list param) (o: options) (call: list t)
+      (p: plan) (f g: pos -> ph) (tup msg: bool) (l: list int) (s: state)
+    requires { hyp ps o call p }
+    requires { check_in_ok ps p f g l }
+    requires { inv_h ps f tup msg s }
+    ensures { run_actions ps p s (map_act (act_check_in ps) l) }
+    ensures { inv_h ps g tup msg (after ps p s (map_act (act_check_in ps) l)) }
+  = assert { mix empty f g = f };
+    run_map ps p (pure { act_check_in ps })
+      (pure { fun d s -> inv_h ps (mix d f g) tup msg s }) l empty s;
+    assert { forall i. in_range ps i -> mix (union empty (lset l)) f g i = g i }
+
+  predicate init_ok (ps: list param) (f g: pos -> ph) (l: list int) =
+    frame ps f g l /\
+    (forall j. in_range ps j -> has_input (prm ps j) ->
+       converted (f j) /\ g j = f j) /\
+    forall i. L.mem i l ->
+      not has_input (prm ps i) /\
+      (f i).cv = KZ /\ not (f i).vo /\ not (f i).mv /\
+      g i = { (f i) with cv = acquired (prm ps i) }
+
+  let lemma e_init (ps: list param) (o: options) (call: list t)
+      (p: plan) (f g: pos -> ph) (tup msg: bool) (l: list int) (d: set pos)
+      (s: state) (i: pos)
+    requires { hyp ps o call p }
+    requires { init_ok ps f g l }
+    requires { inv_h ps (mix d f g) tup msg s }
+    requires { L.mem i l /\ not mem i d }
+    ensures { pre_action p (act_init ps i) s }
+    ensures { inv_h ps (mix (add i d) f g) tup msg
+                (post_action ps p (act_init ps i) s) }
+  = let ghost m = pure { mix d f g } in
+    let ghost hv = any bool ensures { inv ps m result tup msg s /\
+      forall j. in_range ps j -> heap_input (prm ps j) -> converted (m j) ->
+        result } in
+    assert { m i = f i };
+    assert { forall j. in_range ps j -> has_input (prm ps j) ->
+               m j = f j /\ converted (m j) };
+    l_init ps o call p m hv tup msg s i;
+    assert { upd m i { (m i) with cv = acquired (prm ps i) } =
+             mix (add i d) f g }
+
+  let lemma run_init (ps: list param) (o: options) (call: list t)
+      (p: plan) (f g: pos -> ph) (tup msg: bool) (l: list int) (s: state)
+    requires { hyp ps o call p }
+    requires { init_ok ps f g l }
+    requires { inv_h ps f tup msg s }
+    ensures { run_actions ps p s (map_act (act_init ps) l) }
+    ensures { inv_h ps g tup msg (after ps p s (map_act (act_init ps) l)) }
+  = assert { mix empty f g = f };
+    run_map ps p (pure { act_init ps })
+      (pure { fun d s -> inv_h ps (mix d f g) tup msg s }) l empty s;
+    assert { forall i. in_range ps i -> mix (union empty (lset l)) f g i = g i }
+
+  predicate check_out_ok (ps: list param) (f g: pos -> ph) (l: list int) =
+    frame ps f g l /\
+    forall i. L.mem i l ->
+      has_output (prm ps i) /\ converted (f i) /\
+      ((prm ps i).owned_by_ml -> (f i).cv = KO) /\
+      g i = { (f i) with ck = true }
+
+  let lemma e_check_out (ps: list param) (o: options) (call: list t)
+      (p: plan) (f g: pos -> ph) (tup msg: bool) (l: list int) (d: set pos)
+      (s: state) (i: pos)
+    requires { hyp ps o call p }
+    requires { check_out_ok ps f g l }
+    requires { inv_h ps (mix d f g) tup msg s }
+    requires { L.mem i l /\ not mem i d }
+    ensures { pre_action p (act_check_out ps i) s }
+    ensures { inv_h ps (mix (add i d) f g) tup msg
+                (post_action ps p (act_check_out ps i) s) }
+  = let ghost m = pure { mix d f g } in
+    let ghost hv = any bool ensures { inv ps m result tup msg s /\
+      forall j. in_range ps j -> heap_input (prm ps j) -> converted (m j) ->
+        result } in
+    assert { m i = f i };
+    l_check_out ps o call p m hv tup msg s i;
+    assert { upd m i { (m i) with ck = true } = mix (add i d) f g }
+
+  let lemma run_check_out (ps: list param) (o: options) (call: list t)
+      (p: plan) (f g: pos -> ph) (tup msg: bool) (l: list int) (s: state)
+    requires { hyp ps o call p }
+    requires { check_out_ok ps f g l }
+    requires { inv_h ps f tup msg s }
+    ensures { run_actions ps p s (map_act (act_check_out ps) l) }
+    ensures { inv_h ps g tup msg
+                (after ps p s (map_act (act_check_out ps) l)) }
+  = assert { mix empty f g = f };
+    run_map ps p (pure { act_check_out ps })
+      (pure { fun d s -> inv_h ps (mix d f g) tup msg s }) l empty s;
+    assert { forall i. in_range ps i -> mix (union empty (lset l)) f g i = g i }
+
+  (** The conversions of outputs, without unregistered OCaml values *)
+  predicate c2ml_ok (ps: list param) (p: plan) (f g: pos -> ph)
+      (tup msg: bool) (l: list int) (a: pos -> action) =
+    frame ps f g l /\
+    forall i. L.mem i l ->
+      has_output (prm ps i) /\ not heap_input (prm ps i) /\
+      converted (f i) /\ not (f i).vo /\ not (f i).mv /\
+      ((prm ps i).owned_by_ml -> (f i).cv = KO) /\
+      g i = conv_ph (prm ps i) (f i) /\
+      not (out_effects ps p i).raising /\
+      ((out_effects ps p i).alloc ->
+         gc_roots_ok ps p f tup msg /\ gc_roots_ok ps p g tup msg) /\
+      (p.noalloc -> not (out_effects ps p i).alloc) /\
+      (a i = act_c2ml no_alias ps p i /\
+       ((prm ps i).out_check -> (f i).ck) \/
+       a i = act_move no_alias ps p i)
+
+  let lemma e_c2ml (ps: list param) (o: options) (call: list t)
+      (p: plan) (f g: pos -> ph) (tup msg: bool) (l: list int)
+      (a: pos -> action) (d: set pos) (s: state) (i: pos)
+    requires { hyp ps o call p }
+    requires { c2ml_ok ps p f g tup msg l a }
+    requires { inv_a ps (mix d f g) tup msg s }
+    requires { L.mem i l /\ not mem i d }
+    ensures { pre_action p (a i) s }
+    ensures { inv_a ps (mix (add i d) f g) tup msg (post_action ps p (a i) s) }
+  = let ghost m = pure { mix d f g } in
+    let ghost hv = any bool ensures { inv ps m result tup msg s } in
+    assert { m i = f i };
+    assert { subset (a i).checked s.done_checks };
+    l_c2ml ps o call p m hv tup msg s i (a i);
+    assert { upd m i (conv_ph (prm ps i) (m i)) = mix (add i d) f g }
+
+  let lemma run_c2ml (ps: list param) (o: options) (call: list t)
+      (p: plan) (f g: pos -> ph) (tup msg: bool) (l: list int)
+      (a: pos -> action) (s: state)
+    requires { hyp ps o call p }
+    requires { c2ml_ok ps p f g tup msg l a }
+    requires { inv_a ps f tup msg s }
+    ensures { run_actions ps p s (map_act a l) }
+    ensures { inv_a ps g tup msg (after ps p s (map_act a l)) }
+  = assert { mix empty f g = f };
+    run_map ps p a
+      (pure { fun d s -> inv_a ps (mix d f g) tup msg s }) l empty s;
+    assert { forall i. in_range ps i -> mix (union empty (lset l)) f g i = g i }
+
+  predicate free_ok (ps: list param) (f g: pos -> ph) (l: list int) =
+    frame ps f g l /\
+    forall i. L.mem i l ->
+      (prm ps i).free /\ ((f i).cv = KZ \/ (f i).cv = KO) /\
+      ((prm ps i).owned_by_ml -> not boxed_input (prm ps i) ->
+         (f i).cv = KO -> (f i).mv) /\
+      g i = { (f i) with cv = KF }
+
+  let lemma e_free (ps: list param) (o: options) (call: list t)
+      (p: plan) (f g: pos -> ph) (tup msg: bool) (l: list int) (d: set pos)
+      (s: state) (i: pos)
+    requires { hyp ps o call p }
+    requires { free_ok ps f g l }
+    requires { inv_a ps (mix d f g) tup msg s }
+    requires { L.mem i l /\ not mem i d }
+    ensures { pre_action p (act_free i) s }
+    ensures { inv_a ps (mix (add i d) f g) tup msg
+                (post_action ps p (act_free i) s) }
+  = let ghost m = pure { mix d f g } in
+    let ghost hv = any bool ensures { inv ps m result tup msg s } in
+    assert { m i = f i };
+    l_free ps o call p m hv tup msg s i;
+    assert { upd m i { (m i) with cv = KF } = mix (add i d) f g }
+
+  let lemma run_free (ps: list param) (o: options) (call: list t)
+      (p: plan) (f g: pos -> ph) (tup msg: bool) (l: list int) (s: state)
+    requires { hyp ps o call p }
+    requires { free_ok ps f g l }
+    requires { inv_a ps f tup msg s }
+    ensures { run_actions ps p s (map_act act_free l) }
+    ensures { inv_a ps g tup msg (after ps p s (map_act act_free l)) }
+  = assert { mix empty f g = f };
+    run_map ps p (pure { act_free })
+      (pure { fun d s -> inv_a ps (mix d f g) tup msg s }) l empty s;
+    assert { forall i. in_range ps i -> mix (union empty (lset l)) f g i = g i }
+
+  (** ## The call *)
+
+  (** The state of a position only depends on its blocks and variables *)
+  lemma pos_frame: forall ps hv h i s s'.
+    pos_ok ps hv h i s ->
+    (forall b. b = Own i \/ b = Data i \/ b = MlIn i \/ b = MlLoc i \/
+       b = MlOut i -> s'.st b = s.st b) ->
+    (forall v. v = In i \/ v = Vloc i \/ v = Out i ->
+       s'.points v = s.points v /\ (mem v s'.valid <-> mem v s.valid)) ->
+    ((mem (C i) s'.valid /\
+      forall b. mem b (s'.points (C i)) -> mem b (cblocks ps i)) \/
+     (s'.points (C i) = s.points (C i) /\
+      (mem (C i) s'.valid <-> mem (C i) s.valid))) ->
+    subset s.done_checks s'.done_checks ->
+    pos_ok ps hv h i s'
+
+  function call_ph (ps: list param) (f: pos -> ph) : pos -> ph =
+    fun j -> if mem j (produced ps) then { (f j) with cv = acquired (prm ps j) }
+             else f j
+
+  let lemma call_used (ps: list param) (l: list t) (rel: bool) (v: var)
+    requires { mem v (act_call no_alias ps l rel).used }
+    ensures { (exists i. v = C i /\ L.mem i (ints l) /\
+                 not mem i (produced ps)) \/
+              (exists i. v = Vloc i /\ L.mem i (ints l) /\ locals ps i) }
+  = match v with
+    | C _ -> ()
+    | Vloc _ -> ()
+    | _ -> absurd
+    end
+
+  let lemma l_call (ps: list param) (o: options) (call: list t) (p: plan)
+      (f: pos -> ph) (s: state)
+    requires { hyp ps o call p }
+    requires { inv_h ps f false false s }
+    requires { forall i. in_range ps i -> not mem i (produced ps) ->
+                 converted (f i) }
+    requires { forall i. in_range ps i -> (prm ps i).owned_by_ml ->
+                 boxed_input (prm ps i) \/ (f i).cv = KO \/
+                 mem i (produced ps) }
+    requires { forall i. mem i (produced ps) ->
+                 (f i).cv = KZ /\ not (f i).mv }
+    requires { forall i. in_range ps i -> not (f i).vo }
+    ensures { pre_action p (act_call no_alias ps call o.release_lock) s }
+    ensures { inv_h ps (call_ph ps f) false false
+                (post_action ps p (act_call no_alias ps call o.release_lock) s) }
+  = let ghost hv = any bool ensures { inv ps f result false false s /\
+      forall j. in_range ps j -> heap_input (prm ps j) -> converted (f j) ->
+        result } in
+    let rl = o.release_lock in
+    let ghost a = act_call no_alias ps call rl in
+    let ghost hv0 = hv && not rl in
+    let ghost s0 = if rl then gc ps p s else s in
+    if rl then gc_inv ps o call p f hv false false s;
+    assert { inv ps f hv0 false false s0 };
+    let ghost s1 = post_action ps p a s in
+    let ghost g = call_ph ps f in
+    assert { forall i. L.mem i (ints call) -> not mem i (produced ps) ->
+               mem (C i) s.valid /\ forall b. mem b (s.points (C i)) -> live s b };
+    assert { forall v. mem v a.used ->
+               (exists i. v = C i /\ L.mem i (ints call) /\
+                  not mem i (produced ps)) \/
+               (exists i. v = Vloc i /\ L.mem i (ints call) /\ locals ps i) };
+    assert { forall i. L.mem i (ints call) -> locals ps i ->
+               mem (Vloc i) s.valid /\
+               forall b. mem b (s.points (Vloc i)) -> live s b };
+    assert { forall v. mem v a.used ->
+               mem v s.valid /\ forall b. mem b (s.points v) -> live s b };
+    assert { rl -> forall i. L.mem i (ints call) ->
+               not (prm ps i).ml_heap /\ not (prm ps i).value_locals };
+    assert { rl -> forall i b. L.mem i (ints call) -> not mem i (produced ps) ->
+               mem b (s.points (C i)) -> not is_ml b };
+    assert { rl -> forall v b. mem v a.used -> mem b (s.points v) -> not is_ml b };
+    assert { forall b. mem b a.creates -> s.st b = Unborn };
+    assert { forall v. mem v a.defines ->
+               exists i. v = C i /\ (L.mem i (ints call) \/ mem i (produced ps)) };
+    assert { forall i. L.mem i (ints call) \/ mem i (produced ps) ->
+               in_range ps i /\ mem (C i) s1.valid /\
+               forall b. mem b (s1.points (C i)) -> mem b (cblocks ps i) };
+    assert { forall j. not mem j (produced ps) ->
+               not mem (Own j) a.creates /\ not mem (Data j) a.creates };
+    assert { forall b. is_ml b -> not mem b a.creates };
+    assert { s1.done_checks = s0.done_checks };
+    assert { forall v. not mem v a.defines -> s1.points v = s0.points v /\
+               (mem v s1.valid <-> mem v s0.valid) };
+    assert { forall b. not mem b a.creates -> s1.st b = s0.st b /\
+               s1.refers b = s0.refers b };
+    assert { forall b. mem b a.creates -> s1.st b = Live Stub /\
+               forall c. not mem c (s1.refers b) };
+    assert { forall i. mem i (produced ps) -> (prm ps i).free ->
+               s1.st (Own i) = Live Stub };
+    assert { forall i. mem i (produced ps) -> (prm ps i).owned_by_ml ->
+               s1.st (Data i) = Live Stub };
+    assert { glob ps false false s0 };
+    assert { forall b. owned s1 b -> mem b a.creates \/ owned s0 b };
+    assert { forall b c. live s1 b -> mem c (s1.refers b) ->
+               not mem b a.creates /\ live s0 b /\
+               s0.st c = Live (Kept b) /\ not mem c a.creates };
+    assert { glob ps false false s1 };
+    assert { forall j. in_range ps j -> mem j (produced ps) ->
+               pos_ok ps hv0 (f j) j s0 /\ not has_input (prm ps j) };
+    assert { forall j. mem j (produced ps) -> not (prm ps j).free ->
+               s1.st (Own j) = s0.st (Own j) };
+    assert { forall j. mem j (produced ps) -> not (prm ps j).owned_by_ml ->
+               s1.st (Data j) = s0.st (Data j) };
+    assert { forall j. s1.st (MlIn j) = s0.st (MlIn j) /\
+               s1.st (MlLoc j) = s0.st (MlLoc j) /\
+               s1.st (MlOut j) = s0.st (MlOut j) };
+    assert { forall j. s1.points (In j) = s0.points (In j) /\
+               s1.points (Vloc j) = s0.points (Vloc j) /\
+               s1.points (Out j) = s0.points (Out j) /\
+               (mem (In j) s1.valid <-> mem (In j) s0.valid) /\
+               (mem (Vloc j) s1.valid <-> mem (Vloc j) s0.valid) /\
+               (mem (Out j) s1.valid <-> mem (Out j) s0.valid) };
+    assert { forall j. in_range ps j -> mem j (produced ps) ->
+               pos_ok ps hv0 (g j) j s1 };
+    assert { forall j. in_range ps j -> not mem j (produced ps) ->
+               g j = f j /\ pos_ok ps hv0 (f j) j s0 };
+    assert { forall j. in_range ps j -> not mem j (produced ps) ->
+               pos_ok ps hv0 (g j) j s1 };
+    assert { inv ps g hv0 false false s1 };
+    assert { forall j. in_range ps j -> heap_input (prm ps j) -> not rl }
+
+  (** The C function failed: back to the state before the call *)
+  let lemma l_revert (ps: list param) (o: options) (call: list t) (p: plan)
+      (f: pos -> ph) (hv tup msg: bool) (s: state)
+    requires { hyp ps o call p }
+    requires { inv ps (call_ph ps f) hv tup msg s }
+    requires { forall i. mem i (produced ps) ->
+                 (f i).cv = KZ /\ not (f i).mv }
+    ensures { pre_action p (act_revert ps) s }
+    ensures { inv ps f hv tup msg (post_action ps p (act_revert ps) s) }
+  = let ghost a = act_revert ps in
+    let ghost s1 = post_action ps p a s in
+    assert { forall b. mem b a.reverts -> s1.st b = Unborn /\ owned s b };
+    assert { forall b. not mem b a.reverts -> s1.st b = s.st b };
+    assert { s1.points = s.points /\ s1.refers = s.refers };
+    assert { forall v. mem v s1.valid <-> mem v s.valid };
+    assert { forall b. owned s1 b -> owned s b };
+    assert { forall b c. live s1 b -> mem c (s1.refers b) ->
+               live s b /\ not mem c a.reverts };
+    assert { glob ps tup msg s1 };
+    assert { forall j. in_range ps j ->
+               pos_ok ps hv (call_ph ps f j) j s -> pos_ok ps hv (f j) j s1 }
+
+  (** ## The phases of the plan of `schedule`
+
+      Stages: 0 start, 1 `Ml2c` of the inputs without destructor nor check,
+      2 `Check_in`, 3 `Ml2c` of the checked inputs, 4 `Ml2c` of the inputs
+      with a destructor, 5 `Ml2c` of the input with unregistered OCaml
+      values, 6 `Init`, 7 `Call`, 8 `Check_out`, 9 `C2ml` of the output
+      with unregistered OCaml values, 10 `C2ml` of the others, 11 `Free`. *)
+
+  predicate made (k: int) (q: param) =
+    if has_input q then
+      (k >= 1 /\ selected S_pre_input q) \/
+      (k >= 3 /\ selected S_checked_input q) \/
+      (k >= 4 /\ selected S_owning_input q) \/
+      (k >= 5 /\ heap_input q)
+    else (k >= 6 /\ q.init) \/ k >= 7
+
+  predicate conv (k: int) (q: param) =
+    has_output q /\ ((k >= 9 /\ heap_input q) \/ k >= 10)
+
+  function phase (k: int) (q: param) : ph =
+    { cv = if k >= 11 /\ q.free then KF
+           else if conv k q /\ q.owned_by_ml /\ not q.free then KM
+           else if made k q then
+             (if has_input q then acq_in q else acquired q)
+           else KZ;
+      mv = if conv k q /\ q.owned_by_ml then true else false;
+      vo = if conv k q then true else false;
+      ck = if (k >= 2 /\ selected S_in_check q) \/
+              (k >= 8 /\ selected S_out_check q) then true else false }
+
+  function phs (ps: list param) (k: int) : pos -> ph =
+    fun i -> phase k (prm ps i)
+
+  (** The cleanup from stage `k`: the outputs `x` moved, then the frees *)
+  function mvs (ps: list param) (k: int) (x: sel) : pos -> ph =
+    fun i -> let q = prm ps i in
+      if selected x q then conv_ph q (phase k q) else phase k q
+
+  function frs (ps: list param) (k: int) (x: sel) : pos -> ph =
+    fun i -> let q = prm ps i in
+      if q.free then { (mvs ps k x i) with cv = KF } else mvs ps k x i
+
+  (** ## The outputs registered with the GC *)
+
+  let lemma out_rooted (ps: list param) (o: options) (call: list t)
+      (p: plan) (i: pos)
+    requires { hyp ps o call p }
+    requires { not p.noalloc }
+    requires { in_range ps i /\ has_output (prm ps i) }
+    requires { boxed_output (prm ps i) \/ is_tuple p.result }
+    ensures { rooted ps p (Out i) }
+  = assert { L.mem i (ipids S_output ps 0) };
+    match ipids S_output ps 0 with
+    | Nil -> absurd
+    | Cons j Nil -> assert { i = j }
+    | _ -> ()
+    end
+
+  let lemma alloc_out (ps: list param) (o: options) (call: list t)
+      (p: plan) (i: pos)
+    requires { hyp ps o call p }
+    requires { in_range ps i /\ has_output (prm ps i) }
+    requires { (out_effects ps p i).alloc }
+    ensures { not p.noalloc }
+    ensures { forall j. in_range ps j -> has_output (prm ps j) ->
+                rooted ps p (Out j) }
+  = assert { L.mem i (ipids S_output ps 0) };
+    match ipids S_output ps 0 with
+    | Nil -> absurd
+    | Cons j Nil ->
+      assert { i = j };
+      assert { forall k. in_range ps k -> has_output (prm ps k) -> k = j };
+      assert { match p.result with One_value j' -> to_int j' = j
+                                   | _ -> false end }
+    | _ -> assert { is_tuple p.result }
+    end
+
+  (** ## The steps *)
+
+  let lemma st_ml2c (ps: list param) (o: options) (call: list t) (p: plan)
+      (k: int) (x: sel) (l: list t) (s: state)
+    requires { hyp ps o call p }
+    requires { k = 0 /\ x = S_pre_input \/ k = 2 /\ x = S_checked_input \/
+               k = 3 /\ x = S_owning_input \/ k = 4 /\ x = S_heap_input }
+    requires { ints l = ipids x ps 0 }
+    requires { inv_h ps (phs ps k) false false s }
+    ensures { run_actions ps p s (actions_of no_alias ps p (Ml2c l)) }
+    ensures { inv_h ps (phs ps (k + 1)) false false
+                (after ps p s (actions_of no_alias ps p (Ml2c l))) }
+  = assert { ml2c_ok ps p (phs ps k) (phs ps (k + 1)) false false (ints l) };
+    run_ml2c ps o call p (phs ps k) (phs ps (k + 1)) false false (ints l) s
+
+  let lemma st_check_in (ps: list param) (o: options) (call: list t)
+      (p: plan) (l: list t) (s: state)
+    requires { hyp ps o call p }
+    requires { ints l = ipids S_in_check ps 0 }
+    requires { inv_h ps (phs ps 1) false false s }
+    ensures { run_actions ps p s (actions_of no_alias ps p (Check_in l)) }
+    ensures { inv_h ps (phs ps 2) false false
+                (after ps p s (actions_of no_alias ps p (Check_in l))) }
+  = assert { forall i. L.mem i (ints l) ->
+               in_range ps i /\ selected S_in_check (prm ps i) /\
+               selected S_not_noalloc (prm ps i) };
+    (match ints l with
+     | Nil -> ()
+     | Cons i _ ->
+       assert { in_range ps i /\ selected S_not_noalloc (prm ps i) };
+       assert { not p.noalloc }
+     end);
+    assert { nothing_owned ps (phs ps 1) /\ nothing_owned ps (phs ps 2) };
+    assert { forall j. in_range ps j -> selected S_pre_input (prm ps j) ->
+               (phs ps 1 j).cv = KB /\ (phs ps 2 j).cv = KB };
+    assert { forall i. L.mem i (ints l) ->
+               phs ps 2 i = { (phs ps 1 i) with ck = true } };
+    assert { forall i. in_range ps i -> not L.mem i (ints l) ->
+               phs ps 2 i = phs ps 1 i };
+    assert { check_in_ok ps p (phs ps 1) (phs ps 2) (ints l) };
+    run_check_in ps o call p (phs ps 1) (phs ps 2) false false (ints l) s
+
+  let lemma st_init (ps: list param) (o: options) (call: list t)
+      (p: plan) (l: list t) (s: state)
+    requires { hyp ps o call p }
+    requires { ints l = ipids S_init ps 0 }
+    requires { inv_h ps (phs ps 5) false false s }
+    ensures { run_actions ps p s (actions_of no_alias ps p (Init l)) }
+    ensures { inv_h ps (phs ps 6) false false
+                (after ps p s (actions_of no_alias ps p (Init l))) }
+  = assert { init_ok ps (phs ps 5) (phs ps 6) (ints l) };
+    run_init ps o call p (phs ps 5) (phs ps 6) false false (ints l) s
+
+  let lemma st_call (ps: list param) (o: options) (call: list t)
+      (p: plan) (s: state)
+    requires { hyp ps o call p }
+    requires { inv_h ps (phs ps 6) false false s }
+    ensures { let x = Call call o.release_lock in
+              run_actions ps p s (actions_of no_alias ps p x) /\
+              inv_h ps (phs ps 7) false false
+                (after ps p s (actions_of no_alias ps p x)) }
+  = l_call ps o call p (phs ps 6) s;
+    assert { forall i. in_range ps i -> call_ph ps (phs ps 6) i = phs ps 7 i }
+
+  (** Before raising: the message, the moves, the frees *)
+  let lemma l_cleanup (ps: list param) (o: options) (call: list t)
+      (p: plan) (k: int) (x: sel) (c: cleanup) (s: state)
+    requires { hyp ps o call p }
+    requires { k = 6 /\ x = S_move_error \/ k = 8 /\ x = S_move_out }
+    requires { ints c.moves = ipids x ps 0 }
+    requires { ints c.frees = ipids S_free ps 0 }
+    requires { inv_a ps (phs ps k) false false s }
+    requires { p.roots.err /\ not p.noalloc }
+    ensures { run_actions ps p s (act_cleanup no_alias ps p c) }
+  = let ghost f = pure { phs ps k } in
+    let ghost hv = any bool ensures { inv ps f result false false s } in
+    l_msg ps o call p f hv false s;
+    let ghost s1 = post_action ps p msg_action s in
+    let ghost lm = pure { map_act (act_move no_alias ps p) (ints c.moves) } in
+    let ghost lf = pure { map_act act_free (ints c.frees) } in
+    assert { c2ml_ok ps p f (mvs ps k x) false true (ints c.moves)
+               (act_move no_alias ps p) };
+    run_c2ml ps o call p f (mvs ps k x) false true (ints c.moves)
+      (pure { act_move no_alias ps p }) s1;
+    let ghost s2 = after ps p s1 lm in
+    assert { free_ok ps (mvs ps k x) (frs ps k x) (ints c.frees) };
+    run_free ps o call p (mvs ps k x) (frs ps k x) false true (ints c.frees) s2;
+    let ghost s3 = after ps p s2 lf in
+    let ghost hv3 = any bool ensures { inv ps (frs ps k x) result false true s3 } in
+    assert { nothing_owned ps (frs ps k x) };
+    l_exit ps o call p (frs ps k x) hv3 false true s3 raise_action;
+    run_append ps p s1 lm lf;
+    run_append ps p s1 (lm ++ lf) (Cons raise_action Nil)
+
+  let lemma st_check_error (ps: list param) (o: options) (call: list t)
+      (p: plan) (c: cleanup) (s: state)
+    requires { hyp ps o call p }
+    requires { o.error }
+    requires { ints c.moves = ipids S_move_error ps 0 }
+    requires { ints c.frees = ipids S_free ps 0 }
+    requires { inv_h ps (phs ps 7) false false s }
+    ensures { run_actions ps p s (branch_of no_alias ps p (Check_error c)) }
+  = let ghost hv = any bool ensures { inv ps (phs ps 7) result false false s } in
+    assert { inv ps (call_ph ps (phs ps 6)) hv false false s };
+    l_revert ps o call p (phs ps 6) hv false false s;
+    l_cleanup ps o call p 6 S_move_error c (post_action ps p (act_revert ps) s)
+
+  let lemma st_check_out (ps: list param) (o: options) (call: list t)
+      (p: plan) (l: list t) (c: cleanup) (s: state)
+    requires { hyp ps o call p }
+    requires { ints l = ipids S_out_check ps 0 }
+    requires { ints c.moves = ipids S_move_out ps 0 }
+    requires { ints c.frees = ipids S_free ps 0 }
+    requires { inv_h ps (phs ps 7) false false s }
+    ensures { run_actions ps p s (branch_of no_alias ps p (Check_out l c)) }
+    ensures { run_actions ps p s (actions_of no_alias ps p (Check_out l c)) }
+    ensures { inv_h ps (phs ps 8) false false
+                (after ps p s (actions_of no_alias ps p (Check_out l c))) }
+  = assert { check_out_ok ps (phs ps 7) (phs ps 8) (ints l) };
+    run_check_out ps o call p (phs ps 7) (phs ps 8) false false (ints l) s;
+    match l with
+    | Nil -> ()
+    | Cons i _ ->
+      let ghost la = pure { map_act (act_check_out ps) (ints l) } in
+      assert { selected S_out_check (prm ps (to_int i)) };
+      assert { not p.noalloc /\ p.roots.err };
+      l_cleanup ps o call p 8 S_move_out c (after ps p s la);
+      run_append ps p s la (act_cleanup no_alias ps p c)
+    end
+
+  let lemma st_c2ml_heap (ps: list param) (o: options) (call: list t)
+      (p: plan) (l: list t) (s: state)
+    requires { hyp ps o call p }
+    requires { ints l = ipids S_heap_output ps 0 }
+    requires { inv_h ps (phs ps 8) false false s }
+    ensures { run_actions ps p s (actions_of no_alias ps p (C2ml l)) }
+    ensures { inv_a ps (phs ps 9) false false
+                (after ps p s (actions_of no_alias ps p (C2ml l))) }
+  = match ints l with
+    | Nil ->
+      assert { forall i. in_range ps i -> not selected S_heap_output (prm ps i) };
+      assert { forall i. in_range ps i -> phs ps 8 i = phs ps 9 i };
+      assert { actions_of no_alias ps p (C2ml l) = Nil };
+      assert { after ps p s Nil = s };
+      assert { inv_a ps (phs ps 8) false false s }
+    | Cons i r ->
+      (match r with
+       | Nil -> ()
+       | Cons j _ ->
+         assert { distinct (ipids S_heap_output ps 0) };
+         assert { L.mem i (ipids S_heap_output ps 0) };
+         assert { L.mem j (ipids S_heap_output ps 0) /\ i <> j };
+         assert { in_range ps i /\ in_range ps j };
+         assert { heap_input (prm ps i) /\ heap_input (prm ps j) };
+         assert { i = j };
+         absurd
+       end);
+      assert { L.mem i (ipids S_heap_output ps 0) };
+      assert { in_range ps i /\ selected S_heap_output (prm ps i) };
+      let ghost f = pure { phs ps 8 } in
+      let ghost hv = any bool ensures {
+        inv ps f result false false s /\
+        forall j. in_range ps j -> heap_input (prm ps j) ->
+          converted (f j) -> result } in
+      assert { converted (f i) };
+      assert { hv };
+      assert { not (f i).vo /\ not (f i).mv };
+      assert { (prm ps i).out_check -> mem i s.done_checks };
+      assert { not (prm ps i).owned_by_ml };
+      assert { not (out_effects ps p i).raising };
+      if (out_effects ps p i).alloc then begin
+        alloc_out ps o call p i;
+        assert { gc_roots_ok ps p f false false }
+      end;
+      assert { p.noalloc -> not (out_effects ps p i).alloc };
+      l_c2ml ps o call p f hv false false s i (act_c2ml no_alias ps p i);
+      assert { forall j. in_range ps j ->
+                 upd f i (conv_ph (prm ps i) (f i)) j = phs ps 9 j };
+      assert { actions_of no_alias ps p (C2ml l) =
+               Cons (act_c2ml no_alias ps p i) Nil };
+      let ghost s1 = post_action ps p (act_c2ml no_alias ps p i) s in
+      assert { after ps p s (actions_of no_alias ps p (C2ml l)) = s1 };
+      assert { inv ps (upd f i (conv_ph (prm ps i) (f i)))
+                 (hv && not (out_effects ps p i).alloc) false false s1 };
+      assert { inv ps (phs ps 9) (hv && not (out_effects ps p i).alloc)
+                 false false s1 }
+    end
+
+  let lemma st_c2ml (ps: list param) (o: options) (call: list t)
+      (p: plan) (l: list t) (s: state)
+    requires { hyp ps o call p }
+    requires { ints l = ipids S_plain_output ps 0 }
+    requires { inv_a ps (phs ps 9) false false s }
+    ensures { run_actions ps p s (actions_of no_alias ps p (C2ml l)) }
+    ensures { inv_a ps (phs ps 10) false false
+                (after ps p s (actions_of no_alias ps p (C2ml l))) }
+  = assert { c2ml_ok ps p (phs ps 9) (phs ps 10) false false (ints l)
+               (act_c2ml no_alias ps p) };
+    run_c2ml ps o call p (phs ps 9) (phs ps 10) false false (ints l)
+      (pure { act_c2ml no_alias ps p }) s
+
+  let lemma st_tuple (ps: list param) (o: options) (call: list t)
+      (p: plan) (l: list t) (s: state)
+    requires { hyp ps o call p }
+    requires { p.result = Tuple l }
+    requires { inv_a ps (phs ps 10) false false s }
+    ensures { run_actions ps p s (actions_of no_alias ps p (Alloc_tuple l)) }
+    ensures { inv_a ps (phs ps 10) true false
+                (after ps p s (actions_of no_alias ps p (Alloc_tuple l))) }
+  = let ghost hv = any bool ensures { inv ps (phs ps 10) result false false s } in
+    assert { ints l = ipids S_output ps 0 };
+    assert { not p.noalloc };
+    l_tuple ps o call p (phs ps 10) hv false s l
+
+  let lemma st_free (ps: list param) (o: options) (call: list t)
+      (p: plan) (tup: bool) (l: list t) (s: state)
+    requires { hyp ps o call p }
+    requires { ints l = ipids S_free ps 0 }
+    requires { inv_a ps (phs ps 10) tup false s }
+    ensures { run_actions ps p s (actions_of no_alias ps p (Free l)) }
+    ensures { inv_a ps (phs ps 11) tup false
+                (after ps p s (actions_of no_alias ps p (Free l))) }
+  = assert { free_ok ps (phs ps 10) (phs ps 11) (ints l) };
+    run_free ps o call p (phs ps 10) (phs ps 11) tup false (ints l) s
+
+  let lemma st_return (ps: list param) (o: options) (call: list t)
+      (p: plan) (s: state)
+    requires { hyp ps o call p }
+    requires { inv_a ps (phs ps 11) (tup_of p.result) false s }
+    ensures { run_actions ps p s (actions_of no_alias ps p Return) }
+  = let ghost hv = any bool ensures {
+      inv ps (phs ps 11) result (tup_of p.result) false s } in
+    let ghost a = pure {
+      { nop with used = (match p.result with
+                         | Unit_result | One_unboxed _ -> empty
+                         | One_value i -> singleton (Out (to_int i))
+                         | Tuple _ -> singleton Tup end);
+                 exits = true } } in
+    assert { actions_of no_alias ps p Return = Cons a Nil };
+    (match p.result with
+     | One_value j ->
+       assert { L.mem (to_int j) (ipids S_output ps 0) };
+       assert { (phs ps 11 (to_int j)).vo }
+     | _ -> () end);
+    assert { forall v. mem v a.used ->
+               mem v s.valid /\ forall b. mem b (s.points v) -> live s b };
+    assert { nothing_owned ps (phs ps 11) };
+    l_exit ps o call p (phs ps 11) hv (tup_of p.result) false s a
+
+end
+
+module Schedule
+
+  use int.Int
+  use list.List
+  use list.Mem as L
+  use list.Length
+  use list.NthNoOpt
+  use list.Distinct
+  use set.Set
+  use option.Option
+  use plan.OInt
+  use plan.Types
+  use plan.Lists
+  use spec.Spec
+  use Proof
+
+  predicate has_sel (x: sel) (ps: list param) =
+    exists i. 0 <= i < length ps /\ selected x (nth i ps)
+
+  (** The noalloc stub is possible *)
+  predicate can_noalloc (ps: list param) (o: options) (outputs: list int) =
+    not o.release_lock /\ not o.error /\
+    not has_sel S_not_noalloc ps /\
+    match outputs with
+    | Nil -> true
+    | Cons i Nil ->
+      is_pure (nth i ps).c2ml \/ (nth i ps).output = Unboxable_output
+    | _ -> false
+    end
+
+  let lemma two_sel (x: sel) (ps: list param) (i j: int)
+    requires { in_range ps i /\ in_range ps j /\ i <> j }
+    requires { selected x (prm ps i) /\ selected x (prm ps j) }
+    ensures { match ipids x ps 0 with Nil | Cons _ Nil -> false
+              | _ -> true end }
+  = assert { L.mem i (ipids x ps 0) /\ L.mem j (ipids x ps 0) }
+
+  (** Two inputs with unregistered OCaml values *)
+  predicate two_heap (ps: list param) =
+    match ipids S_heap_input ps 0 with
+    | Nil | Cons _ Nil -> false
+    | _ -> true
+    end
+
+  let lemma heap_unique (ps: list param) (i j: int)
+    requires { not two_heap ps }
+    requires { in_range ps i /\ in_range ps j }
+    requires { heap_input (prm ps i) /\ heap_input (prm ps j) }
+    ensures { i = j }
+  = if i <> j then begin
+      two_sel S_heap_input ps i j;
+      absurd
+    end
+
+  (** The conditions of the errors *)
+  predicate error_cond (ps: list param) (o: options) (call: list t)
+      (e: sched_error) =
+    match e with
+    | Bad_call -> not valid_idx ps (ints call)
+    | Input_output_owned -> has_sel S_input_output_owned ps
+    | Owned_unused -> has_sel S_owned_unused ps
+    | Raising_owning_input -> has_sel S_raising_owning_input ps
+    | Raising_output -> has_sel S_raising_output ps
+    | Lock_ml_heap ->
+      o.release_lock /\
+      ((exists i. L.mem i (ints call) /\
+          ((nth i ps).ml_heap \/ (nth i ps).value_locals)) \/
+       has_sel S_heap_input ps)
+    | Unrooted_heap -> two_heap ps \/ has_sel S_raising_heap ps
+    | Not_noalloc ->
+      o.want_noalloc = Some true /\
+      not can_noalloc ps o (ipids S_output ps zero)
+    | Too_many_params -> length ps > max
+    end
+
+  let schedule (o: options) (ps: list param) (call: list t)
+    : schedule_result
+    ensures { match result with
+              | Ok p -> safe_spec no_alias ps o call p
+              | Error e -> error_cond ps o call e
+              end }
+  = if not fits zero ps then Error Too_many_params
+    else if not valid_call ps call then Error Bad_call
+    else if exists_sel S_input_output_owned ps then Error Input_output_owned
+    else if exists_sel S_owned_unused ps then Error Owned_unused
+    else if exists_sel S_raising_owning_input ps then
+      Error Raising_owning_input
+    else if exists_sel S_raising_output ps then Error Raising_output
+    else if o.release_lock &&
+            (heap_in_call ps call || exists_sel S_heap_input ps) then begin
+      assert { error_cond ps o call Lock_ml_heap };
+      Error Lock_ml_heap end
+    else
+      let hin = pids S_heap_input ps zero in
+      let two = match hin with Nil | Cons _ Nil -> false | _ -> true end in
+      assert { two <-> two_heap ps };
+      if two || exists_sel S_raising_heap ps then begin
+        assert { error_cond ps o call Unrooted_heap };
+        Error Unrooted_heap end
+      else
+      let outputs = pids S_output ps zero in
+      let cna =
+        not o.release_lock && not o.error &&
+        not exists_sel S_not_noalloc ps &&
+        match outputs with
+        | Nil -> true
+        | Cons i Nil ->
+          let q = get ps i in
+          is_pure q.c2ml || unboxable_output q
+        | _ -> false
+        end
+      in
+      let noalloc =
+        match o.want_noalloc with
+        | None -> cna
+        | Some b -> b
+        end
+      in
+      if noalloc && not cna then begin
+        assert { error_cond ps o call Not_noalloc };
+        Error Not_noalloc end
+      else
+        let result =
+          match outputs with
+          | Nil -> Unit_result
+          | Cons i Nil ->
+            if unboxable_output (get ps i) then One_unboxed i
+            else One_value i
+          | l -> Tuple l
+          end
+        in
+        let out_checks = pids S_out_check ps zero in
+        let roots =
+          if noalloc then
+            { inputs = Nil; outputs = Nil; ret = false; err = false;
+              c_values = Nil }
+          else
+            { inputs = pids S_boxed_input ps zero;
+              outputs =
+                (match result with
+                 | Unit_result | One_unboxed _ -> Nil
+                 | One_value i -> Cons i Nil
+                 | Tuple l -> l
+                 end);
+              ret = (match result with Tuple _ -> true | _ -> false end);
+              err = o.error ||
+                    (match out_checks with Nil -> false | _ -> true end);
+              c_values = pids S_value_locals ps zero }
+        in
+        let cin = pids S_in_check ps zero in
+        let ain = pids S_pre_input ps zero in
+        let b1in = pids S_checked_input ps zero in
+        let b2in = pids S_owning_input ps zero in
+        let ini = pids S_init ps zero in
+        let hout = pids S_heap_output ps zero in
+        let pout = pids S_plain_output ps zero in
+        let frees = pids S_free ps zero in
+        let cerr = { moves = pids S_move_error ps zero; frees = frees } in
+        let cout = { moves = pids S_move_out ps zero; frees = frees } in
+        let t_free = Cons (Free frees) (Cons Return Nil) in
+        let t_tuple =
+          match result with
+          | Tuple l -> Cons (Alloc_tuple l) t_free
+          | _ -> t_free
+          end
+        in
+        let t_c2ml = Cons (C2ml pout) t_tuple in
+        let t_hout = Cons (C2ml hout) t_c2ml in
+        let t_out = Cons (Check_out out_checks cout) t_hout in
+        let t_err =
+          if o.error then Cons (Check_error cerr) t_out else t_out in
+        let t_call = Cons (Call call o.release_lock) t_err in
+        let t_init = Cons (Init ini) t_call in
+        let t_h = Cons (Ml2c hin) t_init in
+        let t_b2 = Cons (Ml2c b2in) t_h in
+        let t_b1 = Cons (Ml2c b1in) t_b2 in
+        let t_chk = Cons (Check_in cin) t_b1 in
+        let steps = Cons (Ml2c ain) t_chk in
+        let p = { noalloc = noalloc; result = result; roots = roots;
+                  steps = steps } in
+        (* proof *)
+        assert { roots_ok ps o p };
+        assert { result_ok ps p.result };
+        assert { forall i j. in_range ps i -> in_range ps j ->
+                   heap_input (prm ps i) -> heap_input (prm ps j) -> i = j };
+        assert { valid_idx ps (ints call) };
+        assert { no_sel S_input_output_owned ps /\ no_sel S_owned_unused ps };
+        assert { no_sel S_raising_owning_input ps /\
+                 no_sel S_raising_output ps /\ no_sel S_raising_heap ps };
+        assert { o.release_lock ->
+                 no_sel S_heap_input ps /\
+                 forall i. L.mem i (ints call) ->
+                   not (prm ps i).ml_heap /\ not (prm ps i).value_locals };
+        assert { p.noalloc ->
+                 not o.release_lock /\ not o.error /\
+                 no_sel S_not_noalloc ps };
+        assert { p.noalloc ->
+                 match ipids S_output ps 0 with
+                 | Nil -> true
+                 | Cons i Nil ->
+                   is_pure (nth i ps).c2ml \/ unboxable_output (nth i ps)
+                 | _ -> false
+                 end };
+        assert { hyp ps o call p };
+        let ghost s0 = start ps in
+        assert { forall i. phs ps 0 i =
+                   { cv = KZ; mv = false; vo = false; ck = false } };
+        assert { inv ps (fun _ -> { cv = KZ; mv = false; vo = false;
+                                    ck = false }) true false false s0 };
+        assert { inv ps (phs ps 0) true false false s0 };
+        assert { inv_h ps (phs ps 0) false false s0 };
+        st_ml2c ps o call p 0 S_pre_input ain s0;
+        let ghost sa = after ps p s0 (actions_of no_alias ps p (Ml2c ain)) in
+        st_check_in ps o call p cin sa;
+        let ghost s1 = after ps p sa (actions_of no_alias ps p (Check_in cin)) in
+        st_ml2c ps o call p 2 S_checked_input b1in s1;
+        let ghost s2 = after ps p s1 (actions_of no_alias ps p (Ml2c b1in)) in
+        st_ml2c ps o call p 3 S_owning_input b2in s2;
+        let ghost s3 = after ps p s2 (actions_of no_alias ps p (Ml2c b2in)) in
+        st_ml2c ps o call p 4 S_heap_input hin s3;
+        let ghost sh = after ps p s3 (actions_of no_alias ps p (Ml2c hin)) in
+        st_init ps o call p ini sh;
+        let ghost s4 = after ps p sh (actions_of no_alias ps p (Init ini)) in
+        st_call ps o call p s4;
+        let ghost s5 = after ps p s4
+          (actions_of no_alias ps p (Call call o.release_lock)) in
+        if o.error then st_check_error ps o call p cerr s5;
+        st_check_out ps o call p out_checks cout s5;
+        let ghost s7 = after ps p s5
+          (actions_of no_alias ps p (Check_out out_checks cout)) in
+        st_c2ml_heap ps o call p hout s7;
+        let ghost s8 = after ps p s7 (actions_of no_alias ps p (C2ml hout)) in
+        st_c2ml ps o call p pout s8;
+        let ghost s9 = after ps p s8 (actions_of no_alias ps p (C2ml pout)) in
+        let ghost s10 =
+          match result with
+          | Tuple l ->
+            st_tuple ps o call p l s9;
+            after ps p s9 (actions_of no_alias ps p (Alloc_tuple l))
+          | _ -> s9
+          end
+        in
+        assert { inv_a ps (phs ps 10) (tup_of p.result) false s10 };
+        st_free ps o call p (tup_of result) frees s10;
+        let ghost s11 = after ps p s10 (actions_of no_alias ps p (Free frees)) in
+        st_return ps o call p s11;
+        assert { run_steps no_alias ps p s11 (Cons Return Nil) };
+        assert { run_steps no_alias ps p s10 t_free };
+        assert { run_steps no_alias ps p s9 t_tuple };
+        assert { run_steps no_alias ps p s8 t_c2ml };
+        assert { run_steps no_alias ps p s7 t_hout };
+        assert { run_steps no_alias ps p s5 t_out };
+        assert { run_steps no_alias ps p s5 t_err };
+        assert { run_steps no_alias ps p s4 t_call };
+        assert { run_steps no_alias ps p sh t_init };
+        assert { run_steps no_alias ps p s3 t_h };
+        assert { run_steps no_alias ps p s2 t_b2 };
+        assert { run_steps no_alias ps p s1 t_b1 };
+        assert { run_steps no_alias ps p sa t_chk };
+        assert { run_steps no_alias ps p s0 steps };
+        assert { shape o call false false steps };
+        Ok p
+end

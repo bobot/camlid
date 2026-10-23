@@ -16,6 +16,14 @@ let make =
     ~ignored_result:c_int
     [ output vec.t; output (ptr_ref (string_nt ())); n ]
 
+(* two arrays of OCaml values are not registered with the GC: the conversion
+   of the second one could move the values of the first one *)
+let () =
+  let a () = input (Expert.array_length (Expert.value "int")) in
+  match func "f" [ a (); a () ] with
+  | _ -> Generate.to_file "should_not_exist" []
+  | exception Invalid_argument _ -> ()
+
 (* the lock can't be released when the C function receives an OCaml value *)
 let () =
   match func "f" ~release_lock:true [ input_value "int" ] with

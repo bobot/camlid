@@ -2,8 +2,9 @@
 
 Use it when reviewing a `tests/*/mylib_stub.c` or a new template. Each rule
 says where camlid enforces it. P1 to P6 are proved for the order of the
-steps of the stub (`proof/plan.mlw`); the C templates of the types are
-trusted, so check them against these rules.
+steps of the stub (`proof/schedule.mlw`, against the specification
+`proof/spec.mlw`); the C templates of the types are trusted, so check them
+against these rules.
 
 ## GC roots (P3)
 
@@ -12,6 +13,10 @@ trusted, so check them against these rules.
   registered: `CAMLparamN` for the arguments, `CAMLlocalN` for the locals,
   and the function returns with `CAMLreturn*`. Camlid: `code_c_fun`
   registers all boxed inputs and outputs unless the stub is noalloc.
+- A `value` stored in a C array or struct (`ml_heap` without a `value`
+  local) is not registered: any allocation after its conversion makes it
+  invalid. Camlid: such an input is converted last and its output
+  converted first; two of them are refused (`Unrooted_heap`).
 - A helper function that allocates and has `value` locals uses
   `CAMLparam0(); CAMLlocal1(tmp); ... CAMLreturn0;`.
 - `Store_field` after an allocation, never `Field(v, i) = x` on an old

@@ -7,13 +7,16 @@ conversions. Points 4 (C API without `*%a`) and 5 (`Unchecked`) are not
 started. The model and its limits are described in the header of
 `proof/plan.mlw`.
 
-Status (2026-10-22): `proof/spec.mlw` is the specification for reviewers,
-not yet linked to `plan.mlw`. It models the memory as blocks (OCaml blocks
-and C memory, one per allocation site) with an owner, variables pointing
-to blocks, and the GC as in Melocoton. The aliasing of the C function is a
-parameter of the spec (`aliasing`). Next: prove that `schedule` satisfies
-`safe_spec` for `no_alias`, then decide how a template declares its
-aliases (`keep_alive`, `with_parent`).
+Status (2026-10-23): `proof/spec.mlw` is the specification for reviewers.
+It models the memory as blocks (OCaml blocks and C memory, one per
+allocation site) with an owner, variables pointing to blocks, and the GC
+as in Melocoton. The aliasing of the C function is a parameter of the spec
+(`aliasing`). `schedule` (`proof/schedule.mlw`) is proved to satisfy
+`safe_spec no_alias`; the per-position model of `plan.mlw` is removed.
+The spec found that a `value` stored in a C array or struct is not
+registered: such an input is now converted last, and two of them are
+refused (`Unrooted_heap`). Next: decide how a template declares its
+aliases (`keep_alive`, `with_parent`), and prove `schedule` for them.
 
 ## Goal
 

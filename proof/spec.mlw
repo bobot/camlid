@@ -22,6 +22,12 @@ Trusted, so to be reviewed:
 - the aliasing hypothesis (`aliasing`): which blocks the C function can
   make its outputs point to. It is a parameter of the specification.
 
+Not modelled: an output that is not an input and whose C value contains
+OCaml values (`ml_heap`) points to blocks the stub doesn't know.
+
+`schedule` (`schedule.mlw`) is proved to give plans that satisfy
+`safe_spec no_alias`.
+
 ## Positions, variables and blocks
 
 A *position* (`pos`) is the index of a parameter in the parameter list of
@@ -333,10 +339,10 @@ module Spec
     fun b -> mem b (cblocks ps i) \/
              exists j. mem j (al.call_aliases i) /\ mem b (cblocks ps j)
 
-  (** The inputs without destructor nor check, which a check can read *)
+  (** The inputs without destructor, check, nor unregistered OCaml values,
+      which a check can read *)
   function pre_inputs (ps: list param) : set pos =
-    fun i -> in_range ps i /\ (prm ps i).input <> No_input /\
-             not (prm ps i).free /\ not (prm ps i).in_check
+    fun i -> in_range ps i /\ selected S_pre_input (prm ps i)
 
   function all_inputs (ps: list param) : set pos =
     fun i -> in_range ps i /\ (prm ps i).input <> No_input
@@ -441,19 +447,39 @@ module Spec
   function map_act (f: pos -> action) (l: list int) : list action =
     match l with Nil -> Nil | Cons i r -> Cons (f i) (map_act f r) end
 
+  (** Moved before raising, only to be finalized: the output need not be
+      checked *)
+  function act_move (al: aliasing) (ps: list param) (p: plan) (i: pos)
+      : action =
+    { (act_c2ml al ps p i) with checked = empty }
+
+  (** The message of an exception *)
+  constant msg_action : action =
+    { nop with defines = singleton Msg;
+               points_to = (fun _ -> singleton MlMsg);
+               creates = singleton MlMsg; owner_of = (fun _ -> Gc);
+               allocates = true }
+
+  constant raise_action : action =
+    { nop with used = singleton Msg; may_raise = true; exits = true }
+
   (** Before raising: the message, the moves, the frees, then raise *)
   function act_cleanup (al: aliasing) (ps: list param) (p: plan)
       (c: cleanup) : list action =
-    Cons { nop with defines = singleton Msg;
-                    points_to = (fun _ -> singleton MlMsg);
-                    creates = singleton MlMsg; owner_of = (fun _ -> Gc);
-                    allocates = true }
-      (* moved only to be finalized: the output need not be checked *)
-      (map_act (fun i -> { (act_c2ml al ps p i) with checked = empty })
-         (ints c.moves) ++
+    Cons msg_action
+      (map_act (act_move al ps p) (ints c.moves) ++
        map_act act_free (ints c.frees) ++
-       Cons { nop with used = singleton Msg; may_raise = true; exits = true }
-         Nil)
+       Cons raise_action Nil)
+
+  (** The tuple of the results: allocated, then filled *)
+  constant tuple_alloc : action =
+    { nop with defines = singleton Tup;
+               points_to = (fun _ -> singleton MlTuple);
+               creates = singleton MlTuple; owner_of = (fun _ -> Gc);
+               allocates = true }
+
+  function tuple_store (l: list t) : action =
+    { nop with used = add Tup (vars (fun i -> Out i) (positions l)) }
 
   (** The actions of a step when it doesn't fail *)
   function actions_of (al: aliasing) (ps: list param) (p: plan) (x: step)
@@ -466,13 +492,7 @@ module Spec
     | Check_error _ -> Nil
     | Check_out l _ -> map_act (act_check_out ps) (ints l)
     | C2ml l -> map_act (act_c2ml al ps p) (ints l)
-    | Alloc_tuple l ->
-      Cons { nop with defines = singleton Tup;
-                      points_to = (fun _ -> singleton MlTuple);
-                      creates = singleton MlTuple; owner_of = (fun _ -> Gc);
-                      allocates = true }
-        (Cons { nop with
-                used = add Tup (vars (fun i -> Out i) (positions l)) } Nil)
+    | Alloc_tuple l -> Cons tuple_alloc (Cons (tuple_store l) Nil)
     | Free l -> map_act act_free (ints l)
     | Return ->
       Cons { nop with
@@ -483,14 +503,16 @@ module Spec
              exits = true } Nil
     end
 
+  (** The C function failed: it produced nothing *)
+  function act_revert (ps: list param) : action =
+    { nop with reverts = blocks_of ps (produced ps) }
+
   (** The actions of a step when it fails *)
   function branch_of (al: aliasing) (ps: list param) (p: plan) (x: step)
       : list action =
     match x with
-    | Check_error c ->
-      (* the C function failed: it produced nothing *)
-      Cons { nop with reverts = blocks_of ps (produced ps) }
-        (act_cleanup al ps p c)
+    | Check_error c -> Cons (act_revert ps) (act_cleanup al ps p c)
+    | Check_out Nil _ -> Nil
     | Check_out l c ->
       map_act (act_check_out ps) (ints l) ++ act_cleanup al ps p c
     | _ -> Nil

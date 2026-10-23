@@ -7,6 +7,8 @@ Keep the generic parts in sync with it. The section "In camlid" is local. -->
 - Proofs go in `proof/*.mlw`, with the hints in `proof/why3find.proofs/`.
   The extracted OCaml (`lib/*_gen.ml`) is committed, so building camlid
   doesn't need Why3. It must compile with OCaml 4.14.
+- Files: `plan.mlw` (types, extracted), `spec.mlw` (the specification to
+  review), `schedule.mlw` (`schedule`, extracted, and its proof).
 - Program integers are `OInt.t` (`proof/plan.mlw`): a `Bounded_int` with
   at least 31 bits, extracted to the OCaml `int`. Never map the unbounded
   `int` to the OCaml `int`; an `int` left in program code extracts to `Z`
