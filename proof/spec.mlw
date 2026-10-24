@@ -28,18 +28,21 @@ OCaml values (`ml_heap`) points to blocks the stub doesn't know.
 `schedule` (`schedule.mlw`) is proved to give plans that satisfy
 `safe_spec no_alias`.
 
-## Positions, variables and blocks
+## Registers, variables and blocks
 
-A *position* (`pos`) is the index of a parameter in the parameter list of
-the stub: the result of the C function first (if any), then the
-parameters given to `Helper.func` or `Expert.print_ml_fun`. The OCaml
-`external` takes the inputs in this order. The C function takes the
-positions in `call`, in any order, possibly repeated.
+As in a compiler, the values of the stub live in *registers* (`reg`).
+There is one register per parameter of the stub: the result of the C
+function (if any), then the parameters given to `Helper.func` or
+`Expert.print_ml_fun`. A register has no other meaning: the stub has no
+value outside them, except the tuple of the results and the message of an
+exception. Registers are numbered in this order, which is also the order of
+the arguments of the OCaml `external`; the C function takes the registers
+listed in `call`, in any order, possibly repeated.
 
-Each position has a C variable, its C locals of type `value`, an OCaml
-input and an OCaml output; the stub also has the tuple of the results and
-the message of an exception. The blocks are named by the variable that
-creates them (one block per allocation site), so there are finitely many.
+A register groups the variables of its parameter: a C variable, its C
+locals of type `value`, an OCaml input and an OCaml output. The blocks are
+named by the variable that creates them (one block per allocation site),
+so there are finitely many.
 
 ## Relation to Melocoton
 
@@ -65,29 +68,29 @@ module Spec
   use plan.OInt
   use plan.Types
 
-  (** The position of a parameter, in the list of the parameters of the
-      stub, the result of the C function first *)
-  type pos = int
+  (** A register: the number of a parameter of the stub, the result of
+      the C function first *)
+  type reg = int
 
   (** ## Variables and blocks *)
 
   type var =
-    | C pos  (** the C variable of the parameter *)
-    | Vloc pos  (** its C locals of type `value` *)
-    | In pos  (** its OCaml input, the argument of the stub *)
-    | Out pos  (** its OCaml output *)
+    | C reg  (** the C variable of the parameter *)
+    | Vloc reg  (** its C locals of type `value` *)
+    | In reg  (** its OCaml input, the argument of the stub *)
+    | Out reg  (** its OCaml output *)
     | Tup  (** the tuple of the results *)
     | Msg  (** the message of an exception *)
 
   type block =
-    | MlIn pos  (** the OCaml block of the input *)
-    | MlOut pos  (** the OCaml block of the output *)
-    | MlLoc pos  (** the OCaml blocks of the C locals of type `value` *)
+    | MlIn reg  (** the OCaml block of the input *)
+    | MlOut reg  (** the OCaml block of the output *)
+    | MlLoc reg  (** the OCaml blocks of the C locals of type `value` *)
     | MlTuple
     | MlMsg
-    | Own pos
+    | Own reg
         (** the C memory owned by the C value, freed by its destructor *)
-    | Data pos
+    | Data reg
         (** the C memory stored in the OCaml block (`owned_by_ml`): of the
             input, or moved into the output *)
 
@@ -109,10 +112,10 @@ module Spec
       Without it (`no_alias`) the outputs of the C function point to new
       blocks or to memory outside the stub (globals of the C library). *)
   type aliasing = {
-    call_aliases : pos -> set pos;
+    call_aliases : reg -> set reg;
       (** after the call, the C value `i` can point to the blocks of the C
           values `call_aliases i` *)
-    out_keeps : pos -> set pos;
+    out_keeps : reg -> set reg;
       (** the OCaml output `i` keeps alive the OCaml inputs `out_keeps i`
           (`Expert.keep_alive`, `with_parent`) *)
   }
@@ -135,8 +138,8 @@ module Spec
       (** the C memory a new OCaml block points to *)
     keeps_alive : block -> set block;
       (** the OCaml blocks a new OCaml block keeps alive *)
-    checks : set pos;  (** values checked *)
-    checked : set pos;  (** values that must have been checked before *)
+    checks : set reg;  (** values checked *)
+    checked : set reg;  (** values that must have been checked before *)
     allocates : bool;  (** can allocate in the OCaml heap (the GC can run) *)
     may_raise : bool;  (** can raise an OCaml exception *)
     exits : bool;  (** leaves the stub *)
@@ -160,17 +163,17 @@ module Spec
     valid : set var;  (** variables with a usable value *)
     refers : block -> set block;  (** the C memory an OCaml block points to *)
     keeps : block -> set block;  (** the OCaml blocks it keeps alive *)
-    done_checks : set pos;
+    done_checks : set reg;
   }
 
-  predicate in_range (ps: list param) (i: pos) = 0 <= i < length ps
+  predicate in_range (ps: list param) (i: reg) = 0 <= i < length ps
 
-  function prm (ps: list param) (i: pos) : param = nth i ps
+  function prm (ps: list param) (i: reg) : param = nth i ps
 
-  predicate boxed (ps: list param) (i: pos) =
+  predicate boxed (ps: list param) (i: reg) =
     in_range ps i /\ (prm ps i).input = Boxed_input
 
-  predicate locals (ps: list param) (i: pos) =
+  predicate locals (ps: list param) (i: reg) =
     in_range ps i /\ (prm ps i).value_locals
 
   (** The variables registered with the GC (`CAMLparam`, `CAMLlocal`). A C
@@ -311,14 +314,14 @@ module Spec
 
   function only (b: bool) (s: set 'a) : set 'a = if b then s else empty
 
-  function positions (l: list t) : set pos = fun i -> L.mem i (ints l)
+  function regs (l: list t) : set reg = fun i -> L.mem i (ints l)
 
-  function vars (f: pos -> var) (s: set pos) : set var =
+  function vars (f: reg -> var) (s: set reg) : set var =
     fun v -> exists i. mem i s /\ v = f i
 
   (** The C memory of the C value `i`, owned by the stub or by OCaml. The
       C value of a `value` (`ml_heap`) points into the OCaml heap. *)
-  function cblocks (ps: list param) (i: pos) : set block =
+  function cblocks (ps: list param) (i: reg) : set block =
     let q = prm ps i in
     fun b -> in_range ps i /\
       (b = Own i /\ q.free \/
@@ -327,37 +330,37 @@ module Spec
 
   (** The blocks created when the stub produces the C value `i`
       (constructor or C function) *)
-  function new_blocks (ps: list param) (i: pos) : set block =
+  function new_blocks (ps: list param) (i: reg) : set block =
     let q = prm ps i in
     fun b -> in_range ps i /\
       (b = Own i /\ q.free \/ b = Data i /\ q.owned_by_ml)
 
   (** After the call: the C value can also point to the blocks of the
       values it aliases *)
-  function call_blocks (al: aliasing) (ps: list param) (i: pos)
+  function call_blocks (al: aliasing) (ps: list param) (i: reg)
       : set block =
     fun b -> mem b (cblocks ps i) \/
              exists j. mem j (al.call_aliases i) /\ mem b (cblocks ps j)
 
   (** The inputs without destructor, check, nor unregistered OCaml values,
       which a check can read *)
-  function pre_inputs (ps: list param) : set pos =
+  function pre_inputs (ps: list param) : set reg =
     fun i -> in_range ps i /\ selected S_pre_input (prm ps i)
 
-  function all_inputs (ps: list param) : set pos =
+  function all_inputs (ps: list param) : set reg =
     fun i -> in_range ps i /\ (prm ps i).input <> No_input
 
   (** Produced by the C function: not an input, no constructor *)
-  function produced (ps: list param) : set pos =
+  function produced (ps: list param) : set reg =
     fun i -> in_range ps i /\ (prm ps i).input = No_input /\
              not (prm ps i).init
 
-  function blocks_of (ps: list param) (s: set pos) : set block =
+  function blocks_of (ps: list param) (s: set reg) : set block =
     fun b -> exists i. mem i s /\ mem b (new_blocks ps i)
 
   (** The conversion of the output `i`: a single unboxed result is
       returned as a C value *)
-  function out_effects (ps: list param) (p: plan) (i: pos) : effects =
+  function out_effects (ps: list param) (p: plan) (i: reg) : effects =
     match p.result with
     | One_unboxed j -> if to_int j = i then { alloc = false; raising = false }
                        else (prm ps i).c2ml
@@ -366,7 +369,7 @@ module Spec
 
   (** `ml2c` of the input `i`: a copy is owned by the stub when it has a
       destructor; the C value of a custom block is borrowed *)
-  function act_ml2c (ps: list param) (i: pos) : action =
+  function act_ml2c (ps: list param) (i: reg) : action =
     let q = prm ps i in
     { nop with
       used = only (q.input = Boxed_input) (singleton (In i));
@@ -378,14 +381,14 @@ module Spec
 
   (** The check of the input `i`: reads its OCaml value and the C values of
       the inputs without destructor nor check *)
-  function act_check_in (ps: list param) (i: pos) : action =
+  function act_check_in (ps: list param) (i: reg) : action =
     { nop with
       used = union (only (boxed ps i) (singleton (In i)))
                     (vars (fun j -> C j) (pre_inputs ps));
       checks = singleton i; may_raise = true }
 
   (** The constructor of `i`, which can read the inputs (`init_args`) *)
-  function act_init (ps: list param) (i: pos) : action =
+  function act_init (ps: list param) (i: reg) : action =
     { nop with
       used = vars (fun j -> C j) (all_inputs ps);
       defines = singleton (C i);
@@ -397,7 +400,7 @@ module Spec
       constructor *)
   function act_call (al: aliasing) (ps: list param) (l: list t)
       (release: bool) : action =
-    let args = positions l in
+    let args = regs l in
     { nop with
       used = (fun v -> match v with
                | C i -> mem i args /\ not mem i (produced ps)
@@ -415,7 +418,7 @@ module Spec
   (** `c2ml` of the output `i`. For a custom block (`owned_by_ml`), the
       block stores the C value and keeps its `Data`; a container
       (`owned_by_ml` and `free`) keeps its `Own` memory, freed later. *)
-  function act_c2ml (al: aliasing) (ps: list param) (p: plan) (i: pos)
+  function act_c2ml (al: aliasing) (ps: list param) (p: plan) (i: reg)
       : action =
     let q = prm ps i in
     { nop with
@@ -434,22 +437,22 @@ module Spec
       may_raise = (out_effects ps p i).raising }
 
   (** The check of the output `i`: reads its C value *)
-  function act_check_out (ps: list param) (i: pos) : action =
+  function act_check_out (ps: list param) (i: reg) : action =
     { nop with
       used = union (singleton (C i))
                     (only (locals ps i) (singleton (Vloc i)));
       checks = singleton i }
 
   (** The destructor of `i`, which accepts the initial value *)
-  function act_free (i: pos) : action =
+  function act_free (i: reg) : action =
     { nop with deletes = singleton (Own i) }
 
-  function map_act (f: pos -> action) (l: list int) : list action =
+  function map_act (f: reg -> action) (l: list int) : list action =
     match l with Nil -> Nil | Cons i r -> Cons (f i) (map_act f r) end
 
   (** Moved before raising, only to be finalized: the output need not be
       checked *)
-  function act_move (al: aliasing) (ps: list param) (p: plan) (i: pos)
+  function act_move (al: aliasing) (ps: list param) (p: plan) (i: reg)
       : action =
     { (act_c2ml al ps p i) with checked = empty }
 
@@ -479,7 +482,7 @@ module Spec
                allocates = true }
 
   function tuple_store (l: list t) : action =
-    { nop with used = add Tup (vars (fun i -> Out i) (positions l)) }
+    { nop with used = add Tup (vars (fun i -> Out i) (regs l)) }
 
   (** The actions of a step when it doesn't fail *)
   function actions_of (al: aliasing) (ps: list param) (p: plan) (x: step)

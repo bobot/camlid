@@ -5,7 +5,8 @@ The types of the plans, shared by the specification (`spec.mlw`) and by
 specification. They are extracted to `lib/plan_gen.ml`; the printer
 (`Expert.code_c_fun_of_plan`) translates each step into C.
 
-The parameters are numbered by their position in the list. *)
+The parameters are numbered by their position in the list: this number
+is the *register* of the parameter in the specification. *)
 
 (** ## OCaml integers
 
@@ -75,7 +76,7 @@ module Types
 
   (** ## Plans *)
 
-  (** The positions of the parameters are OCaml integers *)
+  (** The registers (numbers of the parameters) are OCaml integers *)
 
   type result_kind =
     | Unit_result
@@ -114,7 +115,7 @@ module Types
     steps : list step;
   }
 
-  (** The positions as mathematical integers, for the model *)
+  (** The registers as mathematical integers, for the model *)
   function ints (l: list t) : list int =
     match l with Nil -> Nil | Cons x r -> Cons (to_int x) (ints r) end
 
@@ -221,7 +222,7 @@ module Lists
   use OInt
   use Types
 
-  (** The positions `i` of the parameters selected by `x` (shifted by
+  (** The registers `i` of the parameters selected by `x` (shifted by
       `n`), in the model *)
   let rec ghost function ipids (x: sel) (ps: list param) (n: int) : list int
     variant { ps }
@@ -250,7 +251,7 @@ module Lists
       if selected x q then Cons n l else l
     end
 
-  (** The positions fit in `t` *)
+  (** The registers fit in `t` *)
   let rec fits (n: t) (ps: list param) : bool
     requires { 0 <= n }
     variant { ps }

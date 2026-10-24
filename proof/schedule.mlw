@@ -6,7 +6,7 @@ extracted to `lib/plan_gen.ml`. It is proved to give plans that satisfy
 description exactly in the cases of `sched_error`.
 
 The proof (module `Proof`) describes the state of the specification
-after each step by a phase per position (`ph`): the C value is
+after each step by a phase per register (`ph`): the C value is
 initial, owned, borrowed, moved or freed, the output is converted, the
 value is checked. *)
 
@@ -107,10 +107,10 @@ module Proof
     ck : bool;  (** checked *)
   }
 
-  (** The state of the blocks and variables of position `i` in phase `h`.
+  (** The state of the blocks and variables of register `i` in phase `h`.
       `hv`: no GC since the conversion of the input with unregistered
       OCaml values. *)
-  predicate pos_ok (ps: list param) (hv: bool) (h: ph) (i: pos) (s: state) =
+  predicate reg_ok (ps: list param) (hv: bool) (h: ph) (i: reg) (s: state) =
     let q = prm ps i in
     ((h.cv = KO \/ h.cv = KB) -> (heap_input q -> hv) ->
        mem (C i) s.valid /\
@@ -157,12 +157,12 @@ module Proof
        s.st MlMsg = Live Gc
      else s.st MlMsg = Unborn)
 
-  predicate inv (ps: list param) (f: pos -> ph) (hv tup msg: bool)
+  predicate inv (ps: list param) (f: reg -> ph) (hv tup msg: bool)
       (s: state) =
-    glob ps tup msg s /\ forall i. in_range ps i -> pos_ok ps hv (f i) i s
+    glob ps tup msg s /\ forall i. in_range ps i -> reg_ok ps hv (f i) i s
 
   (** Nothing is owned by the stub *)
-  predicate nothing_owned (ps: list param) (f: pos -> ph) =
+  predicate nothing_owned (ps: list param) (f: reg -> ph) =
     forall i. in_range ps i -> (f i).cv = KO ->
       not (prm ps i).free /\
       ((prm ps i).owned_by_ml -> boxed_input (prm ps i) \/ (f i).mv)
@@ -170,23 +170,23 @@ module Proof
   lemma no_owned: forall ps f hv tup msg s.
     inv ps f hv tup msg s -> nothing_owned ps f -> forall b. not owned s b
 
-  predicate gc_roots_ok (ps: list param) (p: plan) (f: pos -> ph)
+  predicate gc_roots_ok (ps: list param) (p: plan) (f: reg -> ph)
       (tup msg: bool) =
     not p.noalloc /\
     (forall i. in_range ps i -> (f i).vo -> rooted ps p (Out i)) /\
     (tup -> p.roots.ret) /\ (msg -> p.roots.err)
 
-  let lemma gc_pos (ps: list param) (o: options) (call: list t) (p: plan)
-      (f: pos -> ph) (hv tup msg: bool) (s: state) (i: pos)
+  let lemma gc_reg (ps: list param) (o: options) (call: list t) (p: plan)
+      (f: reg -> ph) (hv tup msg: bool) (s: state) (i: reg)
     requires { hyp ps o call p }
     requires { gc_roots_ok ps p f tup msg }
     requires { inv ps f hv tup msg s }
     requires { in_range ps i }
-    ensures { pos_ok ps false (f i) i (gc ps p s) }
+    ensures { reg_ok ps false (f i) i (gc ps p s) }
   = let q = prm ps i in
     let h = f i in
     let ghost s' = gc ps p s in
-    assert { pos_ok ps hv h i s };
+    assert { reg_ok ps hv h i s };
     assert { boxed_input q ->
                rooted ps p (In i) /\ mem (MlIn i) (s.points (In i)) /\
                survives ps p s (MlIn i) /\ s'.st (MlIn i) = Live Gc /\
@@ -212,13 +212,13 @@ module Proof
                s'.st (Data i) = s.st (Data i) }
 
   let lemma gc_inv (ps: list param) (o: options) (call: list t) (p: plan)
-      (f: pos -> ph) (hv tup msg: bool) (s: state)
+      (f: reg -> ph) (hv tup msg: bool) (s: state)
     requires { hyp ps o call p }
     requires { gc_roots_ok ps p f tup msg }
     requires { inv ps f hv tup msg s }
     ensures { inv ps f false tup msg (gc ps p s) }
   = let ghost s' = gc ps p s in
-    assert { forall i. in_range ps i -> pos_ok ps false (f i) i s' };
+    assert { forall i. in_range ps i -> reg_ok ps false (f i) i s' };
     assert { tup -> mem MlTuple (s.points Tup) /\ survives ps p s MlTuple };
     assert { msg -> mem MlMsg (s.points Msg) /\ survives ps p s MlMsg };
     assert { forall b. owned s' b -> owned s b };
@@ -235,7 +235,7 @@ module Proof
   lemma owned_input: forall ps o call p i. hyp ps o call p -> in_range ps i ->
     has_input (prm ps i) -> (prm ps i).owned_by_ml -> boxed_input (prm ps i)
 
-  function upd (f: pos -> ph) (i: pos) (h: ph) : pos -> ph =
+  function upd (f: reg -> ph) (i: reg) (h: ph) : reg -> ph =
     fun j -> if j = i then h else f j
 
   lemma start_inv: forall ps.
@@ -252,7 +252,7 @@ module Proof
 
   (** The C value of an input is defined after `ml2c` *)
   let lemma l_ml2c (ps: list param) (o: options) (call: list t) (p: plan)
-      (f: pos -> ph) (hv tup msg: bool) (s: state) (i: pos)
+      (f: reg -> ph) (hv tup msg: bool) (s: state) (i: reg)
     requires { hyp ps o call p }
     requires { inv ps f hv tup msg s }
     requires { in_range ps i /\ has_input (prm ps i) }
@@ -274,7 +274,7 @@ module Proof
     assert { inv ps f hv0 tup msg s0 };
     let ghost s1 = post_action ps p a s in
     assert { forall j. in_range ps j -> j <> i ->
-               pos_ok ps hv0 (f j) j s0 -> pos_ok ps hv0 (f j) j s1 };
+               reg_ok ps hv0 (f j) j s0 -> reg_ok ps hv0 (f j) j s1 };
     assert { mem (C i) s1.valid /\
              forall b. mem b (s1.points (C i)) -> mem b (cblocks ps i) };
     assert { q.free -> s1.st (Own i) = Live Stub };
@@ -284,7 +284,7 @@ module Proof
     assert { forall v. v <> C i -> s1.points v = s0.points v };
     assert { forall v. v <> C i -> mem v s1.valid <-> mem v s0.valid };
     assert { forall b. b <> Own i -> s1.st b = s0.st b };
-    assert { pos_ok ps true { (f i) with cv = acq_in q } i s1 };
+    assert { reg_ok ps true { (f i) with cv = acq_in q } i s1 };
     assert { glob ps tup msg s0 };
     assert { forall b. b <> Own i -> s1.refers b = s0.refers b };
     assert { q.free -> forall c. not mem c (s1.refers (Own i)) };
@@ -311,7 +311,7 @@ module Proof
 
   (** The check of an input *)
   let lemma l_check_in (ps: list param) (o: options) (call: list t)
-      (p: plan) (f: pos -> ph) (hv tup msg: bool) (s: state) (i: pos)
+      (p: plan) (f: reg -> ph) (hv tup msg: bool) (s: state) (i: reg)
     requires { hyp ps o call p }
     requires { inv ps f hv tup msg s }
     requires { in_range ps i /\ selected S_in_check (prm ps i) }
@@ -327,11 +327,11 @@ module Proof
                mem (C j) s.valid /\ forall b. mem b (s.points (C j)) -> live s b };
     assert { s1.st = s.st /\ s1.points = s.points /\ s1.refers = s.refers };
     assert { forall v. mem v s1.valid <-> mem v s.valid };
-    assert { forall j. in_range ps j -> pos_ok ps hv (upd f i { (f i) with ck = true } j) j s1 }
+    assert { forall j. in_range ps j -> reg_ok ps hv (upd f i { (f i) with ck = true } j) j s1 }
 
   (** The constructor of a parameter that is not an input *)
   let lemma l_init (ps: list param) (o: options) (call: list t)
-      (p: plan) (f: pos -> ph) (hv tup msg: bool) (s: state) (i: pos)
+      (p: plan) (f: reg -> ph) (hv tup msg: bool) (s: state) (i: reg)
     requires { hyp ps o call p }
     requires { inv ps f hv tup msg s }
     requires { in_range ps i /\ not has_input (prm ps i) }
@@ -362,13 +362,13 @@ module Proof
     assert { forall b c. live s1 b -> mem c (s1.refers b) ->
                live s b /\ s.st c = Live (Kept b) /\ c <> Own i /\ c <> Data i };
     assert { glob ps tup msg s1 };
-    assert { pos_ok ps hv { (f i) with cv = acquired q } i s1 };
+    assert { reg_ok ps hv { (f i) with cv = acquired q } i s1 };
     assert { forall j. in_range ps j -> j <> i ->
-               pos_ok ps hv (f j) j s -> pos_ok ps hv (f j) j s1 }
+               reg_ok ps hv (f j) j s -> reg_ok ps hv (f j) j s1 }
 
   (** The check of an output *)
   let lemma l_check_out (ps: list param) (o: options) (call: list t)
-      (p: plan) (f: pos -> ph) (hv tup msg: bool) (s: state) (i: pos)
+      (p: plan) (f: reg -> ph) (hv tup msg: bool) (s: state) (i: reg)
     requires { hyp ps o call p }
     requires { inv ps f hv tup msg s }
     requires { in_range ps i /\ has_output (prm ps i) }
@@ -380,7 +380,7 @@ module Proof
   = let ghost s1 = post_action ps p (act_check_out ps i) s in
     assert { s1.st = s.st /\ s1.points = s.points /\ s1.refers = s.refers };
     assert { forall v. mem v s1.valid <-> mem v s.valid };
-    assert { forall j. in_range ps j -> pos_ok ps hv (upd f i { (f i) with ck = true } j) j s1 }
+    assert { forall j. in_range ps j -> reg_ok ps hv (upd f i { (f i) with ck = true } j) j s1 }
 
   function conv_ph (q: param) (h: ph) : ph =
     { h with vo = true; mv = q.owned_by_ml;
@@ -388,7 +388,7 @@ module Proof
 
   (** The conversion of an output, checked or moved for the cleanup *)
   let lemma l_c2ml (ps: list param) (o: options) (call: list t)
-      (p: plan) (f: pos -> ph) (hv tup msg: bool) (s: state) (i: pos)
+      (p: plan) (f: reg -> ph) (hv tup msg: bool) (s: state) (i: reg)
       (a: action)
     requires { hyp ps o call p }
     requires { inv ps f hv tup msg s }
@@ -434,13 +434,13 @@ module Proof
     assert { forall b c. live s1 b -> mem c (s1.refers b) ->
                s1.st c = Live (Kept b) /\ s1.st b = Live Gc };
     assert { glob ps tup msg s1 };
-    assert { pos_ok ps hv0 (conv_ph q (f i)) i s1 };
+    assert { reg_ok ps hv0 (conv_ph q (f i)) i s1 };
     assert { forall j. in_range ps j -> j <> i ->
-               pos_ok ps hv0 (f j) j s0 -> pos_ok ps hv0 (f j) j s1 }
+               reg_ok ps hv0 (f j) j s0 -> reg_ok ps hv0 (f j) j s1 }
 
   (** The destructor *)
   let lemma l_free (ps: list param) (o: options) (call: list t)
-      (p: plan) (f: pos -> ph) (hv tup msg: bool) (s: state) (i: pos)
+      (p: plan) (f: reg -> ph) (hv tup msg: bool) (s: state) (i: reg)
     requires { hyp ps o call p }
     requires { inv ps f hv tup msg s }
     requires { in_range ps i /\ (prm ps i).free }
@@ -459,11 +459,11 @@ module Proof
     assert { forall b c. live s1 b -> mem c (s1.refers b) -> c <> Own i };
     assert { glob ps tup msg s1 };
     assert { forall j. in_range ps j ->
-               pos_ok ps hv (upd f i { (f i) with cv = KF } j) j s1 }
+               reg_ok ps hv (upd f i { (f i) with cv = KF } j) j s1 }
 
   (** The allocation of the message of an exception *)
   let lemma l_msg (ps: list param) (o: options) (call: list t)
-      (p: plan) (f: pos -> ph) (hv tup: bool) (s: state)
+      (p: plan) (f: reg -> ph) (hv tup: bool) (s: state)
     requires { hyp ps o call p }
     requires { inv ps f hv tup false s }
     requires { gc_roots_ok ps p f tup false /\ p.roots.err }
@@ -479,12 +479,12 @@ module Proof
     assert { forall b. b <> MlMsg -> s1.refers b = s0.refers b };
     assert { forall c. not mem c (s1.refers MlMsg) };
     assert { glob ps tup true s1 };
-    assert { forall j. in_range ps j -> pos_ok ps false (f j) j s0 ->
-               pos_ok ps false (f j) j s1 }
+    assert { forall j. in_range ps j -> reg_ok ps false (f j) j s0 ->
+               reg_ok ps false (f j) j s1 }
 
   (** Leaving the stub, raising or returning *)
   let lemma l_exit (ps: list param) (o: options) (call: list t)
-      (p: plan) (f: pos -> ph) (hv tup msg: bool) (s: state) (a: action)
+      (p: plan) (f: reg -> ph) (hv tup msg: bool) (s: state) (a: action)
     requires { hyp ps o call p }
     requires { inv ps f hv tup msg s }
     requires { nothing_owned ps f }
@@ -498,7 +498,7 @@ module Proof
 
   (** The allocation of the tuple, then the stores *)
   let lemma l_tuple (ps: list param) (o: options) (call: list t)
-      (p: plan) (f: pos -> ph) (hv msg: bool) (s: state) (l: list t)
+      (p: plan) (f: reg -> ph) (hv msg: bool) (s: state) (l: list t)
     requires { hyp ps o call p }
     requires { inv ps f hv false msg s }
     requires { gc_roots_ok ps p f false msg /\ p.roots.ret }
@@ -518,8 +518,8 @@ module Proof
     assert { forall b. b <> MlTuple -> s1.refers b = s0.refers b };
     assert { forall c. not mem c (s1.refers MlTuple) };
     assert { glob ps true msg s1 };
-    assert { forall j. in_range ps j -> pos_ok ps false (f j) j s0 ->
-               pos_ok ps false (f j) j s1 };
+    assert { forall j. in_range ps j -> reg_ok ps false (f j) j s0 ->
+               reg_ok ps false (f j) j s1 };
     let ghost s2 = post_action ps p (tuple_store l) s1 in
     assert { s2.st = s1.st /\ s2.points = s1.points /\ s2.refers = s1.refers };
     assert { forall v. mem v s2.valid <-> mem v s1.valid };
@@ -530,14 +530,14 @@ module Proof
     assert { mem Tup s1.valid /\ forall b. mem b (s1.points Tup) -> live s1 b };
     assert { pre_action p (tuple_store l) s1 };
     assert { glob ps true msg s2 };
-    assert { forall j. in_range ps j -> pos_ok ps false (f j) j s2 }
+    assert { forall j. in_range ps j -> reg_ok ps false (f j) j s2 }
 
   (** ## Running a list of actions *)
 
   function lset (l: list int) : set int = fun i -> L.mem i l
 
-  let rec lemma run_map (ps: list param) (p: plan) (a: pos -> action)
-      (iv: set pos -> state -> bool) (l: list int) (d: set pos) (s: state)
+  let rec lemma run_map (ps: list param) (p: plan) (a: reg -> action)
+      (iv: set reg -> state -> bool) (l: list int) (d: set reg) (s: state)
     requires { distinct l }
     requires { forall i. L.mem i l -> not mem i d }
     requires { iv d s }
@@ -567,7 +567,7 @@ module Proof
 
   (** ## Running the steps *)
 
-  function mix (d: set pos) (f g: pos -> ph) : pos -> ph =
+  function mix (d: set reg) (f g: reg -> ph) : reg -> ph =
     fun i -> if mem i d then g i else f i
 
   lemma mix_upd: forall d f g i.
@@ -579,11 +579,11 @@ module Proof
 
   (** The invariant until the GC after the conversion of an input with
       unregistered OCaml values *)
-  predicate inv_h (ps: list param) (f: pos -> ph) (tup msg: bool) (s: state) =
+  predicate inv_h (ps: list param) (f: reg -> ph) (tup msg: bool) (s: state) =
     exists hv. inv ps f hv tup msg s /\
       forall j. in_range ps j -> heap_input (prm ps j) -> converted (f j) -> hv
 
-  predicate inv_a (ps: list param) (f: pos -> ph) (tup msg: bool) (s: state) =
+  predicate inv_a (ps: list param) (f: reg -> ph) (tup msg: bool) (s: state) =
     exists hv. inv ps f hv tup msg s
 
   lemma inv_h_ext: forall ps f g tup msg s.
@@ -602,7 +602,7 @@ module Proof
     gc_roots_ok ps p (mix d f g) tup msg
 
   (** The conditions of a list of `ml2c` from `f` to `g` *)
-  predicate ml2c_ok (ps: list param) (p: plan) (f g: pos -> ph)
+  predicate ml2c_ok (ps: list param) (p: plan) (f g: reg -> ph)
       (tup msg: bool) (l: list int) =
     distinct l /\
     (forall i. in_range ps i -> not L.mem i l -> g i = f i) /\
@@ -620,8 +620,8 @@ module Proof
       (p.noalloc -> is_pure (prm ps i).ml2c)
 
   let lemma e_ml2c (ps: list param) (o: options) (call: list t) (p: plan)
-      (f g: pos -> ph) (tup msg: bool) (l: list int) (d: set pos)
-      (s: state) (i: pos)
+      (f g: reg -> ph) (tup msg: bool) (l: list int) (d: set reg)
+      (s: state) (i: reg)
     requires { hyp ps o call p }
     requires { ml2c_ok ps p f g tup msg l }
     requires { inv_h ps (mix d f g) tup msg s }
@@ -640,7 +640,7 @@ module Proof
              mix (add i d) f g }
 
   let lemma run_ml2c (ps: list param) (o: options) (call: list t) (p: plan)
-      (f g: pos -> ph) (tup msg: bool) (l: list int) (s: state)
+      (f g: reg -> ph) (tup msg: bool) (l: list int) (s: state)
     requires { hyp ps o call p }
     requires { ml2c_ok ps p f g tup msg l }
     requires { inv_h ps f tup msg s }
@@ -652,12 +652,12 @@ module Proof
     assert { forall i. in_range ps i -> mix (union empty (lset l)) f g i = g i }
 
   (** The conditions of the other lists of actions from `f` to `g` *)
-  predicate frame (ps: list param) (f g: pos -> ph) (l: list int) =
+  predicate frame (ps: list param) (f g: reg -> ph) (l: list int) =
     distinct l /\
     (forall i. in_range ps i -> not L.mem i l -> g i = f i) /\
     (forall i. L.mem i l -> in_range ps i)
 
-  predicate check_in_ok (ps: list param) (p: plan) (f g: pos -> ph)
+  predicate check_in_ok (ps: list param) (p: plan) (f g: reg -> ph)
       (l: list int) =
     frame ps f g l /\
     (l <> Nil -> not p.noalloc /\ nothing_owned ps f /\ nothing_owned ps g) /\
@@ -667,8 +667,8 @@ module Proof
       selected S_in_check (prm ps i) /\ g i = { (f i) with ck = true }
 
   let lemma e_check_in (ps: list param) (o: options) (call: list t)
-      (p: plan) (f g: pos -> ph) (tup msg: bool) (l: list int) (d: set pos)
-      (s: state) (i: pos)
+      (p: plan) (f g: reg -> ph) (tup msg: bool) (l: list int) (d: set reg)
+      (s: state) (i: reg)
     requires { hyp ps o call p }
     requires { check_in_ok ps p f g l }
     requires { inv_h ps (mix d f g) tup msg s }
@@ -685,7 +685,7 @@ module Proof
     assert { upd m i { (m i) with ck = true } = mix (add i d) f g }
 
   let lemma run_check_in (ps: list param) (o: options) (call: list t)
-      (p: plan) (f g: pos -> ph) (tup msg: bool) (l: list int) (s: state)
+      (p: plan) (f g: reg -> ph) (tup msg: bool) (l: list int) (s: state)
     requires { hyp ps o call p }
     requires { check_in_ok ps p f g l }
     requires { inv_h ps f tup msg s }
@@ -696,7 +696,7 @@ module Proof
       (pure { fun d s -> inv_h ps (mix d f g) tup msg s }) l empty s;
     assert { forall i. in_range ps i -> mix (union empty (lset l)) f g i = g i }
 
-  predicate init_ok (ps: list param) (f g: pos -> ph) (l: list int) =
+  predicate init_ok (ps: list param) (f g: reg -> ph) (l: list int) =
     frame ps f g l /\
     (forall j. in_range ps j -> has_input (prm ps j) ->
        converted (f j) /\ g j = f j) /\
@@ -706,8 +706,8 @@ module Proof
       g i = { (f i) with cv = acquired (prm ps i) }
 
   let lemma e_init (ps: list param) (o: options) (call: list t)
-      (p: plan) (f g: pos -> ph) (tup msg: bool) (l: list int) (d: set pos)
-      (s: state) (i: pos)
+      (p: plan) (f g: reg -> ph) (tup msg: bool) (l: list int) (d: set reg)
+      (s: state) (i: reg)
     requires { hyp ps o call p }
     requires { init_ok ps f g l }
     requires { inv_h ps (mix d f g) tup msg s }
@@ -727,7 +727,7 @@ module Proof
              mix (add i d) f g }
 
   let lemma run_init (ps: list param) (o: options) (call: list t)
-      (p: plan) (f g: pos -> ph) (tup msg: bool) (l: list int) (s: state)
+      (p: plan) (f g: reg -> ph) (tup msg: bool) (l: list int) (s: state)
     requires { hyp ps o call p }
     requires { init_ok ps f g l }
     requires { inv_h ps f tup msg s }
@@ -738,7 +738,7 @@ module Proof
       (pure { fun d s -> inv_h ps (mix d f g) tup msg s }) l empty s;
     assert { forall i. in_range ps i -> mix (union empty (lset l)) f g i = g i }
 
-  predicate check_out_ok (ps: list param) (f g: pos -> ph) (l: list int) =
+  predicate check_out_ok (ps: list param) (f g: reg -> ph) (l: list int) =
     frame ps f g l /\
     forall i. L.mem i l ->
       has_output (prm ps i) /\ converted (f i) /\
@@ -746,8 +746,8 @@ module Proof
       g i = { (f i) with ck = true }
 
   let lemma e_check_out (ps: list param) (o: options) (call: list t)
-      (p: plan) (f g: pos -> ph) (tup msg: bool) (l: list int) (d: set pos)
-      (s: state) (i: pos)
+      (p: plan) (f g: reg -> ph) (tup msg: bool) (l: list int) (d: set reg)
+      (s: state) (i: reg)
     requires { hyp ps o call p }
     requires { check_out_ok ps f g l }
     requires { inv_h ps (mix d f g) tup msg s }
@@ -764,7 +764,7 @@ module Proof
     assert { upd m i { (m i) with ck = true } = mix (add i d) f g }
 
   let lemma run_check_out (ps: list param) (o: options) (call: list t)
-      (p: plan) (f g: pos -> ph) (tup msg: bool) (l: list int) (s: state)
+      (p: plan) (f g: reg -> ph) (tup msg: bool) (l: list int) (s: state)
     requires { hyp ps o call p }
     requires { check_out_ok ps f g l }
     requires { inv_h ps f tup msg s }
@@ -777,8 +777,8 @@ module Proof
     assert { forall i. in_range ps i -> mix (union empty (lset l)) f g i = g i }
 
   (** The conversions of outputs, without unregistered OCaml values *)
-  predicate c2ml_ok (ps: list param) (p: plan) (f g: pos -> ph)
-      (tup msg: bool) (l: list int) (a: pos -> action) =
+  predicate c2ml_ok (ps: list param) (p: plan) (f g: reg -> ph)
+      (tup msg: bool) (l: list int) (a: reg -> action) =
     frame ps f g l /\
     forall i. L.mem i l ->
       has_output (prm ps i) /\ not heap_input (prm ps i) /\
@@ -794,8 +794,8 @@ module Proof
        a i = act_move no_alias ps p i)
 
   let lemma e_c2ml (ps: list param) (o: options) (call: list t)
-      (p: plan) (f g: pos -> ph) (tup msg: bool) (l: list int)
-      (a: pos -> action) (d: set pos) (s: state) (i: pos)
+      (p: plan) (f g: reg -> ph) (tup msg: bool) (l: list int)
+      (a: reg -> action) (d: set reg) (s: state) (i: reg)
     requires { hyp ps o call p }
     requires { c2ml_ok ps p f g tup msg l a }
     requires { inv_a ps (mix d f g) tup msg s }
@@ -810,8 +810,8 @@ module Proof
     assert { upd m i (conv_ph (prm ps i) (m i)) = mix (add i d) f g }
 
   let lemma run_c2ml (ps: list param) (o: options) (call: list t)
-      (p: plan) (f g: pos -> ph) (tup msg: bool) (l: list int)
-      (a: pos -> action) (s: state)
+      (p: plan) (f g: reg -> ph) (tup msg: bool) (l: list int)
+      (a: reg -> action) (s: state)
     requires { hyp ps o call p }
     requires { c2ml_ok ps p f g tup msg l a }
     requires { inv_a ps f tup msg s }
@@ -822,7 +822,7 @@ module Proof
       (pure { fun d s -> inv_a ps (mix d f g) tup msg s }) l empty s;
     assert { forall i. in_range ps i -> mix (union empty (lset l)) f g i = g i }
 
-  predicate free_ok (ps: list param) (f g: pos -> ph) (l: list int) =
+  predicate free_ok (ps: list param) (f g: reg -> ph) (l: list int) =
     frame ps f g l /\
     forall i. L.mem i l ->
       (prm ps i).free /\ ((f i).cv = KZ \/ (f i).cv = KO) /\
@@ -831,8 +831,8 @@ module Proof
       g i = { (f i) with cv = KF }
 
   let lemma e_free (ps: list param) (o: options) (call: list t)
-      (p: plan) (f g: pos -> ph) (tup msg: bool) (l: list int) (d: set pos)
-      (s: state) (i: pos)
+      (p: plan) (f g: reg -> ph) (tup msg: bool) (l: list int) (d: set reg)
+      (s: state) (i: reg)
     requires { hyp ps o call p }
     requires { free_ok ps f g l }
     requires { inv_a ps (mix d f g) tup msg s }
@@ -847,7 +847,7 @@ module Proof
     assert { upd m i { (m i) with cv = KF } = mix (add i d) f g }
 
   let lemma run_free (ps: list param) (o: options) (call: list t)
-      (p: plan) (f g: pos -> ph) (tup msg: bool) (l: list int) (s: state)
+      (p: plan) (f g: reg -> ph) (tup msg: bool) (l: list int) (s: state)
     requires { hyp ps o call p }
     requires { free_ok ps f g l }
     requires { inv_a ps f tup msg s }
@@ -860,9 +860,9 @@ module Proof
 
   (** ## The call *)
 
-  (** The state of a position only depends on its blocks and variables *)
-  lemma pos_frame: forall ps hv h i s s'.
-    pos_ok ps hv h i s ->
+  (** The state of a register only depends on its blocks and variables *)
+  lemma reg_frame: forall ps hv h i s s'.
+    reg_ok ps hv h i s ->
     (forall b. b = Own i \/ b = Data i \/ b = MlIn i \/ b = MlLoc i \/
        b = MlOut i -> s'.st b = s.st b) ->
     (forall v. v = In i \/ v = Vloc i \/ v = Out i ->
@@ -872,9 +872,9 @@ module Proof
      (s'.points (C i) = s.points (C i) /\
       (mem (C i) s'.valid <-> mem (C i) s.valid))) ->
     subset s.done_checks s'.done_checks ->
-    pos_ok ps hv h i s'
+    reg_ok ps hv h i s'
 
-  function call_ph (ps: list param) (f: pos -> ph) : pos -> ph =
+  function call_ph (ps: list param) (f: reg -> ph) : reg -> ph =
     fun j -> if mem j (produced ps) then { (f j) with cv = acquired (prm ps j) }
              else f j
 
@@ -890,7 +890,7 @@ module Proof
     end
 
   let lemma l_call (ps: list param) (o: options) (call: list t) (p: plan)
-      (f: pos -> ph) (s: state)
+      (f: reg -> ph) (s: state)
     requires { hyp ps o call p }
     requires { inv_h ps f false false s }
     requires { forall i. in_range ps i -> not mem i (produced ps) ->
@@ -958,7 +958,7 @@ module Proof
                s0.st c = Live (Kept b) /\ not mem c a.creates };
     assert { glob ps false false s1 };
     assert { forall j. in_range ps j -> mem j (produced ps) ->
-               pos_ok ps hv0 (f j) j s0 /\ not has_input (prm ps j) };
+               reg_ok ps hv0 (f j) j s0 /\ not has_input (prm ps j) };
     assert { forall j. mem j (produced ps) -> not (prm ps j).free ->
                s1.st (Own j) = s0.st (Own j) };
     assert { forall j. mem j (produced ps) -> not (prm ps j).owned_by_ml ->
@@ -973,17 +973,17 @@ module Proof
                (mem (Vloc j) s1.valid <-> mem (Vloc j) s0.valid) /\
                (mem (Out j) s1.valid <-> mem (Out j) s0.valid) };
     assert { forall j. in_range ps j -> mem j (produced ps) ->
-               pos_ok ps hv0 (g j) j s1 };
+               reg_ok ps hv0 (g j) j s1 };
     assert { forall j. in_range ps j -> not mem j (produced ps) ->
-               g j = f j /\ pos_ok ps hv0 (f j) j s0 };
+               g j = f j /\ reg_ok ps hv0 (f j) j s0 };
     assert { forall j. in_range ps j -> not mem j (produced ps) ->
-               pos_ok ps hv0 (g j) j s1 };
+               reg_ok ps hv0 (g j) j s1 };
     assert { inv ps g hv0 false false s1 };
     assert { forall j. in_range ps j -> heap_input (prm ps j) -> not rl }
 
   (** The C function failed: back to the state before the call *)
   let lemma l_revert (ps: list param) (o: options) (call: list t) (p: plan)
-      (f: pos -> ph) (hv tup msg: bool) (s: state)
+      (f: reg -> ph) (hv tup msg: bool) (s: state)
     requires { hyp ps o call p }
     requires { inv ps (call_ph ps f) hv tup msg s }
     requires { forall i. mem i (produced ps) ->
@@ -1001,7 +1001,7 @@ module Proof
                live s b /\ not mem c a.reverts };
     assert { glob ps tup msg s1 };
     assert { forall j. in_range ps j ->
-               pos_ok ps hv (call_ph ps f j) j s -> pos_ok ps hv (f j) j s1 }
+               reg_ok ps hv (call_ph ps f j) j s -> reg_ok ps hv (f j) j s1 }
 
   (** ## The phases of the plan of `schedule`
 
@@ -1033,22 +1033,22 @@ module Proof
       ck = if (k >= 2 /\ selected S_in_check q) \/
               (k >= 8 /\ selected S_out_check q) then true else false }
 
-  function phs (ps: list param) (k: int) : pos -> ph =
+  function phs (ps: list param) (k: int) : reg -> ph =
     fun i -> phase k (prm ps i)
 
   (** The cleanup from stage `k`: the outputs `x` moved, then the frees *)
-  function mvs (ps: list param) (k: int) (x: sel) : pos -> ph =
+  function mvs (ps: list param) (k: int) (x: sel) : reg -> ph =
     fun i -> let q = prm ps i in
       if selected x q then conv_ph q (phase k q) else phase k q
 
-  function frs (ps: list param) (k: int) (x: sel) : pos -> ph =
+  function frs (ps: list param) (k: int) (x: sel) : reg -> ph =
     fun i -> let q = prm ps i in
       if q.free then { (mvs ps k x i) with cv = KF } else mvs ps k x i
 
   (** ## The outputs registered with the GC *)
 
   let lemma out_rooted (ps: list param) (o: options) (call: list t)
-      (p: plan) (i: pos)
+      (p: plan) (i: reg)
     requires { hyp ps o call p }
     requires { not p.noalloc }
     requires { in_range ps i /\ has_output (prm ps i) }
@@ -1062,7 +1062,7 @@ module Proof
     end
 
   let lemma alloc_out (ps: list param) (o: options) (call: list t)
-      (p: plan) (i: pos)
+      (p: plan) (i: reg)
     requires { hyp ps o call p }
     requires { in_range ps i /\ has_output (prm ps i) }
     requires { (out_effects ps p i).alloc }

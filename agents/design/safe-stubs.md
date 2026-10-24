@@ -12,7 +12,7 @@ It models the memory as blocks (OCaml blocks and C memory, one per
 allocation site) with an owner, variables pointing to blocks, and the GC
 as in Melocoton. The aliasing of the C function is a parameter of the spec
 (`aliasing`). `schedule` (`proof/schedule.mlw`) is proved to satisfy
-`safe_spec no_alias`; the per-position model of `plan.mlw` is removed.
+`safe_spec no_alias`; the per-parameter model of `plan.mlw` is removed.
 The spec found that a `value` stored in a C array or struct is not
 registered: such an input is now converted last, and two of them are
 refused (`Unrooted_heap`). Next: decide how a template declares its

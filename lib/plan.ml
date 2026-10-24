@@ -5,7 +5,8 @@
     [schedule] is written and proved in Why3 ([proof/schedule.mlw]) and
     extracted in [plan_gen.ml]: the plans it gives are memory safe in the
     specification [proof/spec.mlw], provided that the C templates of the types
-    match their contract. The parameters are numbered by their position. *)
+    match their contract. The parameters are numbered by their position (their
+    register). *)
 
 include Plan_gen
 
