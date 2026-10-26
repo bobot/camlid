@@ -69,4 +69,27 @@ extern value camlid_stub_to_int_byte(value p){
   vres = Val_int(ures);
   return vres;
 }
+extern value camlid_stub_two(intptr_t p){
+  CAMLparam0();
+  CAMLlocal3(ret, p_r, p_r1);
+  int p1 = ((int) { 0 });
+  int * p2 = ((int *) { 0 });
+  int * p3 = ((int *) { 0 });
+  p1 = (int)(p);
+  initialize_ptr(&p2);
+  initialize_ptr(&p3);
+  two(p1, p2, p3);
+  camlid_c2ml(&p_r, &p2);
+  camlid_c2ml(&p_r1, &p3);
+  ret = caml_alloc(2,0);
+  Store_field(ret, 0, p_r);
+  Store_field(ret, 1, p_r1);
+CAMLreturn(ret);
+}
+extern value camlid_stub_two_byte(value p){
+  intptr_t p1;
+  p1 = Int_val(p);
+  return camlid_stub_two(p1);
+  
+}
 

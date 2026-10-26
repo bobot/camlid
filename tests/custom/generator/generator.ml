@@ -10,4 +10,5 @@ let () =
     [
       func "of_int" [ input c_int; output pointer ];
       func "to_int" [ input pointer ] ~result:c_int;
+      func "two" [ input c_int; output pointer; output pointer ];
     ]

@@ -8,3 +8,7 @@ external to_int:
   myptr ->
   (int [@untagged])
   = "camlid_stub_to_int_byte" "camlid_stub_to_int" [@@noalloc]
+external two:
+  (int [@untagged]) ->
+  myptr * myptr
+  = "camlid_stub_two_byte" "camlid_stub_two"

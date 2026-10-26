@@ -13,9 +13,10 @@ know the OCaml runtime.
   two new custom blocks and returns them in a tuple. The values are kept
   in `CAMLlocal` roots across the three allocations.
 
-The C library and the templates of the type are hypotheses, written as
-protocols (`lib_spec`). The stubs are translated by hand from the
-generated C (in the comments); keep them in sync when the printer changes.
+The stubs are those of `tests/custom` (`mylib_stub.c`). The C library and
+the templates of the type are hypotheses, written as protocols
+(`lib_spec`). The stubs are translated by hand from the generated C (in
+the comments); keep them in sync when the printer changes.
 Not covered by Melocoton: finalizers (the C memory stays owned by its
 foreign block), exceptions, `noalloc`, the release of the runtime lock.
 
