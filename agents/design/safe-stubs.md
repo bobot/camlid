@@ -18,6 +18,14 @@ registered: such an input is now converted last, and two of them are
 refused (`Unrooted_heap`). Next: decide how a template declares its
 aliases (`keep_alive`, `with_parent`), and prove `schedule` for them.
 
+Status (2026-10-26): to check that the block model is not wrong, two
+generated stubs of a custom type (`to_int`, and `two` with two custom
+outputs in a tuple) are proved in Melocoton (`proof/melocoton/`, Rocq,
+`make melocoton`). The rules agree: values are kept in `CAMLlocal` roots
+across allocations, and a custom block owns its C memory. Later, after a
+discussion with the Melocoton authors: prove each kind of action of
+`spec.mlw` sound in Melocoton, so that the spec is no longer trusted.
+
 ## Goal
 
 Camlid has three kinds of users:

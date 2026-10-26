@@ -52,6 +52,8 @@ so there are finitely many.
   pointer into the OCaml heap is lost;
 - `owned_by_ml` is its custom blocks (`alloc_custom`, `read_custom`): the
   C memory is kept alive by the OCaml block (our `Kept`);
+- two generated stubs are proved in Melocoton (`melocoton/`), as a check
+  of these rules;
 - outside Melocoton: exceptions (`may_raise`), the release of the runtime
   lock (`released`), finalizers (the owner `Kept`), `noalloc`. *)
 

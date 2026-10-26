@@ -29,3 +29,12 @@ extract:
 
 prove:
 	cd proof && why3find prove -j 4 plan.mlw spec.mlw schedule.mlw
+
+# Check two generated stubs in Melocoton (see proof/melocoton/README.md)
+MELOCOTON ?= $(HOME)/melocoton
+MELOCOTON_SWITCH ?= melocoton
+melocoton:
+	opam exec --switch=$(MELOCOTON_SWITCH) -- coqc \
+	  -R $(MELOCOTON)/_build/default/theories melocoton \
+	  -w -notation-overridden -w -redundant-canonical-projection \
+	  -w -inconsistent-scopes proof/melocoton/camlid_custom.v
