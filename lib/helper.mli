@@ -32,8 +32,11 @@ val func :
       the order of [params]
     @param release_lock
       release the runtime lock during the call, so that other threads can run.
-      Raises [Invalid_argument] if an argument of the C function points into the
-      OCaml heap (e.g. {!input_value}).
+      The stub first runs the pending signal handlers and finalisers, which can
+      raise, before it owns anything. Don't call a [dispose] function on an
+      argument from another thread during the call. Raises [Invalid_argument] if
+      an argument of the C function points into the OCaml heap (e.g.
+      {!input_value}).
     @param error checks the result of the C function, see {!val:error}
     @param noalloc
       by default the external is [[@@noalloc]] when the conversions don't

@@ -97,6 +97,7 @@ module Types
   type cleanup = { moves : list t; frees : list t }
 
   type step =
+    | Poll  (** runs the pending signal handlers and other OCaml callbacks *)
     | Check_in (list t)  (** check the inputs, raise on failure *)
     | Ml2c (list t)
     | Init (list t)

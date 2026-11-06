@@ -37,6 +37,22 @@ let () =
   | _, Mylib.Ok -> print_endline "ok");
   Gc.full_major ();
   Printf.printf "live after status %i\n" (Mylib.vec_live () - before);
+  (* a signal pending when the lock is released: its handler must not raise
+     while the stub owns the vec *)
+  Sys.set_signal Sys.sigusr1 (Sys.Signal_handle (fun _ -> raise Exit));
+  Gc.full_major ();
+  let before = Mylib.vec_live () in
+  let raised = ref 0 in
+  for _ = 1 to 3 do
+    try
+      Mylib.vec_signal_next_init ();
+      ignore (Mylib.vec_unlocked 1);
+      Gc.minor ()
+    with Exit -> incr raised
+  done;
+  Gc.full_major ();
+  Printf.printf "raised %i, live after signals %i\n" !raised
+    (Mylib.vec_live () - before);
   let t = Thread.create (fun () -> Mylib.slow_sum 1000) () in
   Printf.printf "sum %i\n" (Mylib.slow_sum 1000);
   Thread.join t

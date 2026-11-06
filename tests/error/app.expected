@@ -13,4 +13,5 @@ Failure "unknown value of status"
 Failure "unknown value of status"
 empty
 live after status 0
+raised 3, live after signals 0
 sum 499500

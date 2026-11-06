@@ -43,6 +43,8 @@ let () =
         [ input int; input int; output (ptr_ref int) ];
       make;
       func "slow_sum" ~release_lock:true [ input int ] ~result:int;
+      func "vec_signal_next_init" [];
+      func "vec_unlocked" ~release_lock:true [ output vec.t; input int ];
       func "vec_live" [] ~result:int;
       func "vec_length" [ input vec.t ] ~result:size_t;
       func "vec_status" [ output vec.t; input int; output (ptr_ref status) ];

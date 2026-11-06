@@ -1095,6 +1095,43 @@ module Proof
   = assert { ml2c_ok ps p (phs ps k) (phs ps (k + 1)) false false (ints l) };
     run_ml2c ps o call p (phs ps k) (phs ps (k + 1)) false false (ints l) s
 
+  (** At the start nothing is owned: the stub can run the OCaml callbacks *)
+  let lemma st_poll (ps: list param) (o: options) (call: list t) (p: plan)
+      (s: state)
+    requires { hyp ps o call p }
+    requires { o.release_lock }
+    requires { inv_h ps (phs ps 0) false false s }
+    ensures { run_actions ps p s (actions_of no_alias ps p Poll) }
+    ensures { inv_h ps (phs ps 0) false false
+                (after ps p s (actions_of no_alias ps p Poll)) }
+  = let ghost f = phs ps 0 in
+    let ghost hv = any bool ensures {
+      inv ps f result false false s } in
+    assert { forall i. in_range ps i -> f i = phase 0 (prm ps i) };
+    assert { forall i. in_range ps i -> not (f i).vo /\ (f i).cv = KZ };
+    assert { nothing_owned ps f };
+    assert { forall b. not owned s b };
+    assert { refers_kept s };
+    assert { not p.noalloc };
+    assert { pre_action p poll_action s };
+    assert { gc_roots_ok ps p f false false };
+    gc_inv ps o call p f hv false false s;
+    let ghost s0 = gc ps p s in
+    let ghost s1 = post_action ps p poll_action s in
+    assert { actions_of no_alias ps p Poll = Cons poll_action Nil };
+    assert { after ps p s (Cons poll_action Nil) = s1 };
+    assert { forall b. s1.st b = s0.st b };
+    assert { forall v. s1.points v = s0.points v };
+    assert { forall v. mem v s1.valid <-> mem v s0.valid };
+    assert { forall b. s1.refers b = s0.refers b };
+    assert { glob ps false false s1 };
+    assert { forall j. in_range ps j -> reg_ok ps false (f j) j s0 ->
+               reg_ok ps false (f j) j s1 };
+    assert { inv ps f false false false s1 };
+    assert { forall j. in_range ps j -> heap_input (prm ps j) ->
+               not converted (f j) };
+    assert { inv_h ps f false false s1 }
+
   let lemma st_check_in (ps: list param) (o: options) (call: list t)
       (p: plan) (l: list t) (s: state)
     requires { hyp ps o call p }
@@ -1508,7 +1545,8 @@ module Schedule
         let t_b2 = Cons (Ml2c b2in) t_h in
         let t_b1 = Cons (Ml2c b1in) t_b2 in
         let t_chk = Cons (Check_in cin) t_b1 in
-        let steps = Cons (Ml2c ain) t_chk in
+        let t_ain = Cons (Ml2c ain) t_chk in
+        let steps = if o.release_lock then Cons Poll t_ain else t_ain in
         let p = { noalloc = noalloc; result = result; roots = roots;
                   steps = steps } in
         (* proof *)
@@ -1542,8 +1580,11 @@ module Schedule
                                     ck = false }) true false false s0 };
         assert { inv ps (phs ps 0) true false false s0 };
         assert { inv_h ps (phs ps 0) false false s0 };
-        st_ml2c ps o call p 0 S_pre_input ain s0;
-        let ghost sa = after ps p s0 (actions_of no_alias ps p (Ml2c ain)) in
+        let ghost sp = if o.release_lock
+          then after ps p s0 (actions_of no_alias ps p Poll) else s0 in
+        if o.release_lock then st_poll ps o call p s0;
+        st_ml2c ps o call p 0 S_pre_input ain sp;
+        let ghost sa = after ps p sp (actions_of no_alias ps p (Ml2c ain)) in
         st_check_in ps o call p cin sa;
         let ghost s1 = after ps p sa (actions_of no_alias ps p (Check_in cin)) in
         st_ml2c ps o call p 2 S_checked_input b1in s1;
@@ -1590,6 +1631,7 @@ module Schedule
         assert { run_steps no_alias ps p s2 t_b2 };
         assert { run_steps no_alias ps p s1 t_b1 };
         assert { run_steps no_alias ps p sa t_chk };
+        assert { run_steps no_alias ps p sp t_ain };
         assert { run_steps no_alias ps p s0 steps };
         assert { shape o call false false steps };
         Ok p

@@ -167,7 +167,7 @@ When the conversions don't allocate in the OCaml heap (scalars, inputs owned by 
 
 The order of the steps of a stub, the values registered with the GC and these decisions are made by {!Camlid.Plan.schedule}, which is proved in Why3 to be memory safe ([proof/plan.mlw]), provided that each type matches its {!type:Camlid.Ty.contract}.
 
-[~release_lock:true] releases the runtime lock during the call, so other threads can run. The arguments of the C function are C values that don't point into the OCaml heap, except for [value] types for which it is refused.
+[~release_lock:true] releases the runtime lock during the call, so other threads can run. The arguments of the C function are C values that don't point into the OCaml heap, except for [value] types for which it is refused. The stub first runs the pending signal handlers and finalisers, which can raise, when it owns nothing yet; a signal arriving later is handled after the stub returns.
 
 {1 Helper}
 

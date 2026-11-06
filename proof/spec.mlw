@@ -458,6 +458,10 @@ module Spec
       : action =
     { (act_c2ml al ps p i) with checked = empty }
 
+  (** Runs the pending OCaml callbacks: a GC, and they can raise *)
+  constant poll_action : action =
+    { nop with allocates = true; may_raise = true }
+
   (** The message of an exception *)
   constant msg_action : action =
     { nop with defines = singleton Msg;
@@ -490,6 +494,7 @@ module Spec
   function actions_of (al: aliasing) (ps: list param) (p: plan) (x: step)
       : list action =
     match x with
+    | Poll -> Cons poll_action Nil
     | Check_in l -> map_act (act_check_in ps) (ints l)
     | Ml2c l -> map_act (act_ml2c ps) (ints l)
     | Init l -> map_act (act_init ps) (ints l)

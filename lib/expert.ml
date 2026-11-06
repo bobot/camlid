@@ -1463,11 +1463,15 @@ let code_c_fun_of_plan ?error ~(plan : Plan.plan) ~params ~name (fid : expr) =
                p.pinit_expr)
            (get roots.c_values));
       let step : Plan.step -> unit = function
+        | Poll -> fmt "@[caml_process_pending_actions();@]@,"
         | Check_in l -> List.iter (pp_check_in { fmt }) (get l)
         | Ml2c l -> pp_scall a2c_pinput { fmt } (get l)
         | Init l -> pp_scall (fun p -> p.pinit) { fmt } (get l)
         | Call (l, release_lock) ->
-            if release_lock then fmt "@[caml_enter_blocking_section();@]@,";
+            (* no OCaml code here: the stub can own something, and an exception
+               would leak it. Poll has run the signal handlers. *)
+            if release_lock then
+              fmt "@[caml_enter_blocking_section_no_pending();@]@,";
             fmt "@[%a@]@," pp_expr_binds
               (fid, List.filter_map (fun p -> p.pused_in_call) (get l));
             if release_lock then fmt "@[caml_leave_blocking_section();@]@,"

@@ -109,8 +109,9 @@ extern intptr_t camlid_stub_slow_sum(intptr_t p){
   intptr_t ures;
   intptr_t res;
   intptr_t p1 = ((intptr_t) { 0 });
+  caml_process_pending_actions();
   p1 = (p);
-  caml_enter_blocking_section();
+  caml_enter_blocking_section_no_pending();
   res = slow_sum(p1);
   caml_leave_blocking_section();
   ures = (res);
@@ -124,6 +125,30 @@ extern value camlid_stub_slow_sum_byte(value p){
   ures = camlid_stub_slow_sum(p1);
   vres = Val_long(ures);
   return vres;
+}
+extern value camlid_stub_vec_signal_next_init(void){
+  vec_signal_next_init();
+  return Val_unit;
+}
+extern value camlid_stub_vec_unlocked(intptr_t p){
+  CAMLparam0();
+  CAMLlocal1(p_r);
+  vec* p1 = ((vec*) { 0 });
+  intptr_t p2 = ((intptr_t) { 0 });
+  caml_process_pending_actions();
+  p2 = (p);
+  camlid_init(&p1);
+  caml_enter_blocking_section_no_pending();
+  vec_unlocked(p1, p2);
+  caml_leave_blocking_section();
+  camlid_c2ml(&p_r, &p1);
+  CAMLreturn(p_r);
+}
+extern value camlid_stub_vec_unlocked_byte(value p){
+  intptr_t p1;
+  p1 = Long_val(p);
+  return camlid_stub_vec_unlocked(p1);
+  
 }
 extern intptr_t camlid_stub_vec_live(void){
   intptr_t ures;

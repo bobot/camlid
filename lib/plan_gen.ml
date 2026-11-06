@@ -56,6 +56,7 @@ type cleanup = {
   }
 
 type step =
+  | Poll
   | Check_in of ((int) list)
   | Ml2c of ((int) list)
   | Init of ((int) list)
@@ -349,7 +350,11 @@ let schedule (o: options) (ps: param list) (call: (int) list) :
                                       let t_b2 = Ml2c b2in :: t_h in
                                       let t_b1 = Ml2c b1in :: t_b2 in
                                       let t_chk = Check_in cin :: t_b1 in
-                                      let steps1 = Ml2c ain :: t_chk in
+                                      let t_ain = Ml2c ain :: t_chk in
+                                      let steps1 =
+                                        if o.release_lock
+                                        then Poll :: t_ain
+                                        else t_ain in
                                       let p =
                                         { noalloc = noalloc1; result =
                                           result1; roots = roots1; steps =

@@ -29,12 +29,15 @@ What the model takes from the OCaml runtime, for review:
   of dead blocks, and no OCaml code (OCaml manual, "Pending actions", since
   4.10). So `mentions` doesn't change in a GC, and a `Gc` doesn't raise.
 - Not modelled: `Out_of_memory` raised by an allocation from C.
-- Not modelled: `caml_enter_blocking_section` runs the signal handlers pending
-  before the release, which can raise and change OCaml values. `Release` here
-  is `caml_enter_blocking_section_no_pending`, which doesn't.
+- `Release_runtime` is `caml_enter_blocking_section_no_pending`, which runs no
+  OCaml code, and `Acquire_runtime` is `caml_leave_blocking_section`, which only
+  marks the signals as pending. The signal handlers run in `Poll`, at the start
+  of the stub, when it owns nothing (`caml_process_pending_actions`).
 - With the runtime released, other threads run OCaml code. The block a C value
   mentions must not be freed by them: the wrappers made by camlid are taken as
-  immutable, which `dispose` (`custom_ptr`) doesn't respect. *)
+  immutable. `dispose` (`custom_ptr`) doesn't respect this: using it on a value
+  during a call that releases the runtime is the responsibility of the user.
+*)
 
 module Memory
 
@@ -128,8 +131,8 @@ module Memory
     | Destroy name  (** the destructor; accepts a block not created *)
     | Forget name  (** the block was not created after all *)
     | Gc
-    | Release  (** the runtime is released; a GC runs *)
-    | Acquire
+    | Release_runtime  (** the runtime is released; a GC runs *)
+    | Acquire_runtime
     | May_raise
     | Mark fact
     | Need fact
@@ -171,8 +174,8 @@ module Memory
     | Destroy n ->
       match s.block_of n with None -> true | Some b -> owned s b end
     | Gc -> not s.no_gc /\ not s.released /\ gc_ok s
-    | Release -> not s.no_gc /\ not s.released /\ gc_ok s
-    | Acquire -> s.released
+    | Release_runtime -> not s.no_gc /\ not s.released /\ gc_ok s
+    | Acquire_runtime -> s.released
     | May_raise -> not s.no_gc /\ not s.released /\ no_owned s
     | Need c -> mem c s.facts
     | Leave r -> leave_ok s r
@@ -234,8 +237,8 @@ module Memory
       | None -> s
       end
     | Gc -> gc s
-    | Release -> { (gc s) with released = true }
-    | Acquire -> { s with released = false }
+    | Release_runtime -> { (gc s) with released = true }
+    | Acquire_runtime -> { s with released = false }
     | Mark c -> { s with facts = add c s.facts }
     | _ -> s
     end
@@ -304,9 +307,9 @@ module Memory
   lemma released_mention: forall s b m.
     s.released -> mem m (s.mentions b) -> is_ocaml s m -> not usable s b
 
-  (** Acquire gives back what the GC left valid, and nothing else *)
+  (** Acquire_runtime gives back what the GC left valid, and nothing else *)
   lemma acquire_valid: forall s.
-    (post Acquire (post Release s)).valid = (gc s).valid
+    (post Acquire_runtime (post Release_runtime s)).valid = (gc s).valid
 
   (** C memory that mentions no OCaml block stays readable while released *)
   let lemma released_c (s: state) (b: block)
@@ -317,7 +320,7 @@ module Memory
              forall y. mem y x -> readable s y /\ subset (s.mentions y) x }
 
   (** A noalloc stub has no GC, so the OCaml values stay readable *)
-  lemma no_gc_no_release: forall s. s.no_gc -> not pre Gc s /\ not pre Release s
+  lemma no_gc_no_release: forall s. s.no_gc -> not pre Gc s /\ not pre Release_runtime s
 
 end
 
@@ -435,7 +438,7 @@ module Stub
       : list code =
     one (Use (call_args ps l)) ++
     (if release
-     then one Release ++ one (Use (call_args ps l)) ++ one Acquire
+     then one Release_runtime ++ one (Use (call_args ps l)) ++ one Acquire_runtime
      else if writes_value ps
      then one Gc ++ one (Use (c_args ps l))
      else Nil) ++
@@ -499,6 +502,7 @@ module Stub
   function ops_of_step (o: options) (c: contract) (ps: list param) (p: plan)
       (x: step) : list code =
     match x with
+    | Poll -> one May_raise ++ one Gc
     | Check_in l -> each (op_check_in ps) (ints l)
     | Ml2c l -> each (op_ml2c ps) (ints l)
     | Init l -> each (op_init c ps) (ints l)

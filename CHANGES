@@ -2,6 +2,9 @@
     - fix: a function with an output_value was declared [@@noalloc] when its
       conversions didn't allocate, although the C function allocates the value:
       it corrupted the OCaml heap. Such a stub is no longer noalloc
+    - fix: with release_lock, a signal handler raising when the lock is released
+      leaked what the stub owned. The stub now polls at its start, when it owns
+      nothing, then uses caml_enter_blocking_section_no_pending
     - each stub is checked at generation time with a low-level model of the
       memory (Blocks); a stub refused is an internal error of camlid
     - the minimum OCaml version is 4.14

@@ -1,3 +1,4 @@
+#include <signal.h>
 #include "lib.h"
 #include <stdio.h>
 #include <stdlib.h>
@@ -5,7 +6,14 @@
 
 static intptr_t live = 0;
 
-void vec_init(vec *v) { v->data = NULL; v->len = 0; live++; }
+static int signal_next_init = 0;
+void vec_signal_next_init(void) { signal_next_init = 1; }
+
+void vec_init(vec *v) {
+  if (signal_next_init) {
+    signal_next_init = 0;
+    raise(SIGUSR1);
+  } v->data = NULL; v->len = 0; live++; }
 void vec_clear(vec *v) { free(v->data); v->data = NULL; live--; }
 void vec_set(vec *dst, vec *src) {
   if (dst == src) return;
@@ -51,3 +59,5 @@ void vec_status(vec *v, intptr_t n, enum status *st) {
   v->len = 0;
   *st = n < 0 ? (enum status)42 : n == 0 ? EMPTY : OK;
 }
+
+void vec_unlocked(vec *v, intptr_t n) { (void)v; (void)n; }

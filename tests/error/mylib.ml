@@ -18,6 +18,13 @@ external slow_sum:
   (int [@untagged]) ->
   (int [@untagged])
   = "camlid_stub_slow_sum_byte" "camlid_stub_slow_sum"
+external vec_signal_next_init:
+  unit -> unit
+  = "camlid_stub_vec_signal_next_init" [@@noalloc]
+external vec_unlocked:
+  (int [@untagged]) ->
+  vec
+  = "camlid_stub_vec_unlocked_byte" "camlid_stub_vec_unlocked"
 external vec_live:
   unit -> (int [@untagged])
   = "camlid_stub_vec_live_byte" "camlid_stub_vec_live" [@@noalloc]

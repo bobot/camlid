@@ -120,6 +120,7 @@ let shrink_step = function
   | _ -> []
 
 let step_name = function
+  | Poll -> "Poll"
   | Check_in _ -> "Check_in"
   | Ml2c _ -> "Ml2c"
   | Init _ -> "Init"
@@ -150,7 +151,7 @@ let pp_step s =
   | Check_out (l, c) ->
       Printf.sprintf "%s[%s](moves %s frees %s)" n (pp_l l) (pp_l c.moves)
         (pp_l c.frees)
-  | Return -> n
+  | Poll | Return -> n
 
 let pp_plan (p : plan) =
   Printf.sprintf "%s | roots in=%s out=%s c=%s ret=%b err=%b%s"
@@ -283,6 +284,12 @@ let () =
      did not produce. *)
   let harmless =
     [
+      (* Poll is not needed for safety, only so that the signals are not late;
+         run later, it is refused if the stub owns something *)
+      "drop Poll";
+      "swap Poll Call";
+      "swap Poll Check_in";
+      "swap Poll Ml2c";
       "shrink Check_error";
       "swap Alloc_tuple Free";
       "swap C2ml Free";

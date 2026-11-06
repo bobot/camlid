@@ -435,6 +435,7 @@ let of_plan ?(keeps = fun _ -> []) ~(options : options) (ps : param list)
     @ [ Need "called"; Use (c_used i); Mark (name "out" i) ]
   in
   let step : step -> op list = function
+    | Poll -> [ May_raise; Gc ]
     | Check_in l -> List.concat_map check_in l
     | Ml2c l -> List.concat_map ml2c l
     | Init l -> List.concat_map init l
