@@ -28,7 +28,7 @@ extract:
 	rm lib/plan_gen.ml.tmp
 
 prove:
-	cd proof && why3find prove -j 4 plan.mlw spec.mlw schedule.mlw
+	cd proof && why3find prove -j 4 plan.mlw spec.mlw schedule.mlw blocks.mlw
 
 # Check two generated stubs in Melocoton (see proof/melocoton/README.md)
 MELOCOTON ?= $(HOME)/melocoton

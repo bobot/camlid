@@ -1,0 +1,635 @@
+(** # What a safe stub is, with memory blocks only
+
+There are only blocks of memory: the C variables of the stub, the C memory,
+the OCaml blocks. A block is valid or not, has an owner, and *mentions* other
+blocks (the pointers it contains). A stub is a list of operations.
+
+- A GC moves every block owned by OCaml, and collects those not reachable from
+  the roots. A block that mentions a moved block becomes invalid, unless the
+  GC updates it: a root, or a block owned by OCaml. C memory owned by blocks
+  dies when all these blocks are dead.
+- Use only what is valid and reaches only valid blocks.
+- What a GC keeps is valid and mentions only valid blocks.
+- Free only what the stub owns, and own nothing when leaving, by return or by
+  exception, nor when something can raise.
+- When the stub leaves, the OCaml caller can drop everything but the result: a
+  last GC checks that the result keeps alive what it mentions.
+- A `noalloc` stub has no GC and doesn't raise.
+
+Releasing the runtime lock has no rule of its own: the C function has copies
+of its arguments, which are not registered, and a GC can run while it reads
+them.
+
+Trusted, so to be reviewed: module `Memory` (the rules), and module `Stub`
+(the operations of each step: what the printer `Expert.code_c_fun_of_plan`
+generates and what the C templates do, given their contract). *)
+
+module Memory
+
+  use int.Int
+  use list.List
+  use set.Set
+  use option.Option
+
+  (** The number of a parameter of the stub *)
+  type reg = int
+
+  type block =
+    | C reg  (** the C variable of the parameter *)
+    | In reg  (** its OCaml argument *)
+    | Out reg  (** the variable of its OCaml output *)
+    | Loc reg  (** its C locals of type `value` *)
+    | Arg reg  (** the copy read by a C function while a GC can run *)
+    | Tup  (** the variable of the tuple of the results *)
+    | Msg  (** the variable of the message of an exception *)
+    | MlIn reg  (** the OCaml block of the argument *)
+    | MlOut reg  (** the OCaml block of the output *)
+    | MlC reg  (** the OCaml block written by the C function *)
+    | MlTuple
+    | MlMsg
+    | Own reg  (** the C memory freed by the destructor of the C value *)
+    | Data reg  (** the C memory stored in an OCaml block (custom block) *)
+
+  (** Who is responsible for a block *)
+  type owner =
+    | Frame  (** a C variable of the stub, gone when it leaves *)
+    | Stub  (** C memory the stub must free or give away before leaving *)
+    | Ocaml  (** in the OCaml heap: moved and collected by the GC *)
+    | Of (set block)
+        (** C memory freed when these OCaml blocks are all dead: one finalizer,
+            or a reference count shared by several *)
+
+  (** The checks done on the way *)
+  type fact =
+    | Called | Error_checked | Tuple_made
+    | In_checked reg | Out_checked reg | Made reg
+
+  type state = {
+    owner : block -> option owner;
+    freed : set block;
+    valid : set block;
+    mentions : block -> set block;
+    rooted : set block;  (** registered with the GC: `CAMLparam`, `CAMLlocal` *)
+    facts : set fact;
+    no_gc : bool;  (** `noalloc` *)
+  }
+
+  predicate is_ocaml (s: state) (b: block) = s.owner b = Some Ocaml
+  predicate owned (s: state) (b: block) = s.owner b = Some Stub
+
+  (** ## The GC *)
+
+  (** `x` contains the roots, and what the GC scans from it: its heap *)
+  predicate scan_closed (s: state) (x: set block) =
+    subset s.rooted x /\
+    forall b m. mem b x -> mem m (s.mentions b) -> is_ocaml s m -> mem m x
+
+  (** Reachable from the roots: in all the sets closed by scanning *)
+  predicate alive (s: state) (b: block) =
+    forall x. scan_closed s x -> mem b x
+
+  predicate survives (s: state) (b: block) =
+    match s.owner b with
+    | Some Ocaml -> alive s b
+    | Some (Of l) -> exists k. mem k l /\ alive s k
+    | _ -> true
+    end
+
+  predicate updated (s: state) (b: block) = mem b s.rooted \/ is_ocaml s b
+
+  (** Valid after a GC *)
+  predicate keeps_valid (s: state) (b: block) =
+    mem b s.valid /\ survives s b /\
+    (updated s b \/ forall m. mem m (s.mentions b) -> not is_ocaml s m)
+
+  (** The blocks the GC reads: it needs them valid, with valid mentions *)
+  predicate kept (s: state) (b: block) =
+    alive s b /\
+    (is_ocaml s b \/ (mem b s.rooted /\ exists m. mem m (s.mentions b)))
+
+  predicate gc_ok (s: state) =
+    forall b. kept s b ->
+      keeps_valid s b /\ forall m. mem m (s.mentions b) -> keeps_valid s m
+
+  function gc (s: state) : state =
+    { s with valid = fun b -> keeps_valid s b }
+
+  (** ## The operations *)
+
+  type op =
+    | Use (set block)  (** the blocks are read *)
+    | Set block (set block)  (** the block now mentions these blocks *)
+    | Copy block block  (** `Copy dst src`: `dst` now mentions the same *)
+    | New block owner (set block)  (** a new valid block *)
+    | New_uninit block owner
+        (** a new block not initialized yet (`caml_alloc_small`): `Set` or
+            `Fill` makes it valid *)
+    | Fill block (set block)  (** adds mentions, and makes the block valid *)
+    | Give block owner  (** the stub gives a block it owns *)
+    | Destroy block
+        (** the destructor. It accepts an initial value: a block never
+            created. *)
+    | Forget block  (** the block was not created after all *)
+    | Gc
+    | May_raise
+    | Mark fact  (** a check was done *)
+    | Need fact  (** this check must have been done *)
+    | Branch (list op)  (** a path that leaves the stub *)
+    | Leave (option block)  (** return this block, or raise *)
+
+  (** Valid, and reaches only valid blocks *)
+  predicate usable (s: state) (b: block) =
+    exists x. mem b x /\
+      forall y. mem y x -> mem y s.valid /\ subset (s.mentions y) x
+
+  function set_mentions (m: block -> set block) (b: block) (l: set block)
+      : block -> set block =
+    fun y -> if y = b then l else m y
+
+  function set_owner (o: block -> option owner) (b: block) (x: option owner)
+      : block -> option owner =
+    fun y -> if y = b then x else o y
+
+  predicate no_owned (s: state) = forall b. not owned s b
+
+  (** A last GC: the caller keeps only the result *)
+  predicate leave_ok (s: state) (r: option block) =
+    no_owned s /\
+    match r with
+    | None -> gc_ok { s with rooted = empty }
+    | Some b -> usable s b /\ gc_ok { s with rooted = singleton b }
+    end
+
+  (** The operation can run in this state *)
+  predicate pre (o: op) (s: state) =
+    match o with
+    | Use l -> forall b. mem b l -> usable s b
+    | New b _ _ | New_uninit b _ -> s.owner b = None
+    | Give b _ -> owned s b
+    | Destroy b -> not mem b s.freed /\ (s.owner b = None \/ owned s b)
+    | Gc -> not s.no_gc /\ gc_ok s
+    | May_raise -> not s.no_gc /\ no_owned s
+    | Need c -> mem c s.facts
+    | Leave r -> leave_ok s r
+    | _ -> true
+    end
+
+  function post (o: op) (s: state) : state =
+    match o with
+    | Set b l ->
+      { s with valid = add b s.valid; mentions = set_mentions s.mentions b l }
+    | Copy d src ->
+      { s with valid = add d s.valid;
+               mentions = set_mentions s.mentions d (s.mentions src) }
+    | New b x l ->
+      { s with owner = set_owner s.owner b (Some x);
+               freed = remove b s.freed;
+               valid = add b s.valid;
+               mentions = set_mentions s.mentions b l }
+    | New_uninit b x ->
+      { s with owner = set_owner s.owner b (Some x);
+               freed = remove b s.freed;
+               mentions = set_mentions s.mentions b empty }
+    | Fill b l ->
+      { s with valid = add b s.valid;
+               mentions = set_mentions s.mentions b (union (s.mentions b) l) }
+    | Give b x -> { s with owner = set_owner s.owner b (Some x) }
+    | Destroy b ->
+      if s.owner b = None then s
+      else { s with valid = remove b s.valid;
+                    owner = set_owner s.owner b None;
+                    freed = add b s.freed }
+    | Forget b ->
+      { s with valid = remove b s.valid; owner = set_owner s.owner b None }
+    | Gc -> gc s
+    | Mark c -> { s with facts = add c s.facts }
+    | _ -> s
+    end
+
+  (** The operations can all run from this state. A `Branch` is checked from
+      the state where it starts, and the stub continues without it. *)
+  predicate safe (s: state) (l: list op) =
+    match l with
+    | Nil -> true
+    | Cons (Branch b) r -> safe s b /\ safe s r
+    | Cons o r -> pre o s /\ safe (post o s) r
+    end
+
+  (** ## The rules give what they say *)
+
+  (** A GC updates the roots *)
+  lemma gc_root: forall s b m.
+    mem b s.rooted -> mem b s.valid -> mem m (s.mentions b) -> is_ocaml s m ->
+    s.owner b = Some Frame -> mem b (gc s).valid
+
+  (** A C variable, not a root, that mentions an OCaml block is invalid after a
+      GC *)
+  lemma gc_invalidates: forall s b m.
+    not mem b s.rooted -> not is_ocaml s b ->
+    mem m (s.mentions b) -> is_ocaml s m -> not mem b (gc s).valid
+
+  (** A block mentioning nothing of OCaml, and not collected, stays valid *)
+  lemma gc_c_memory: forall s b.
+    mem b s.valid -> s.owner b = Some Stub ->
+    (forall m. mem m (s.mentions b) -> not is_ocaml s m) ->
+    mem b (gc s).valid
+
+  (** A root is alive, and so is what it mentions in the OCaml heap *)
+  lemma alive_root: forall s b. mem b s.rooted -> alive s b
+
+  lemma alive_mention: forall s b m.
+    alive s b -> mem m (s.mentions b) -> is_ocaml s m -> alive s m
+
+  (** The other direction: to bound the blocks alive, give a closed set *)
+  lemma alive_in_closed: forall s x b.
+    scan_closed s x -> alive s b -> mem b x
+
+end
+
+(** ## The operations of each step of a plan *)
+
+module Stub
+
+  use int.Int
+  use list.List
+  use list.Mem as L
+  use list.Length
+  use list.NthNoOpt
+  use list.Append
+  use set.Set
+  use option.Option
+  use bool.Bool
+  use plan.OInt
+  use plan.Types
+  use Memory
+
+  (** The aliasing of the C function, not checked by camlid: the OCaml output
+      `i` keeps alive the OCaml inputs `keeps i` (`Expert.keep_alive`,
+      `with_parent`) *)
+  type keeps = reg -> set reg
+
+  predicate in_range (ps: list param) (i: reg) = 0 <= i < length ps
+
+  predicate boxed (ps: list param) (i: reg) = (prm ps i).input = Boxed_input
+  predicate has_in (ps: list param) (i: reg) = (prm ps i).input <> No_input
+  predicate produced (ps: list param) (i: reg) =
+    not has_in ps i /\ not (prm ps i).init
+  predicate locals (ps: list param) (i: reg) = (prm ps i).value_locals
+
+  function only (b: bool) (x: set 'a) : set 'a = if b then x else empty
+  function ops_if (b: bool) (l: list op) : list op = if b then l else Nil
+
+  (** The registers, in order *)
+  function regs_from (i: int) (n: int) : list int
+  axiom regs_from_def: forall i n. regs_from i n =
+    if i >= n then Nil else Cons i (regs_from (i + 1) n)
+
+  function regs (ps: list param) : list int = regs_from 0 (length ps)
+
+  function each (f: reg -> list op) (l: list int) : list op =
+    match l with Nil -> Nil | Cons i r -> f i ++ each f r end
+
+  function reg_set (l: list t) : set reg = fun i -> L.mem i (ints l)
+
+  (** The blocks a C value mentions *)
+  function cblocks (ps: list param) (i: reg) : set block =
+    let q = prm ps i in
+    fun b -> b = Own i /\ q.free \/
+             b = Data i /\ q.owned_by_ml \/
+             b = MlIn i /\ q.ml_heap /\ boxed ps i \/
+             b = MlC i /\ q.ml_heap /\ produced ps i
+
+  (** New blocks when the stub produces the C value *)
+  function fresh (ps: list param) (i: reg) : list op =
+    let q = prm ps i in
+    ops_if q.free (Cons (New (Own i) Stub empty) Nil) ++
+    ops_if q.owned_by_ml (Cons (New (Data i) Stub empty) Nil) ++
+    ops_if (q.ml_heap && produced ps i) (Cons (New (MlC i) Ocaml empty) Nil)
+
+  function c_used (ps: list param) (i: reg) : set block =
+    add (C i) (only (locals ps i) (singleton (Loc i)))
+
+  function out_effects (ps: list param) (p: plan) (i: reg) : effects =
+    match p.result with
+    | One_unboxed j ->
+      if to_int j = i then { alloc = false; raising = false }
+      else (prm ps i).c2ml
+    | _ -> (prm ps i).c2ml
+    end
+
+  function op_ml2c (ps: list param) (i: reg) : list op =
+    let q = prm ps i in
+    ops_if q.in_check (Cons (Need (In_checked i)) Nil) ++
+    ops_if (boxed ps i) (Cons (Use (singleton (In i))) Nil) ++
+    ops_if q.ml2c.raising (Cons May_raise Nil) ++
+    ops_if q.ml2c.alloc (Cons Gc Nil) ++
+    ops_if q.free (Cons (New (Own i) Stub empty) Nil) ++
+    Cons (Set (C i) (cblocks ps i)) Nil
+
+  (** The check of an input reads its OCaml value and the C values of the
+      inputs without destructor nor check *)
+  function op_check_in (ps: list param) (i: reg) : list op =
+    ops_if (boxed ps i) (Cons (Use (singleton (In i))) Nil) ++
+    Cons (Use (fun b -> exists j. b = C j /\ in_range ps j /\
+                                  selected S_pre_input (prm ps j)))
+      (Cons May_raise (Cons (Mark (In_checked i)) Nil))
+
+  (** The constructor can read the inputs (`init_args`) *)
+  function op_init (ps: list param) (i: reg) : list op =
+    Cons (Use (fun b -> exists j. b = C j /\ in_range ps j /\ has_in ps j))
+      (fresh ps i ++ Cons (Set (C i) (cblocks ps i)) Nil)
+
+  (** The arguments the C function reads *)
+  function call_args (ps: list param) (l: list t) : set block =
+    fun b -> exists i. L.mem i (ints l) /\
+      (b = C i /\ not produced ps i \/ b = Loc i /\ locals ps i)
+
+  (** `Copy` for the arguments selected by `f` *)
+  function copies (ps: list param) (f: reg -> bool) (l: list int) : list op =
+    match l with
+    | Nil -> Nil
+    | Cons i r ->
+      if not produced ps i /\ f i = True
+      then Cons (Copy (Arg i) (C i)) (copies ps f r)
+      else copies ps f r
+    end
+
+  function copies_read (ps: list param) (f: reg -> bool) (l: list t)
+      : set block =
+    fun b -> exists i. L.mem i (ints l) /\ b = Arg i /\
+                       not produced ps i /\ f i = True
+
+  (** The C function reads copies of its arguments while a GC runs: when the
+      lock is released, or when it writes an OCaml value, so allocates. In the
+      second case it is responsible for the values it is given. *)
+  predicate writes_value (ps: list param) =
+    exists i. in_range ps i /\ produced ps i /\ (prm ps i).ml_heap
+
+  function during (ps: list param) (f: reg -> bool) (l: list t) : list op =
+    copies ps f (ints l) ++ Cons Gc (Cons (Use (copies_read ps f l)) Nil)
+
+  function op_produce (ps: list param) (i: reg) : list op =
+    ops_if (produced ps i) (fresh ps i ++ Cons (Set (C i) (cblocks ps i)) Nil)
+
+  function op_call (ps: list param) (l: list t) (release: bool) : list op =
+    Cons (Use (call_args ps l))
+      ((if release then during ps (fun _ -> True) l
+        else if writes_value ps
+        then during ps (fun i -> notb (prm ps i).ml_heap) l
+        else Nil) ++
+       each (op_produce ps) (regs ps) ++ Cons (Mark Called) Nil)
+
+  (** The conversion of an output, for a custom block moving its C memory *)
+  function op_convert (k: keeps) (ps: list param) (p: plan) (i: reg) : list op =
+    let q = prm ps i in
+    let e = out_effects ps p i in
+    Cons (Use (c_used ps i))
+      (ops_if e.raising (Cons May_raise Nil) ++
+       ops_if e.alloc (Cons Gc Nil) ++
+       Cons (New (MlOut i) Ocaml
+               (fun b -> b = Data i /\ q.owned_by_ml \/
+                         exists j. mem j (k i) /\ b = MlIn j)) Nil ++
+       ops_if q.owned_by_ml
+         (Cons (Give (Data i) (Of (singleton (MlOut i)))) Nil) ++
+       Cons (Set (Out i) (singleton (MlOut i)))
+         (Cons (Mark (Made i)) Nil))
+
+  function op_c2ml (o: options) (k: keeps) (ps: list param) (p: plan) (i: reg)
+      : list op =
+    Cons (Need Called)
+      (ops_if o.error (Cons (Need Error_checked) Nil) ++
+       ops_if (prm ps i).out_check (Cons (Need (Out_checked i)) Nil) ++
+       op_convert k ps p i)
+
+  function op_free (i: reg) : list op = Cons (Destroy (Own i)) Nil
+
+  (** Before raising: the message, the moves, the frees, then raise *)
+  function op_cleanup (k: keeps) (ps: list param) (p: plan) (c: cleanup)
+      : list op =
+    Cons Gc (Cons (New MlMsg Ocaml empty)
+      (Cons (Set Msg (singleton MlMsg))
+         (each (op_convert k ps p) (ints c.moves) ++
+          each op_free (ints c.frees) ++
+          Cons (Use (singleton Msg)) (Cons (Leave None) Nil))))
+
+  (** The C function failed: it produced nothing *)
+  function op_revert (ps: list param) (i: reg) : list op =
+    ops_if (produced ps i)
+      (ops_if (prm ps i).free (Cons (Forget (Own i)) Nil) ++
+       ops_if (prm ps i).owned_by_ml (Cons (Forget (Data i)) Nil))
+
+  function op_check_out (o: options) (ps: list param) (i: reg) : list op =
+    ops_if o.error (Cons (Need Error_checked) Nil) ++
+    Cons (Need Called) (Cons (Use (c_used ps i))
+      (Cons (Mark (Out_checked i)) Nil))
+
+  function op_need_made (ps: list param) (i: reg) : list op =
+    ops_if ((prm ps i).output <> No_output) (Cons (Need (Made i)) Nil)
+
+  function ops_of_step (o: options) (k: keeps) (ps: list param) (p: plan)
+      (x: step) : list op =
+    match x with
+    | Check_in l -> each (op_check_in ps) (ints l)
+    | Ml2c l -> each (op_ml2c ps) (ints l)
+    | Init l -> each (op_init ps) (ints l)
+    | Call l release -> op_call ps l release
+    | Check_error c ->
+      Cons (Need Called)
+        (Cons (Branch (each (op_revert ps) (regs ps) ++ op_cleanup k ps p c))
+           (Cons (Mark Error_checked) Nil))
+    | Check_out Nil _ -> Nil
+    | Check_out l c ->
+      Cons (Branch (each (op_check_out o ps) (ints l) ++ op_cleanup k ps p c))
+        (each (op_check_out o ps) (ints l))
+    | C2ml l -> each (op_c2ml o k ps p) (ints l)
+    | Alloc_tuple l ->
+      Cons Gc (Cons (New_uninit MlTuple Ocaml)
+        (Cons (Set Tup (singleton MlTuple))
+           (Cons (Use (fun b -> exists i. L.mem i (ints l) /\ b = Out i))
+              (Cons (Fill MlTuple
+                       (fun b -> exists i. L.mem i (ints l) /\ b = MlOut i))
+                 (Cons (Mark Tuple_made) Nil)))))
+    | Free l -> each op_free (ints l)
+    | Return ->
+      each (op_need_made ps) (regs ps) ++
+      (match p.result with
+       | Tuple _ -> Cons (Need Tuple_made) (Cons (Leave (Some Tup)) Nil)
+       | One_value i -> Cons (Leave (Some (Out (to_int i)))) Nil
+       | _ -> Cons (Leave None) Nil
+       end)
+    end
+
+  function ops_of_plan (o: options) (k: keeps) (ps: list param) (p: plan)
+      (l: list step) : list op =
+    match l with
+    | Nil -> Nil
+    | Cons x r -> ops_of_step o k ps p x ++ ops_of_plan o k ps p r
+    end
+
+  (** The variables registered with the GC. A C variable is registered when it
+      is a `value` (`ml_heap`). *)
+  function roots_of (ps: list param) (p: plan) : set block =
+    fun b -> match b with
+      | In i -> L.mem i (ints p.roots.inputs)
+      | Out i -> L.mem i (ints p.roots.outputs)
+      | Tup -> p.roots.ret
+      | Msg -> p.roots.err
+      | C i -> L.mem i (ints p.roots.c_values) /\ (prm ps i).ml_heap
+      | Loc i -> L.mem i (ints p.roots.c_values) /\ locals ps i
+      | _ -> false
+      end
+
+  (** The state when the stub starts. The C variables exist, and are not valid
+      until assigned, except the OCaml arguments, the C locals of type `value`,
+      and the `CAMLlocal`, valid as `Val_unit`. *)
+  function start (ps: list param) (p: plan) : state = {
+    owner = (fun b -> match b with
+      | C _ | In _ | Out _ | Loc _ | Arg _ | Tup | Msg -> Some Frame
+      | MlIn i -> if in_range ps i /\ boxed ps i then Some Ocaml else None
+      | Data i ->
+        if in_range ps i /\ boxed ps i /\ (prm ps i).owned_by_ml
+        then Some (Of (singleton (MlIn i))) else None
+      | _ -> None
+      end);
+    freed = empty;
+    valid = (fun b -> match b with
+      | In i -> in_range ps i /\ has_in ps i
+      | Loc i -> in_range ps i /\ locals ps i
+      | Out i -> L.mem i (ints p.roots.outputs)
+      | Tup -> p.roots.ret
+      | Msg -> p.roots.err
+      | MlIn i -> in_range ps i /\ boxed ps i
+      | Data i -> in_range ps i /\ boxed ps i /\ (prm ps i).owned_by_ml
+      | _ -> false
+      end);
+    mentions = (fun b -> match b with
+      | In i -> if in_range ps i /\ boxed ps i then singleton (MlIn i) else empty
+      | MlIn i ->
+        if in_range ps i /\ boxed ps i /\ (prm ps i).owned_by_ml
+        then singleton (Data i) else empty
+      | _ -> empty
+      end);
+    rooted = roots_of ps p;
+    facts = empty;
+    no_gc = p.noalloc;
+  }
+
+  (** The C function is called once, with the requested arguments, and its
+      result is checked when asked *)
+  predicate shape (o: options) (call: list t) (called checked: bool)
+      (l: list step) =
+    match l with
+    | Nil -> false
+    | Cons (Call l' release) r ->
+      not called /\ l' = call /\ release = o.release_lock /\
+      shape o call true checked r
+    | Cons (Check_error _) r -> called /\ shape o call called true r
+    | Cons Return r -> r = Nil /\ called /\ (o.error -> checked)
+    | Cons _ r -> shape o call called checked r
+    end
+
+  (** ## A safe plan *)
+
+  predicate safe_plan (k: keeps) (ps: list param) (o: options) (call: list t)
+      (p: plan) =
+    (p.noalloc -> forall b. not mem b (roots_of ps p)) /\
+    (o.want_noalloc = Some true -> p.noalloc) /\
+    (o.want_noalloc = Some false -> not p.noalloc) /\
+    shape o call false false p.steps /\
+    safe (start ps p) (ops_of_plan o k ps p p.steps)
+
+end
+
+(** ## Proof tools: a GC seen locally *)
+
+module GcLocal
+
+  use set.Set
+  use option.Option
+  use Memory
+
+  (** The blocks a GC reads are among these: variables that are roots and valid
+      OCaml blocks *)
+  function scanned (s: state) : set block =
+    fun b -> mem b s.rooted \/ (is_ocaml s b /\ mem b s.valid)
+
+  (** `m`, mentioned by `b`, is still valid after a GC *)
+  predicate mention_ok (s: state) (b m: block) =
+    mem m s.valid /\
+    match s.owner m with
+    | Some Ocaml -> true
+    | Some (Of l) ->
+      mem b l /\ forall c. mem c (s.mentions m) -> not is_ocaml s c
+    | _ -> mem m s.rooted \/
+           forall c. mem c (s.mentions m) -> not is_ocaml s c
+    end
+
+  (** No need of the reachability: what is scanned mentions only valid blocks.
+      A root is valid as soon as it mentions something. *)
+  predicate gc_local (s: state) =
+    (forall b m. mem b (scanned s) -> mem m (s.mentions b) -> mention_ok s b m)
+    /\ (forall b m. mem b s.rooted -> mem m (s.mentions b) -> mem b s.valid)
+    /\ (forall b. mem b s.rooted -> s.owner b = Some Frame)
+
+  lemma scanned_closed: forall s. gc_local s -> scan_closed s (scanned s)
+
+  let lemma alive_scanned (s: state) (b: block)
+    requires { gc_local s }
+    requires { alive s b }
+    ensures { mem b (scanned s) }
+  = assert { scan_closed s (scanned s) }
+
+  let lemma mention_keeps (s: state) (b m: block)
+    requires { gc_local s }
+    requires { alive s b }
+    requires { mem m (s.mentions b) }
+    ensures { keeps_valid s m }
+  = alive_scanned s b;
+    assert { mention_ok s b m };
+    match s.owner m with
+    | Some Ocaml -> assert { is_ocaml s m /\ alive s m }
+    | Some (Of l) -> assert { mem b l /\ alive s b }
+    | _ -> ()
+    end
+
+  let lemma gc_ok_local (s: state)
+    requires { gc_local s }
+    ensures { gc_ok s }
+  = assert { forall b. kept s b -> alive s b /\ mem b (scanned s) };
+    assert { forall b. kept s b -> mem b s.valid };
+    assert { forall b. kept s b -> survives s b };
+    assert { forall b. kept s b -> updated s b };
+    assert { forall b. kept s b -> keeps_valid s b };
+    assert { forall b m. kept s b -> mem m (s.mentions b) -> keeps_valid s m }
+
+  (** A GC doesn't invalidate a valid root *)
+  lemma gc_keeps_root: forall s b.
+    mem b s.rooted -> mem b s.valid -> s.owner b = Some Frame ->
+    mem b (gc s).valid
+
+  (** Nor an OCaml block reachable from a root *)
+  lemma gc_keeps_reached: forall s r b.
+    gc_local s -> alive s r -> mem b (s.mentions r) -> is_ocaml s b ->
+    mem b (gc s).valid
+
+  (** A GC preserves this view when what is scanned stays alive *)
+  let lemma gc_local_after (s: state)
+    requires { gc_local s }
+    requires { forall b. is_ocaml s b -> mem b s.valid -> alive s b }
+    requires { forall b. mem b s.rooted -> s.owner b = Some Frame }
+    ensures { gc_local (gc s) }
+  = let ghost s' = gc s in
+    assert { forall b. mem b (scanned s') -> mem b (scanned s) };
+    assert { forall b m. mem b (scanned s') -> mem m (s'.mentions b) ->
+               alive s b \/ mem b s.rooted };
+    assert { forall b. mem b s.rooted -> alive s b };
+    assert { forall b m. mem b (scanned s') -> mem m (s'.mentions b) ->
+               alive s b /\ mention_ok s b m };
+    assert { forall b m. mem b (scanned s') -> mem m (s'.mentions b) ->
+               keeps_valid s m };
+    assert { forall b m. mem b (scanned s') -> mem m (s'.mentions b) ->
+               mention_ok s' b m };
+    assert { forall b m. mem b s'.rooted -> mem m (s'.mentions b) ->
+               keeps_valid s b }
+
+end
