@@ -26,6 +26,21 @@ across allocations, and a custom block owns its C memory. Later, after a
 discussion with the Melocoton authors: prove each kind of action of
 `spec.mlw` sound in Melocoton, so that the spec is no longer trusted.
 
+Status (2026-11-06): `spec.mlw` is too complicated to review, so a lower
+level model is being tried: `lib/blocks.ml`, about 285 lines of OCaml for
+the semantics, plus the translation from a plan. There are only blocks,
+with a validity, an owner and the blocks they mention. A GC moves every
+block owned by OCaml; a block mentioning a moved block becomes invalid,
+except the roots and the blocks owned by OCaml, which the GC updates. C
+memory owned by blocks dies when they are all dead. The model is
+executable, and `Expert.plan` runs it on each stub (translation
+validation), so `schedule` wouldn't need a proof. `proof/` is unchanged and
+still describes `schedule`. Still trusted: the translation in
+`Blocks.of_plan`, and the contract of each template. Not done yet: templates
+don't declare what an output keeps alive (`keeps`, for `keep_alive` and
+`with_parent`), so the model only sees this in the tests of
+`tests/blocks/`.
+
 ## Goal
 
 Camlid has three kinds of users:

@@ -1337,13 +1337,16 @@ let plan ?noalloc ?(release_lock = false) ?error ~params ~call_params ~result
   let options : Plan.options =
     { want_noalloc = noalloc; release_lock; error = Option.is_some error }
   in
-  match
-    Plan.schedule ~name options
-      (List.map plan_param params)
-      ~call:(List.map index call_params)
-  with
-  | Ok plan -> (params, plan)
+  let pparams = List.map plan_param params in
+  let call = List.map index call_params in
+  match Plan.schedule ~name options pparams ~call with
   | Error msg -> invalid_arg msg
+  | Ok plan -> (
+      match Blocks.check options pparams ~call plan with
+      | Ok () -> (params, plan)
+      | Error msg ->
+          Fmt.invalid_arg "Camlid: internal error, unsafe stub for %s: %s" name
+            msg)
 
 (** Prints the plan of a stub. [params] contains the result. *)
 let code_c_fun_of_plan ?error ~(plan : Plan.plan) ~params ~name (fid : expr) =

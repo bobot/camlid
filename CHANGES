@@ -2,6 +2,8 @@
     - fix: a function with an output_value was declared [@@noalloc] when its
       conversions didn't allocate, although the C function allocates the value:
       it corrupted the OCaml heap. Such a stub is no longer noalloc
+    - each stub is checked at generation time with a low-level model of the
+      memory (Blocks); a stub refused is an internal error of camlid
     - the minimum OCaml version is 4.14
     - an input whose C value contains unregistered OCaml values (an array
       or a struct of `value`) is converted last; two such inputs, or one
