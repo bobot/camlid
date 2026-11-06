@@ -34,12 +34,17 @@ block owned by OCaml; a block mentioning a moved block becomes invalid,
 except the roots and the blocks owned by OCaml, which the GC updates. C
 memory owned by blocks dies when they are all dead. The model is
 executable, and `Expert.plan` runs it on each stub (translation
-validation), so `schedule` wouldn't need a proof. `proof/` is unchanged and
-still describes `schedule`. Still trusted: the translation in
+validation). `proof/` is unchanged and still proves `schedule` against
+`spec.mlw`. Next: write this model in Why3 so that it replaces `spec.mlw`,
+and prove `schedule` against it. Still trusted: the translation in
 `Blocks.of_plan`, and the contract of each template. Not done yet: templates
 don't declare what an output keeps alive (`keeps`, for `keep_alive` and
 `with_parent`), so the model only sees this in the tests of
 `tests/blocks/`.
+
+Todo: a stub with an `output_value` is never `noalloc`, which is safe and
+simple. Later, the C function could say that it doesn't allocate, for example
+when it only stores an existing value or an immediate.
 
 ## Goal
 
