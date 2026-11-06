@@ -13,7 +13,7 @@
       "gc_invalidates": { "prover": "cvc5@1.3.4", "time": 0.108 },
       "new_is_fresh": { "prover": "cvc5@1.3.4", "time": 0.084 },
       "new_keeps_fresh": { "prover": "cvc4@1.8", "time": 0.095 },
-      "noalloc_no_gc": { "prover": "cvc4@1.8", "time": 0.082 },
+      "no_gc_no_release": { "prover": "cvc4@1.8", "time": 0.103 },
       "released_c": { "prover": "cvc5@1.3.4", "time": 2.6 },
       "released_mention": { "prover": "cvc5@1.3.4", "time": 0.111 },
       "released_ocaml": { "prover": "cvc5@1.3.4", "time": 0.086 }

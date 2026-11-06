@@ -35,12 +35,12 @@ except the roots and the blocks owned by OCaml, which the GC updates. C
 memory owned by blocks dies when they are all dead. The model is
 executable, and `Expert.plan` runs it on each stub (translation
 validation). `proof/` is unchanged and still proves `schedule` against
-`spec.mlw`. The model is now also in Why3, `proof/blocks.mlw` (modules
-`Memory`, the rules, and `Stub`, the operations of each step), with logical
-sets and reachability defined by sets, so not executable. `GcLocal` reduces
-the GC rule to a local condition, without reachability. Next: prove `schedule`
-against it, then remove `spec.mlw`; `schedule` is not proved against it yet,
-and nothing checks yet that it says the same as `lib/blocks.ml`. Still trusted: the translation in
+`spec.mlw`. The model is now also in Why3, `proof/memory.mlw`, as a
+specification (modules `Memory`, the rules, and `Stub`, the operations of each
+step). Blocks are integers and names point to them, so aliases are written;
+`start_ok` lists those allowed. Next: prove `schedule` against it, then remove
+`spec.mlw`; `schedule` is not proved against it yet. `lib/blocks.ml` doesn't
+follow it yet: it still has `Arg` blocks, and no aliases. Still trusted: the translation in
 `Blocks.of_plan`, and the contract of each template. Not done yet: templates
 don't declare what an output keeps alive (`keeps`, for `keep_alive` and
 `with_parent`), so the model only sees this in the tests of

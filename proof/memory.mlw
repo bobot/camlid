@@ -1,10 +1,9 @@
-(** # A safe stub: blocks are integers, names point to them
+(** # What a safe stub is, with memory blocks
 
-A trial, to compare with `blocks.mlw`. A block is only an integer. `New` takes
-one that was never allocated (memory is infinite: an integer is never reused).
-What a block represents is a mapping from names to blocks, so two names can be
-one block: an alias is written, instead of being excluded by the way the blocks
-are named.
+A block is only an integer. `New` takes one that was never allocated (memory is
+infinite: an integer is never reused). What a block represents is a mapping
+from names to blocks, so two names can be one block: an alias is written,
+instead of being excluded by the way the blocks are named.
 
 - A block is valid or not, has an owner, and mentions other blocks.
 - A GC moves every block owned by OCaml, and collects those not reachable from
@@ -17,10 +16,25 @@ are named.
   exception, nor when something can raise.
 - When the stub leaves, the OCaml caller can drop everything but the result: a
   last GC checks that the result keeps alive what it mentions.
-- `noalloc`: no GC, no exception, no release of the runtime. The OCaml blocks
-  stay valid and are not moved, so they can be read.
+- `no_gc` (`[@@noalloc]`): nothing the stub can see of a GC, no exception, no
+  release of the runtime. The OCaml blocks stay valid and are not moved. Another
+  domain can run a GC, but it needs this domain at a barrier to change its
+  values.
 - Runtime released: a GC runs at the release, then nothing owned by OCaml can be
-  read and the runtime can't be used, until it is acquired back. *)
+  read and the runtime can't be used, until it is acquired back.
+
+What the model takes from the OCaml runtime, for review:
+
+- A GC started by an allocation from C runs C finalizers, which free the memory
+  of dead blocks, and no OCaml code (OCaml manual, "Pending actions", since
+  4.10). So `mentions` doesn't change in a GC, and a `Gc` doesn't raise.
+- Not modelled: `Out_of_memory` raised by an allocation from C.
+- Not modelled: `caml_enter_blocking_section` runs the signal handlers pending
+  before the release, which can raise and change OCaml values. `Release` here
+  is `caml_enter_blocking_section_no_pending`, which doesn't.
+- With the runtime released, other threads run OCaml code. The block a C value
+  mentions must not be freed by them: the wrappers made by camlid are taken as
+  immutable, which `dispose` (`custom_ptr`) doesn't respect. *)
 
 module Memory
 
@@ -58,7 +72,7 @@ module Memory
     mentions : block -> set block;
     rooted : set block;  (** registered with the GC *)
     facts : set fact;
-    is_noalloc : bool;  (** `[@@noalloc]` *)
+    no_gc : bool;  (** `[@@noalloc]` *)
     released : bool;  (** the runtime lock is released *)
   }
 
@@ -156,10 +170,10 @@ module Memory
     | Give n _ -> exists b. s.block_of n = Some b /\ owned s b
     | Destroy n ->
       match s.block_of n with None -> true | Some b -> owned s b end
-    | Gc -> not s.is_noalloc /\ not s.released /\ gc_ok s
-    | Release -> not s.is_noalloc /\ not s.released /\ gc_ok s
+    | Gc -> not s.no_gc /\ not s.released /\ gc_ok s
+    | Release -> not s.no_gc /\ not s.released /\ gc_ok s
     | Acquire -> s.released
-    | May_raise -> not s.is_noalloc /\ not s.released /\ no_owned s
+    | May_raise -> not s.no_gc /\ not s.released /\ no_owned s
     | Need c -> mem c s.facts
     | Leave r -> leave_ok s r
     | _ -> true
@@ -303,7 +317,7 @@ module Memory
              forall y. mem y x -> readable s y /\ subset (s.mentions y) x }
 
   (** A noalloc stub has no GC, so the OCaml values stay readable *)
-  lemma noalloc_no_gc: forall s. s.is_noalloc -> not pre Gc s /\ not pre Release s
+  lemma no_gc_no_release: forall s. s.no_gc -> not pre Gc s /\ not pre Release s
 
 end
 
@@ -594,7 +608,7 @@ module Stub
           (a (MlIn i) = Some b /\ a (Data i) = Some m));
       rooted = img (roots_of ps p);
       facts = empty;
-      is_noalloc = p.noalloc;
+      no_gc = p.noalloc;
       released = false;
     }
 
