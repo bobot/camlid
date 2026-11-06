@@ -2231,7 +2231,9 @@ let value =
       conv;
       cty = { cty; init = None; init_expr; free = None; in_call = None; c };
       v;
-      contract = Ty.copied ~ml_heap:true ~ml2c:Ty.pure ~c2ml:Ty.pure ();
+      (* An output comes from C code, which allocated it: the stub can't be
+         noalloc. The conversions themselves only copy the [value]. *)
+      contract = Ty.copied ~ml_heap:true ~ml2c:Ty.pure ~c2ml:Ty.allocates ();
       checks = Ty.no_checks;
     }
 

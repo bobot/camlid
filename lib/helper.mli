@@ -382,7 +382,8 @@ val input_value : string -> Ty.param
 
 val output_value : string -> Ty.param
 (** [output_value ty] gives a [value *] to fill with an OCaml value of type
-    [ty]. *)
+    [ty]. The C function can allocate it: the stub is never [noalloc], and the
+    other arguments are registered. *)
 
 val convert :
   ?c_to_mlc:string ->
