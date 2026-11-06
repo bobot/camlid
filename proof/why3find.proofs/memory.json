@@ -2,22 +2,38 @@
   "profile": [],
   "proofs": {
     "Checks": {
-      "returned_argument": { "prover": "cvc5@1.3.4", "time": 0.128 },
+      "returned_argument": { "prover": "cvc4@1.8", "time": 0.107 },
       "same_argument_alive": { "prover": "cvc5@1.3.4", "time": 0.136 }
     },
     "Memory": {
-      "acquire_valid": { "prover": "cvc5@1.3.4", "time": 0.123 },
-      "alias_double_free": { "prover": "colibri2@0.7~1", "time": 0.023 },
+      "acquire_valid": { "prover": "colibri2@0.7~1", "time": 0.155 },
       "bind_alias": { "prover": "cvc4@1.8", "time": 0.081 },
-      "double_free": { "prover": "colibri2@0.7~1", "time": 0.025 },
+      "closure_bound": { "prover": "cvc5@1.3.4", "time": 0.065 },
+      "closure_from": { "prover": "cvc5@1.3.4", "time": 0.089 },
+      "closure_step": { "prover": "cvc5@1.3.4", "time": 0.109 },
+      "freed_stays_freed": { "prover": "cvc5@1.3.4", "time": 0.078 },
       "gc_invalidates": { "prover": "cvc5@1.3.4", "time": 0.108 },
-      "new_is_fresh": { "prover": "cvc5@1.3.4", "time": 0.084 },
-      "new_keeps_fresh": { "prover": "cvc4@1.8", "time": 0.095 },
+      "new_is_fresh": { "prover": "cvc4@1.8", "time": 0.121 },
+      "new_keeps_fresh": { "prover": "colibri2@0.7~1", "time": 0.024 },
+      "no_double_free": { "prover": "colibri2@0.7~1", "time": 0.06 },
       "no_gc_no_release": { "prover": "cvc4@1.8", "time": 0.103 },
-      "released_c": { "prover": "cvc5@1.3.4", "time": 2.6 },
+      "post_keeps_freed": { "prover": "colibri2@0.7~1", "time": 0.088 },
+      "released_c": {
+        "tactic": "split_vc",
+        "children": [
+          { "prover": "colibri2@0.7~1", "time": 0.036 },
+          { "prover": "cvc4@1.8", "time": 0.506 },
+          { "prover": "cvc5@1.3.4", "time": 0.114 },
+          { "prover": "cvc5@1.3.4", "time": 0.167 }
+        ]
+      },
       "released_mention": { "prover": "cvc5@1.3.4", "time": 0.111 },
-      "released_ocaml": { "prover": "cvc5@1.3.4", "time": 0.086 }
+      "released_ocaml": { "prover": "colibri2@0.7~1", "time": 0.026 },
+      "safe_ops_append": { "prover": "cvc5@1.3.4", "time": 0.095 },
+      "usable_by_set": { "prover": "colibri2@0.7~1", "time": 0.027 },
+      "usable_mention": { "prover": "colibri2@0.7~1", "time": 0.565 },
+      "usable_self": { "prover": "cvc5@1.3.4", "time": 0.141 }
     },
-    "Stub": {}
+    "Stub": { "regs_from": { "prover": "cvc5@1.3.4", "time": 0.054 } }
   }
 }

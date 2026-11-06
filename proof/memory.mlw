@@ -43,6 +43,7 @@ module Memory
 
   use int.Int
   use set.Set
+  use map.Map
   use option.Option
 
   type block = int
@@ -63,6 +64,9 @@ module Memory
     | MlIn reg | MlOut reg | MlC reg | MlLoc reg | MlTuple | MlMsg
     | Own reg | Data reg
 
+  (** What the memory can't tell. The memory doesn't say the shape of the OCaml
+      result: without `Alloc_tuple`, the variable `Tup` is valid, as `Val_unit`,
+      so only `Tuple_made` and `Made` say that the result is the right value. *)
   type fact =
     | Called | Error_checked | Tuple_made
     | In_checked reg | Out_checked reg | Made reg
@@ -76,24 +80,42 @@ module Memory
     rooted : set block;  (** registered with the GC *)
     facts : set fact;
     no_gc : bool;  (** `[@@noalloc]` *)
-    released : bool;  (** the runtime lock is released *)
+    suspended : option (set block);
+      (** `None`: the stub has the runtime lock. Else it is released, and these
+          OCaml blocks are removed from `valid` until it is acquired back. *)
   }
 
   predicate is_ocaml (s: state) (b: block) = s.owner b = Some Ocaml
-  predicate owned (s: state) (b: block) = s.owner b = Some Stub
+  predicate stub_owned (s: state) (b: block) = s.owner b = Some Stub
+  predicate released (s: state) = s.suspended <> None
 
   (** The blocks of these names *)
   function image (s: state) (l: set name) : set block =
     fun b -> exists n. mem n l /\ s.block_of n = Some b
 
+  (** ## What is reachable
+
+      `mentions` is only what a block mentions directly. The transitive closure
+      is separate: the least set containing `from` and closed by `step`. There
+      can be loops. *)
+
+  predicate closed (step: block -> set block) (x: set block) =
+    forall y m. mem y x -> mem m (step y) -> mem m x
+
+  predicate in_closure (step: block -> set block) (from: set block) (b: block) =
+    forall x. subset from x -> closed step x -> mem b x
+
+  (** All the blocks `b` reaches *)
+  predicate reaches (s: state) (b m: block) =
+    in_closure s.mentions (singleton b) m
+
   (** ## The GC *)
 
-  predicate scan_closed (s: state) (x: set block) =
-    subset s.rooted x /\
-    forall b m. mem b x -> mem m (s.mentions b) -> is_ocaml s m -> mem m x
+  (** A GC scans its heap: what mentions an OCaml block leads to it *)
+  function scanned (s: state) : block -> set block =
+    fun y m -> mem m (s.mentions y) /\ is_ocaml s m
 
-  predicate alive (s: state) (b: block) =
-    forall x. scan_closed s x -> mem b x
+  predicate alive (s: state) (b: block) = in_closure (scanned s) s.rooted b
 
   predicate survives (s: state) (b: block) =
     match s.owner b with
@@ -138,24 +160,19 @@ module Memory
     | Need fact
     | Leave (option name)  (** return this, or raise *)
 
-  (** Valid, reaches only valid blocks, and when the runtime is released
-      nothing owned by OCaml *)
-  predicate readable (s: state) (b: block) =
-    mem b s.valid /\ not (s.released /\ is_ocaml s b)
-
+  (** Valid, and reaches only valid blocks *)
   predicate usable (s: state) (b: block) =
-    exists x. mem b x /\
-      forall y. mem y x -> readable s y /\ subset (s.mentions y) x
+    forall m. reaches s b m -> mem m s.valid
 
   predicate usable_name (s: state) (n: name) =
-    exists b. s.block_of n = Some b /\ usable s b
+    match s.block_of n with Some b -> usable s b | None -> false end
 
   predicate bound (s: state) (n: name) = s.block_of n <> None
 
-  predicate no_owned (s: state) = forall b. not owned s b
+  predicate stub_owns_nothing (s: state) = forall b. not stub_owned s b
 
   predicate leave_ok (s: state) (r: option name) =
-    not s.released /\ no_owned s /\
+    not released s /\ stub_owns_nothing s /\
     match r with
     | None -> gc_ok { s with rooted = empty }
     | Some n ->
@@ -168,43 +185,33 @@ module Memory
     | Use l -> forall n. mem n l -> usable_name s n
     | Set n _ | Fill n _ -> bound s n
     | New n x _ | New_uninit n x ->
-      not bound s n /\ (x = Ocaml -> not s.released)
+      not bound s n /\ (x = Ocaml -> not released s)
     | Bind n m -> not bound s n /\ bound s m
-    | Give n _ -> exists b. s.block_of n = Some b /\ owned s b
+    | Give n _ ->
+      match s.block_of n with Some b -> stub_owned s b | None -> false end
     | Destroy n ->
-      match s.block_of n with None -> true | Some b -> owned s b end
-    | Gc -> not s.no_gc /\ not s.released /\ gc_ok s
-    | Release_runtime -> not s.no_gc /\ not s.released /\ gc_ok s
-    | Acquire_runtime -> s.released
-    | May_raise -> not s.no_gc /\ not s.released /\ no_owned s
+      match s.block_of n with None -> true | Some b -> stub_owned s b end
+    | Gc -> not s.no_gc /\ not released s /\ gc_ok s
+    | Release_runtime -> not s.no_gc /\ not released s /\ gc_ok s
+    | Acquire_runtime -> released s
+    | May_raise -> not s.no_gc /\ not released s /\ stub_owns_nothing s
     | Need c -> mem c s.facts
     | Leave r -> leave_ok s r
     | _ -> true
     end
 
-  function set_block_of (s: state) (n: name) (x: option block) : name -> option block =
-    fun y -> if y = n then x else s.block_of y
-
-  function set_owner (s: state) (b: block) (x: option owner)
-      : block -> option owner =
-    fun y -> if y = b then x else s.owner y
-
-  function set_mentions (s: state) (b: block) (l: set block)
-      : block -> set block =
-    fun y -> if y = b then l else s.mentions y
-
   (** A new block, always the next integer *)
   function allocate (s: state) (n: name) (x: owner) (l: set block) : state =
-    { s with block_of = set_block_of s n (Some s.next); next = s.next + 1;
-             owner = set_owner s s.next (Some x);
-             mentions = set_mentions s s.next l }
+    { s with block_of = s.block_of[n <- Some s.next]; next = s.next + 1;
+             owner = s.owner[s.next <- Some x];
+             mentions = s.mentions[s.next <- l] }
 
   function post (o: op) (s: state) : state =
     match o with
     | Set n l ->
       match s.block_of n with
       | Some b -> { s with valid = add b s.valid;
-                           mentions = set_mentions s b (image s l) }
+                           mentions = s.mentions[b <- image s l] }
       | None -> s
       end
     | New n x l ->
@@ -215,35 +222,42 @@ module Memory
       match s.block_of n with
       | Some b ->
         { s with valid = add b s.valid;
-                 mentions = set_mentions s b (union (s.mentions b) (image s l)) }
+                 mentions = s.mentions[b <- union (s.mentions b) (image s l)] }
       | None -> s
       end
-    | Bind n m -> { s with block_of = set_block_of s n (s.block_of m) }
+    | Bind n m -> { s with block_of = s.block_of[n <- s.block_of m] }
     | Give n l ->
       match s.block_of n with
-      | Some b -> { s with owner = set_owner s b (Some (Of (image s l))) }
+      | Some b -> { s with owner = s.owner[b <- Some (Of (image s l))] }
       | None -> s
       end
     | Destroy n ->
       match s.block_of n with
-      | Some b -> { s with valid = remove b s.valid;
-                           owner = set_owner s b None }
+      | Some b -> { s with valid = remove b s.valid; owner = s.owner[b <- None] }
       | None -> s
       end
     | Forget n ->
       match s.block_of n with
-      | Some b -> { s with block_of = set_block_of s n None; valid = remove b s.valid;
-                           owner = set_owner s b None }
+      | Some b -> { s with block_of = s.block_of[n <- None];
+                           valid = remove b s.valid; owner = s.owner[b <- None] }
       | None -> s
       end
     | Gc -> gc s
-    | Release_runtime -> { (gc s) with released = true }
-    | Acquire_runtime -> { s with released = false }
+    | Release_runtime ->
+      let g = gc s in
+      { g with valid = diff g.valid (fun b -> is_ocaml s b);
+               suspended = Some (inter g.valid (fun b -> is_ocaml s b)) }
+    | Acquire_runtime ->
+      match s.suspended with
+      | Some l -> { s with valid = union s.valid l; suspended = None }
+      | None -> s
+      end
     | Mark c -> { s with facts = add c s.facts }
     | _ -> s
     end
 
   use list.List
+  use list.Append
 
   (** A path that leaves the stub is checked with `Branch`, from where it
       starts; the stub continues without it. *)
@@ -268,6 +282,14 @@ module Memory
     | Cons (Op o) r -> pre o s /\ safe (post o s) r
     end
 
+  let rec lemma safe_ops_append (s: state) (l r: list op)
+    variant { l }
+    ensures { safe_ops s (l ++ r) <-> safe_ops s l /\ safe_ops (after_ops s l) r }
+  = match l with
+    | Nil -> ()
+    | Cons o t -> safe_ops_append (post o s) t r
+    end
+
   (** ## The rules give what they say *)
 
   (** No block allocated from `next` *)
@@ -287,40 +309,84 @@ module Memory
     bound s m -> not bound s n ->
     (post (Bind n m) s).block_of n = (post (Bind n m) s).block_of m
 
-  (** Freeing a block through one name refuses to free it through the other *)
-  lemma alias_double_free: forall s n m b.
-    n <> m -> s.block_of n = Some b -> s.block_of m = Some b ->
-    not pre (Destroy m) (post (Destroy n) s)
-
-  (** A free is not done twice, even with no other name *)
-  lemma double_free: forall s n b.
-    s.block_of n = Some b -> not pre (Destroy n) (post (Destroy n) s)
-
   lemma gc_invalidates: forall s b m.
     not mem b s.rooted -> not is_ocaml s b ->
     mem m (s.mentions b) -> is_ocaml s m -> not mem b (gc s).valid
 
-  (** Runtime released: a root that mentions an OCaml block can't be read,
-      nor can an OCaml block *)
-  lemma released_ocaml: forall s b. s.released -> is_ocaml s b -> not usable s b
+  (** The closure, in the three ways it is used *)
+  lemma closure_from: forall step from b. mem b from -> in_closure step from b
+
+  lemma closure_step: forall step from b m.
+    in_closure step from b -> mem m (step b) -> in_closure step from m
+
+  lemma closure_bound: forall step from x b.
+    subset from x -> closed step x -> in_closure step from b -> mem b x
+
+  (** Usable reads the whole closure, even with a loop *)
+  lemma usable_self: forall s b. usable s b -> mem b s.valid
+
+  lemma usable_mention: forall s b m.
+    usable s b -> mem m (s.mentions b) -> usable s m
+
+  (** To show that a block is usable: a closed set of valid blocks contains it *)
+  lemma usable_by_set: forall s x b.
+    mem b x -> closed s.mentions x -> (forall y. mem y x -> mem y s.valid) ->
+    usable s b
+
+  (** Runtime released: an OCaml block isn't valid, so nothing that reaches one
+      is usable: a root that mentions it can't be read *)
+  lemma released_ocaml: forall s b.
+    not is_ocaml s b \/ not mem b (post Release_runtime s).valid
 
   lemma released_mention: forall s b m.
-    s.released -> mem m (s.mentions b) -> is_ocaml s m -> not usable s b
+    mem m ((post Release_runtime s).mentions b) -> is_ocaml s m ->
+    not usable (post Release_runtime s) b
 
-  (** Acquire_runtime gives back what the GC left valid, and nothing else *)
-  lemma acquire_valid: forall s.
-    (post Acquire_runtime (post Release_runtime s)).valid = (gc s).valid
+  (** Taking it back gives back what the GC left valid, and nothing else *)
+  lemma acquire_valid: forall s b.
+    mem b (post Acquire_runtime (post Release_runtime s)).valid <->
+    mem b (gc s).valid
 
-  (** C memory that mentions no OCaml block stays readable while released *)
+  (** C memory that mentions no OCaml block stays usable while released *)
   let lemma released_c (s: state) (b: block)
-    requires { s.released /\ mem b s.valid /\ not is_ocaml s b }
+    requires { mem b s.valid /\ not is_ocaml s b }
+    requires { keeps_valid s b }
     requires { forall m. not mem m (s.mentions b) }
-    ensures { usable s b }
-  = assert { let x = singleton b in mem b x /\
-             forall y. mem y x -> readable s y /\ subset (s.mentions y) x }
+    ensures { usable (post Release_runtime s) b }
+  = let s' = post Release_runtime s in
+    assert { mem b s'.valid };
+    assert { closed s'.mentions (singleton b) };
+    assert { forall y. mem y (singleton b) -> mem y s'.valid }
+
+  (** ## A path can't free a block twice
+
+      A freed block stays freed on all the path: `New` only takes new
+      integers, and only the stub can give what it owns. *)
+
+  lemma post_keeps_freed: forall o s b.
+    pre o s -> s.owner b = None -> b < s.next ->
+    (post o s).owner b = None /\ b < (post o s).next
+
+  let rec lemma freed_stays_freed (s: state) (b: block) (l: list op)
+    requires { s.owner b = None /\ b < s.next }
+    requires { safe_ops s l }
+    variant { l }
+    ensures { (after_ops s l).owner b = None /\ b < (after_ops s l).next }
+  = match l with
+    | Nil -> ()
+    | Cons o r -> post_keeps_freed o s b; freed_stays_freed (post o s) b r
+    end
+
+  (** `Destroy n`, any operations, then `Destroy m`, where `m` is the same
+      block: `n` itself, or an alias *)
+  lemma no_double_free: forall s n m b l r.
+    s.block_of n = Some b -> b < s.next ->
+    (after_ops (post (Destroy n) s) l).block_of m = Some b ->
+    not safe_ops s (Cons (Destroy n) (l ++ Cons (Destroy m) r))
 
   (** A noalloc stub has no GC, so the OCaml values stay readable *)
-  lemma no_gc_no_release: forall s. s.no_gc -> not pre Gc s /\ not pre Release_runtime s
+  lemma no_gc_no_release: forall s.
+    s.no_gc -> not pre Gc s /\ not pre Release_runtime s
 
 end
 
@@ -361,9 +427,10 @@ module Stub
   function when_ (b: bool) (l: list code) : list code = if b then l else Nil
   function one (o: op) : list code = Cons (Op o) Nil
 
-  function regs_from (i n: int) : list int
-  axiom regs_from_def: forall i n. regs_from i n =
-    if i >= n then Nil else Cons i (regs_from (i + 1) n)
+  let rec ghost function regs_from (i n: int) : list int
+    variant { n - i }
+  = if i >= n then Nil else Cons i (regs_from (i + 1) n)
+
   function regs (ps: list param) : list int = regs_from 0 (length ps)
 
   function each (f: reg -> list code) (l: list int) : list code =
@@ -407,14 +474,22 @@ module Stub
     when_ q.free (one (New (Own i) Stub empty)) ++
     one (Set (C i) (cblocks ps i))
 
+  (** The C values of the selected parameters *)
+  function c_where (ps: list param) (x: sel) : set name =
+    fun n -> exists j. n = C j /\ in_range ps j /\ selected x (prm ps j)
+
+  (** A check of the input `i` reads its OCaml value. It can also read the C
+      value of another input, like the length in `caml_string_length(v) < len`.
+      Which one isn't in the contract, so this says all those it could be: the
+      inputs converted before the checks. If it fails it raises. *)
   function op_check_in (ps: list param) (i: reg) : list code =
-    when_ (boxed ps i) (one (Use (singleton (In i)))) ++
-    one (Use (fun n -> exists j. n = C j /\ in_range ps j /\
-                                 selected S_pre_input (prm ps j))) ++
+    one (Use (union (only (boxed ps i) (singleton (In i)))
+                    (c_where ps S_pre_input))) ++
     one May_raise ++ one (Mark (In_checked i))
 
+  (** The constructor can read the inputs (`init_args`) *)
   function op_init (c: contract) (ps: list param) (i: reg) : list code =
-    one (Use (fun n -> exists j. n = C j /\ in_range ps j /\ has_in ps j)) ++
+    one (Use (c_where ps S_input)) ++
     fresh c ps i ++ one (Set (C i) (cblocks ps i))
 
   (** What the C function reads *)
@@ -613,7 +688,7 @@ module Stub
       rooted = img (roots_of ps p);
       facts = empty;
       no_gc = p.noalloc;
-      released = false;
+      suspended = None;
     }
 
   (** The C function is called once, with the requested arguments, and its
