@@ -1,0 +1,654 @@
+(** # A safe stub: blocks are integers, names point to them
+
+A trial, to compare with `blocks.mlw`. A block is only an integer. `New` takes
+one that was never allocated (memory is infinite: an integer is never reused).
+What a block represents is a mapping from names to blocks, so two names can be
+one block: an alias is written, instead of being excluded by the way the blocks
+are named.
+
+- A block is valid or not, has an owner, and mentions other blocks.
+- A GC moves every block owned by OCaml, and collects those not reachable from
+  the roots. A block that mentions a moved block becomes invalid, unless the GC
+  updates it: a root, or a block owned by OCaml. C memory owned by blocks dies
+  when all these blocks are dead.
+- Use only what is valid and reaches only valid blocks.
+- What a GC keeps is valid and mentions only valid blocks.
+- Free only what the stub owns, and own nothing when leaving, by return or by
+  exception, nor when something can raise.
+- When the stub leaves, the OCaml caller can drop everything but the result: a
+  last GC checks that the result keeps alive what it mentions.
+- `noalloc`: no GC, no exception, no release of the runtime. The OCaml blocks
+  stay valid and are not moved, so they can be read.
+- Runtime released: a GC runs at the release, then nothing owned by OCaml can be
+  read and the runtime can't be used, until it is acquired back. *)
+
+module Memory
+
+  use int.Int
+  use set.Set
+  use option.Option
+
+  type block = int
+  type reg = int
+
+  type owner =
+    | Frame  (** a C variable of the stub, gone when it leaves *)
+    | Stub  (** C memory the stub must free or give away before leaving *)
+    | Ocaml  (** in the OCaml heap: moved and collected by the GC *)
+    | Of (set block)
+        (** C memory freed when these OCaml blocks are all dead: one finalizer,
+            or a reference count shared by several *)
+
+  (** What the stub knows. The first ones are C variables of the stub, the
+      others are what they can point to. *)
+  type name =
+    | C reg | In reg | Out reg | Loc reg | Tup | Msg
+    | MlIn reg | MlOut reg | MlC reg | MlLoc reg | MlTuple | MlMsg
+    | Own reg | Data reg
+
+  type fact =
+    | Called | Error_checked | Tuple_made
+    | In_checked reg | Out_checked reg | Made reg
+
+  type state = {
+    block_of : name -> option block;  (** `None`: not created *)
+    next : block;  (** from there, never allocated *)
+    owner : block -> option owner;  (** `None`: not allocated, or freed *)
+    valid : set block;
+    mentions : block -> set block;
+    rooted : set block;  (** registered with the GC *)
+    facts : set fact;
+    is_noalloc : bool;  (** `[@@noalloc]` *)
+    released : bool;  (** the runtime lock is released *)
+  }
+
+  predicate is_ocaml (s: state) (b: block) = s.owner b = Some Ocaml
+  predicate owned (s: state) (b: block) = s.owner b = Some Stub
+
+  (** The blocks of these names *)
+  function image (s: state) (l: set name) : set block =
+    fun b -> exists n. mem n l /\ s.block_of n = Some b
+
+  (** ## The GC *)
+
+  predicate scan_closed (s: state) (x: set block) =
+    subset s.rooted x /\
+    forall b m. mem b x -> mem m (s.mentions b) -> is_ocaml s m -> mem m x
+
+  predicate alive (s: state) (b: block) =
+    forall x. scan_closed s x -> mem b x
+
+  predicate survives (s: state) (b: block) =
+    match s.owner b with
+    | Some Ocaml -> alive s b
+    | Some (Of l) -> exists k. mem k l /\ alive s k
+    | _ -> true
+    end
+
+  predicate updated (s: state) (b: block) = mem b s.rooted \/ is_ocaml s b
+
+  predicate keeps_valid (s: state) (b: block) =
+    mem b s.valid /\ survives s b /\
+    (updated s b \/ forall m. mem m (s.mentions b) -> not is_ocaml s m)
+
+  predicate kept (s: state) (b: block) =
+    alive s b /\
+    (is_ocaml s b \/ (mem b s.rooted /\ exists m. mem m (s.mentions b)))
+
+  predicate gc_ok (s: state) =
+    forall b. kept s b ->
+      keeps_valid s b /\ forall m. mem m (s.mentions b) -> keeps_valid s m
+
+  function gc (s: state) : state = { s with valid = fun b -> keeps_valid s b }
+
+  (** ## The operations *)
+
+  type op =
+    | Use (set name)  (** read *)
+    | Set name (set name)  (** the block of the name now mentions these *)
+    | New name owner (set name)  (** a new block, for this name *)
+    | New_uninit name owner  (** not initialized yet (`caml_alloc_small`) *)
+    | Fill name (set name)  (** adds mentions, and makes the block valid *)
+    | Bind name name  (** an alias: `Bind n m`, `n` is now the block of `m` *)
+    | Give name (set name)  (** the stub gives its block to these blocks *)
+    | Destroy name  (** the destructor; accepts a block not created *)
+    | Forget name  (** the block was not created after all *)
+    | Gc
+    | Release  (** the runtime is released; a GC runs *)
+    | Acquire
+    | May_raise
+    | Mark fact
+    | Need fact
+    | Leave (option name)  (** return this, or raise *)
+
+  (** Valid, reaches only valid blocks, and when the runtime is released
+      nothing owned by OCaml *)
+  predicate readable (s: state) (b: block) =
+    mem b s.valid /\ not (s.released /\ is_ocaml s b)
+
+  predicate usable (s: state) (b: block) =
+    exists x. mem b x /\
+      forall y. mem y x -> readable s y /\ subset (s.mentions y) x
+
+  predicate usable_name (s: state) (n: name) =
+    exists b. s.block_of n = Some b /\ usable s b
+
+  predicate bound (s: state) (n: name) = s.block_of n <> None
+
+  predicate no_owned (s: state) = forall b. not owned s b
+
+  predicate leave_ok (s: state) (r: option name) =
+    not s.released /\ no_owned s /\
+    match r with
+    | None -> gc_ok { s with rooted = empty }
+    | Some n ->
+      usable_name s n /\ gc_ok { s with rooted = image s (singleton n) }
+    end
+
+  (** The operation can run in this state *)
+  predicate pre (o: op) (s: state) =
+    match o with
+    | Use l -> forall n. mem n l -> usable_name s n
+    | Set n _ | Fill n _ -> bound s n
+    | New n x _ | New_uninit n x ->
+      not bound s n /\ (x = Ocaml -> not s.released)
+    | Bind n m -> not bound s n /\ bound s m
+    | Give n _ -> exists b. s.block_of n = Some b /\ owned s b
+    | Destroy n ->
+      match s.block_of n with None -> true | Some b -> owned s b end
+    | Gc -> not s.is_noalloc /\ not s.released /\ gc_ok s
+    | Release -> not s.is_noalloc /\ not s.released /\ gc_ok s
+    | Acquire -> s.released
+    | May_raise -> not s.is_noalloc /\ not s.released /\ no_owned s
+    | Need c -> mem c s.facts
+    | Leave r -> leave_ok s r
+    | _ -> true
+    end
+
+  function set_block_of (s: state) (n: name) (x: option block) : name -> option block =
+    fun y -> if y = n then x else s.block_of y
+
+  function set_owner (s: state) (b: block) (x: option owner)
+      : block -> option owner =
+    fun y -> if y = b then x else s.owner y
+
+  function set_mentions (s: state) (b: block) (l: set block)
+      : block -> set block =
+    fun y -> if y = b then l else s.mentions y
+
+  (** A new block, always the next integer *)
+  function allocate (s: state) (n: name) (x: owner) (l: set block) : state =
+    { s with block_of = set_block_of s n (Some s.next); next = s.next + 1;
+             owner = set_owner s s.next (Some x);
+             mentions = set_mentions s s.next l }
+
+  function post (o: op) (s: state) : state =
+    match o with
+    | Set n l ->
+      match s.block_of n with
+      | Some b -> { s with valid = add b s.valid;
+                           mentions = set_mentions s b (image s l) }
+      | None -> s
+      end
+    | New n x l ->
+      let s' = allocate s n x (image s l) in
+      { s' with valid = add s.next s.valid }
+    | New_uninit n x -> allocate s n x empty
+    | Fill n l ->
+      match s.block_of n with
+      | Some b ->
+        { s with valid = add b s.valid;
+                 mentions = set_mentions s b (union (s.mentions b) (image s l)) }
+      | None -> s
+      end
+    | Bind n m -> { s with block_of = set_block_of s n (s.block_of m) }
+    | Give n l ->
+      match s.block_of n with
+      | Some b -> { s with owner = set_owner s b (Some (Of (image s l))) }
+      | None -> s
+      end
+    | Destroy n ->
+      match s.block_of n with
+      | Some b -> { s with valid = remove b s.valid;
+                           owner = set_owner s b None }
+      | None -> s
+      end
+    | Forget n ->
+      match s.block_of n with
+      | Some b -> { s with block_of = set_block_of s n None; valid = remove b s.valid;
+                           owner = set_owner s b None }
+      | None -> s
+      end
+    | Gc -> gc s
+    | Release -> { (gc s) with released = true }
+    | Acquire -> { s with released = false }
+    | Mark c -> { s with facts = add c s.facts }
+    | _ -> s
+    end
+
+  use list.List
+
+  (** A path that leaves the stub is checked with `Branch`, from where it
+      starts; the stub continues without it. *)
+  type code = Op op | Branch (list op)
+
+  predicate safe_ops (s: state) (l: list op) =
+    match l with
+    | Nil -> true
+    | Cons o r -> pre o s /\ safe_ops (post o s) r
+    end
+
+  function after_ops (s: state) (l: list op) : state =
+    match l with
+    | Nil -> s
+    | Cons o r -> after_ops (post o s) r
+    end
+
+  predicate safe (s: state) (l: list code) =
+    match l with
+    | Nil -> true
+    | Cons (Branch b) r -> safe_ops s b /\ safe s r
+    | Cons (Op o) r -> pre o s /\ safe (post o s) r
+    end
+
+  (** ## The rules give what they say *)
+
+  (** No block allocated from `next` *)
+  predicate fresh_from (s: state) = forall b. b >= s.next -> s.owner b = None
+
+  (** `New` gives a block that was not allocated, distinct from all the others;
+      it stays so *)
+  lemma new_is_fresh: forall s n x l b.
+    fresh_from s -> (post (New n x l) s).block_of n = Some b ->
+    s.owner b = None /\ forall m. s.block_of m = Some b -> s.next = b
+
+  lemma new_keeps_fresh: forall s n x l.
+    fresh_from s -> fresh_from (post (New n x l) s)
+
+  (** An alias: what happens to the block happens to both names *)
+  lemma bind_alias: forall s n m.
+    bound s m -> not bound s n ->
+    (post (Bind n m) s).block_of n = (post (Bind n m) s).block_of m
+
+  (** Freeing a block through one name refuses to free it through the other *)
+  lemma alias_double_free: forall s n m b.
+    n <> m -> s.block_of n = Some b -> s.block_of m = Some b ->
+    not pre (Destroy m) (post (Destroy n) s)
+
+  (** A free is not done twice, even with no other name *)
+  lemma double_free: forall s n b.
+    s.block_of n = Some b -> not pre (Destroy n) (post (Destroy n) s)
+
+  lemma gc_invalidates: forall s b m.
+    not mem b s.rooted -> not is_ocaml s b ->
+    mem m (s.mentions b) -> is_ocaml s m -> not mem b (gc s).valid
+
+  (** Runtime released: a root that mentions an OCaml block can't be read,
+      nor can an OCaml block *)
+  lemma released_ocaml: forall s b. s.released -> is_ocaml s b -> not usable s b
+
+  lemma released_mention: forall s b m.
+    s.released -> mem m (s.mentions b) -> is_ocaml s m -> not usable s b
+
+  (** Acquire gives back what the GC left valid, and nothing else *)
+  lemma acquire_valid: forall s.
+    (post Acquire (post Release s)).valid = (gc s).valid
+
+  (** C memory that mentions no OCaml block stays readable while released *)
+  let lemma released_c (s: state) (b: block)
+    requires { s.released /\ mem b s.valid /\ not is_ocaml s b }
+    requires { forall m. not mem m (s.mentions b) }
+    ensures { usable s b }
+  = assert { let x = singleton b in mem b x /\
+             forall y. mem y x -> readable s y /\ subset (s.mentions y) x }
+
+  (** A noalloc stub has no GC, so the OCaml values stay readable *)
+  lemma noalloc_no_gc: forall s. s.is_noalloc -> not pre Gc s /\ not pre Release s
+
+end
+
+(** ## The operations of each step of a plan *)
+
+module Stub
+
+  use int.Int
+  use list.List
+  use list.Mem as L
+  use list.Length
+  use list.NthNoOpt
+  use list.Append
+  use set.Set
+  use option.Option
+  use plan.OInt
+  use plan.Types
+  use Memory
+
+  predicate in_range (ps: list param) (i: reg) = 0 <= i < length ps
+  predicate boxed (ps: list param) (i: reg) = (prm ps i).input = Boxed_input
+  predicate has_in (ps: list param) (i: reg) = (prm ps i).input <> No_input
+  predicate produced (ps: list param) (i: reg) =
+    not has_in ps i /\ not (prm ps i).init
+  predicate locals (ps: list param) (i: reg) = (prm ps i).value_locals
+
+  (** What the C function does, not checked by camlid. *)
+  type contract = {
+    written : reg -> option name;
+      (** the OCaml value it writes for `i` (`output_value`): an existing one,
+          or `None`, a new one *)
+    keeps : reg -> set reg;
+      (** the output `i` keeps alive these inputs (`keep_alive`,
+          `with_parent`) *)
+  }
+
+  function only (b: bool) (x: set 'a) : set 'a = if b then x else empty
+  function when_ (b: bool) (l: list code) : list code = if b then l else Nil
+  function one (o: op) : list code = Cons (Op o) Nil
+
+  function regs_from (i n: int) : list int
+  axiom regs_from_def: forall i n. regs_from i n =
+    if i >= n then Nil else Cons i (regs_from (i + 1) n)
+  function regs (ps: list param) : list int = regs_from 0 (length ps)
+
+  function each (f: reg -> list code) (l: list int) : list code =
+    match l with Nil -> Nil | Cons i r -> f i ++ each f r end
+
+  (** The C memory and the OCaml blocks a C value mentions *)
+  function cblocks (ps: list param) (i: reg) : set name =
+    let q = prm ps i in
+    fun n -> n = Own i /\ q.free \/
+             n = Data i /\ q.owned_by_ml \/
+             n = MlIn i /\ q.ml_heap /\ boxed ps i \/
+             n = MlC i /\ q.ml_heap /\ produced ps i
+
+  function fresh (c: contract) (ps: list param) (i: reg) : list code =
+    let q = prm ps i in
+    when_ q.free (one (New (Own i) Stub empty)) ++
+    when_ q.owned_by_ml (one (New (Data i) Stub empty)) ++
+    when_ (q.ml_heap && produced ps i)
+      (match c.written i with
+       | Some n -> one (Bind (MlC i) n)
+       | None -> one (New (MlC i) Ocaml empty)
+       end)
+
+  function c_used (ps: list param) (i: reg) : set name =
+    add (C i) (only (locals ps i) (singleton (Loc i)))
+
+  function out_effects (ps: list param) (p: plan) (i: reg) : effects =
+    match p.result with
+    | One_unboxed j ->
+      if to_int j = i then { alloc = false; raising = false }
+      else (prm ps i).c2ml
+    | _ -> (prm ps i).c2ml
+    end
+
+  function op_ml2c (ps: list param) (i: reg) : list code =
+    let q = prm ps i in
+    when_ q.in_check (one (Need (In_checked i))) ++
+    when_ (boxed ps i) (one (Use (singleton (In i)))) ++
+    when_ q.ml2c.raising (one May_raise) ++
+    when_ q.ml2c.alloc (one Gc) ++
+    when_ q.free (one (New (Own i) Stub empty)) ++
+    one (Set (C i) (cblocks ps i))
+
+  function op_check_in (ps: list param) (i: reg) : list code =
+    when_ (boxed ps i) (one (Use (singleton (In i)))) ++
+    one (Use (fun n -> exists j. n = C j /\ in_range ps j /\
+                                 selected S_pre_input (prm ps j))) ++
+    one May_raise ++ one (Mark (In_checked i))
+
+  function op_init (c: contract) (ps: list param) (i: reg) : list code =
+    one (Use (fun n -> exists j. n = C j /\ in_range ps j /\ has_in ps j)) ++
+    fresh c ps i ++ one (Set (C i) (cblocks ps i))
+
+  (** What the C function reads *)
+  function call_args (ps: list param) (l: list t) : set name =
+    fun n -> exists i. L.mem i (ints l) /\
+      (n = C i /\ not produced ps i \/ n = Loc i /\ locals ps i)
+
+  (** When it writes an OCaml value it allocates, and is responsible for the
+      OCaml values it is given. *)
+  function c_args (ps: list param) (l: list t) : set name =
+    fun n -> exists i. L.mem i (ints l) /\
+      n = C i /\ not produced ps i /\ not (prm ps i).ml_heap
+
+  predicate writes_value (ps: list param) =
+    exists i. in_range ps i /\ produced ps i /\ (prm ps i).ml_heap
+
+  function op_produce (c: contract) (ps: list param) (i: reg) : list code =
+    when_ (produced ps i) (fresh c ps i ++ one (Set (C i) (cblocks ps i)))
+
+  function op_call (c: contract) (ps: list param) (l: list t) (release: bool)
+      : list code =
+    one (Use (call_args ps l)) ++
+    (if release
+     then one Release ++ one (Use (call_args ps l)) ++ one Acquire
+     else if writes_value ps
+     then one Gc ++ one (Use (c_args ps l))
+     else Nil) ++
+    each (op_produce c ps) (regs ps) ++ one (Mark Called)
+
+  (** An OCaml value written by the C function is converted by a copy of the
+      `value`: it is the same block. *)
+  function op_convert (c: contract) (ps: list param) (p: plan) (i: reg)
+      : list code =
+    let q = prm ps i in
+    let e = out_effects ps p i in
+    one (Use (c_used ps i)) ++
+    when_ e.raising (one May_raise) ++
+    when_ e.alloc (one Gc) ++
+    (if q.ml_heap /\ produced ps i
+     then one (Bind (MlOut i) (MlC i))
+     else one (New (MlOut i) Ocaml
+                 (fun n -> n = Data i /\ q.owned_by_ml \/
+                           exists j. mem j (c.keeps i) /\ n = MlIn j))) ++
+    when_ q.owned_by_ml (one (Give (Data i) (singleton (MlOut i)))) ++
+    one (Set (Out i) (singleton (MlOut i))) ++ one (Mark (Made i))
+
+  function op_c2ml (o: options) (c: contract) (ps: list param) (p: plan)
+      (i: reg) : list code =
+    one (Need Called) ++
+    when_ o.error (one (Need Error_checked)) ++
+    when_ (prm ps i).out_check (one (Need (Out_checked i))) ++
+    op_convert c ps p i
+
+  function op_free (i: reg) : list code = one (Destroy (Own i))
+
+  function op_cleanup (c: contract) (ps: list param) (p: plan) (cl: cleanup)
+      : list code =
+    one Gc ++ one (New MlMsg Ocaml empty) ++
+    one (Set Msg (singleton MlMsg)) ++
+    each (op_convert c ps p) (ints cl.moves) ++
+    each op_free (ints cl.frees) ++
+    one (Use (singleton Msg)) ++ one (Leave None)
+
+  function op_revert (ps: list param) (i: reg) : list code =
+    when_ (produced ps i)
+      (when_ (prm ps i).free (one (Forget (Own i))) ++
+       when_ (prm ps i).owned_by_ml (one (Forget (Data i))))
+
+  function op_check_out (o: options) (ps: list param) (i: reg) : list code =
+    when_ o.error (one (Need Error_checked)) ++
+    one (Need Called) ++ one (Use (c_used ps i)) ++
+    one (Mark (Out_checked i))
+
+  function op_need_made (ps: list param) (i: reg) : list code =
+    when_ ((prm ps i).output <> No_output) (one (Need (Made i)))
+
+  (** Only the plain operations: a `Branch` is never inside a `Branch` *)
+  function plain (l: list code) : list op =
+    match l with
+    | Nil -> Nil
+    | Cons (Op o) r -> Cons o (plain r)
+    | Cons (Branch _) r -> plain r
+    end
+
+  function ops_of_step (o: options) (c: contract) (ps: list param) (p: plan)
+      (x: step) : list code =
+    match x with
+    | Check_in l -> each (op_check_in ps) (ints l)
+    | Ml2c l -> each (op_ml2c ps) (ints l)
+    | Init l -> each (op_init c ps) (ints l)
+    | Call l release -> op_call c ps l release
+    | Check_error cl ->
+      one (Need Called) ++
+      Cons (Branch (plain (each (op_revert ps) (regs ps) ++
+                           op_cleanup c ps p cl))) Nil ++
+      one (Mark Error_checked)
+    | Check_out Nil _ -> Nil
+    | Check_out l cl ->
+      Cons (Branch (plain (each (op_check_out o ps) (ints l) ++
+                           op_cleanup c ps p cl))) Nil ++
+      each (op_check_out o ps) (ints l)
+    | C2ml l -> each (op_c2ml o c ps p) (ints l)
+    | Alloc_tuple l ->
+      one Gc ++ one (New_uninit MlTuple Ocaml) ++
+      one (Set Tup (singleton MlTuple)) ++
+      one (Use (fun n -> exists i. L.mem i (ints l) /\ n = Out i)) ++
+      one (Fill MlTuple (fun n -> exists i. L.mem i (ints l) /\ n = MlOut i)) ++
+      one (Mark Tuple_made)
+    | Free l -> each op_free (ints l)
+    | Return ->
+      each (op_need_made ps) (regs ps) ++
+      (match p.result with
+       | Tuple _ -> one (Need Tuple_made) ++ one (Leave (Some Tup))
+       | One_value i -> one (Leave (Some (Out (to_int i))))
+       | _ -> one (Leave None)
+       end)
+    end
+
+  function ops_of_plan (o: options) (c: contract) (ps: list param) (p: plan)
+      (l: list step) : list code =
+    match l with
+    | Nil -> Nil
+    | Cons x r -> ops_of_step o c ps p x ++ ops_of_plan o c ps p r
+    end
+
+  function roots_of (ps: list param) (p: plan) : set name =
+    fun n -> match n with
+      | In i -> L.mem i (ints p.roots.inputs)
+      | Out i -> L.mem i (ints p.roots.outputs)
+      | Tup -> p.roots.ret
+      | Msg -> p.roots.err
+      | C i -> L.mem i (ints p.roots.c_values) /\ (prm ps i).ml_heap
+      | Loc i -> L.mem i (ints p.roots.c_values) /\ locals ps i
+      | _ -> false
+      end
+
+  (** ## The hypotheses on the blocks at the start: all the aliasing allowed
+
+      Each C variable of the stub is a distinct block: the printer gives it its
+      own C local or formal parameter, `In i` included. The OCaml arguments can
+      be the same block (`f x x`), then with the same C memory. An argument
+      can't be C memory, and nothing else exists yet. *)
+
+  predicate is_var (n: name) =
+    match n with
+    | C _ | In _ | Out _ | Loc _ | Tup | Msg -> true
+    | _ -> false
+    end
+
+  predicate start_ok (ps: list param) (a: name -> option block) (n0: block) =
+    (forall n. is_var n -> a n <> None) /\
+    (forall n m b. is_var n -> a n = Some b -> a m = Some b -> n = m) /\
+    (forall i. a (MlIn i) <> None <-> in_range ps i /\ boxed ps i) /\
+    (forall i. a (MlLoc i) <> None <-> in_range ps i /\ locals ps i) /\
+    (forall i. a (Data i) <> None <->
+       in_range ps i /\ boxed ps i /\ (prm ps i).owned_by_ml) /\
+    (forall i j. a (MlIn i) = a (MlIn j) -> a (Data i) <> None ->
+       a (Data i) = a (Data j)) /\
+    (forall i j. a (Data i) <> None -> a (Data i) <> a (MlIn j)) /\
+    (forall i j. a (Data i) <> None -> a (Data i) <> a (MlLoc j)) /\
+    (forall i. a (Own i) = None /\ a (MlOut i) = None /\ a (MlC i) = None) /\
+    a MlTuple = None /\ a MlMsg = None /\
+    (forall n b. a n = Some b -> b < n0)
+
+  function start (ps: list param) (p: plan) (a: name -> option block)
+      (n0: block) : state =
+    let img = fun (l: set name) -> fun b -> exists n. mem n l /\ a n = Some b in
+    {
+      block_of = a;
+      next = n0;
+      owner = (fun b ->
+        if exists n. is_var n /\ a n = Some b then Some Frame
+        else if exists i. a (MlIn i) = Some b \/ a (MlLoc i) = Some b
+        then Some Ocaml
+        else if exists i. a (Data i) = Some b
+        then Some (Of (fun k -> exists i. a (MlIn i) = Some k /\
+                                          a (Data i) = Some b))
+        else None);
+      valid = (fun b ->
+        exists n. a n = Some b /\
+          match n with
+          | In i -> in_range ps i /\ has_in ps i
+          | Loc i -> in_range ps i /\ locals ps i
+          | Out i -> L.mem i (ints p.roots.outputs)
+          | Tup -> p.roots.ret
+          | Msg -> p.roots.err
+          | MlIn _ | MlLoc _ | Data _ -> true
+          | _ -> false
+          end);
+      mentions = (fun b -> fun m ->
+        exists i.
+          (a (In i) = Some b /\ a (MlIn i) = Some m) \/
+          (a (Loc i) = Some b /\ a (MlLoc i) = Some m) \/
+          (a (MlIn i) = Some b /\ a (Data i) = Some m));
+      rooted = img (roots_of ps p);
+      facts = empty;
+      is_noalloc = p.noalloc;
+      released = false;
+    }
+
+  (** The C function is called once, with the requested arguments, and its
+      result is checked when asked *)
+  predicate shape (o: options) (call: list t) (called checked: bool)
+      (l: list step) =
+    match l with
+    | Nil -> false
+    | Cons (Call l' release) r ->
+      not called /\ l' = call /\ release = o.release_lock /\
+      shape o call true checked r
+    | Cons (Check_error _) r -> called /\ shape o call called true r
+    | Cons Return r -> r = Nil /\ called /\ (o.error -> checked)
+    | Cons _ r -> shape o call called checked r
+    end
+
+  (** ## A safe plan: for all the aliasing allowed *)
+
+  predicate safe_plan (c: contract) (ps: list param) (o: options)
+      (call: list t) (p: plan) =
+    (p.noalloc -> forall n. not mem n (roots_of ps p)) /\
+    (o.want_noalloc = Some true -> p.noalloc) /\
+    (o.want_noalloc = Some false -> not p.noalloc) /\
+    shape o call false false p.steps /\
+    forall a n0. start_ok ps a n0 ->
+      safe (start ps p a n0) (ops_of_plan o c ps p p.steps)
+
+end
+
+(** ## Checks of the hypotheses, on the two kinds of alias of an argument *)
+
+module Checks
+
+  use set.Set
+  use option.Option
+  use list.List
+  use Memory
+
+  (** `f x x`, with the runtime held: the two arguments are one block, and a
+      GC keeps it if either is a root *)
+  let lemma same_argument_alive (s: state) (x y: name) (b: block)
+    requires { s.block_of x = Some b /\ s.block_of y = Some b }
+    requires { mem b s.rooted }
+    ensures { alive s b }
+  = ()
+
+  (** The result written by the C function is its argument: `Bind` gives one
+      block, valid and alive through the root *)
+  let lemma returned_argument (s: state) (i: reg) (b: block)
+    requires { s.block_of (MlIn i) = Some b /\ s.block_of (MlC i) = None }
+    requires { mem b s.valid }
+    ensures { let s' = post (Bind (MlC i) (MlIn i)) s in
+              s'.block_of (MlC i) = Some b /\ mem b s'.valid }
+  = ()
+
+end
