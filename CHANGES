@@ -1,4 +1,4 @@
-## unreleased ##
+## 0.3 (unreleased) ##
     - fix: a function with an output_value was declared [@@noalloc] when its
       conversions didn't allocate, although the C function allocates the value:
       it corrupted the OCaml heap. Such a stub is no longer noalloc
@@ -44,7 +44,9 @@
       in Why3 against a specification of the memory as blocks
       (proof/spec.mlw: no leak, no double free, no use after free, GC
       roots, noalloc, runtime lock, no exception while the stub owns
-      memory) and extracted
+      memory) and extracted. proof/memory.mlw is a lower-level model of
+      the memory (blocks, aliases, GC, runtime lock), a proof of concept
+      that the schedule proof doesn't use yet
     - Ty.checks: conversions don't raise anymore, a type that refuses
       values has a C check, run before any conversion for the inputs, or
       after the call with a cleanup for the outputs (string_nt, enum,
