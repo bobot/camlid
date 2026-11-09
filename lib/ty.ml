@@ -45,7 +45,11 @@ type effects = Plan.effects = {
 }
 (** The effects of a conversion on the OCaml runtime *)
 
-let pure = Plan.pure
+(** No effect on the OCaml runtime: no allocation in the OCaml heap (so no GC),
+    no exception, as for a [[@@noalloc]] external. C allocations ([malloc]) are
+    allowed. *)
+let noalloc = Plan.noalloc
+
 let allocates = { alloc = true; raising = false }
 let may_raise = { alloc = false; raising = true }
 

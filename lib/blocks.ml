@@ -341,7 +341,7 @@ let of_plan ?(keeps = fun _ -> []) ~(options : options) (ps : param list)
   in
   let c_used i = c i :: (if locals i then [ loc i ] else []) in
   let out_effects i =
-    match p.result with One_unboxed j when j = i -> pure | _ -> ps.(i).c2ml
+    match p.result with One_unboxed j when j = i -> noalloc | _ -> ps.(i).c2ml
   in
   let ml2c i =
     let q = ps.(i) in

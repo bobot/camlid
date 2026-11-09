@@ -103,7 +103,7 @@ let func ?noalloc ?release_lock ?error ?ml ?result ?ignored_result ?call_params
             routput = PONone;
             rc;
             rfree = Option.map bind' rty.cty.free;
-            rc2ml = Ty.pure;
+            rc2ml = Ty.noalloc;
             rowned_by_ml = false;
             rcheck = [];
           }

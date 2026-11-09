@@ -4,7 +4,7 @@
 open Camlid
 open Plan
 
-let pure = { alloc = false; raising = false }
+let noalloc = { alloc = false; raising = false }
 let allocates = { alloc = true; raising = false }
 
 let base =
@@ -16,8 +16,8 @@ let base =
     free = false;
     value_locals = false;
     ml_heap = false;
-    ml2c = pure;
-    c2ml = pure;
+    ml2c = noalloc;
+    c2ml = noalloc;
     in_check = false;
     out_check = false;
   }

@@ -79,9 +79,9 @@ let builtin_mltypes ~unbox_attribute ~unbox_version ?u_type ~c_type ~c2ml ~ml2c
       };
     v;
     contract =
-      Ty.copied ~ml2c:Ty.pure
+      Ty.copied ~ml2c:Ty.noalloc
         ~c2ml:
-          (if String.starts_with ~prefix:"Val_" c2ml then Ty.pure
+          (if String.starts_with ~prefix:"Val_" c2ml then Ty.noalloc
            else Ty.allocates)
         ();
     checks = Ty.no_checks;
@@ -123,7 +123,7 @@ let string_nt ~prefix ~owned =
         c;
       };
     v;
-    contract = Ty.copied ~ml2c:Ty.pure ~c2ml:Ty.allocates ();
+    contract = Ty.copied ~ml2c:Ty.noalloc ~c2ml:Ty.allocates ();
     checks =
       {
         ml2c_checks =
@@ -181,7 +181,7 @@ let string_fixed_length ?(init = true) ?(owned = true) len =
         c;
       };
     v;
-    contract = Ty.copied ~ml2c:Ty.pure ~c2ml:Ty.allocates ();
+    contract = Ty.copied ~ml2c:Ty.noalloc ~c2ml:Ty.allocates ();
     checks =
       {
         ml2c_checks =
@@ -237,7 +237,7 @@ let string_length ?(owned = true) () =
         c;
       };
     v;
-    contract = Ty.copied ~ml2c:Ty.pure ~c2ml:Ty.allocates ();
+    contract = Ty.copied ~ml2c:Ty.noalloc ~c2ml:Ty.allocates ();
     checks = Ty.no_checks;
   }
 
@@ -637,8 +637,8 @@ let use_new_param_only_in_call param =
         pinit_expr = [];
         pfree = None;
         pml_heap = false;
-        pml2c = Ty.pure;
-        pc2ml = Ty.pure;
+        pml2c = Ty.noalloc;
+        pc2ml = Ty.noalloc;
         powned_by_ml = false;
         pcheck_in = [];
         pcheck_out = [];
@@ -674,7 +674,7 @@ let abstract ?init ?get ?set ~icty ~ml ~cty () =
   let c' = Var.mk "c" (expr "%a *" pp_expr cty) in
   {
     v;
-    contract = Ty.copied ~ml2c:Ty.pure ~c2ml:Ty.allocates ();
+    contract = Ty.copied ~ml2c:Ty.noalloc ~c2ml:Ty.allocates ();
     checks = Ty.no_checks;
     mlty = e_def @@ mlabstract ~keep_name:true ml;
     conv =
@@ -847,7 +847,7 @@ let custom_gen ?(ml_extra = fun _ -> []) ?init ?clear ?hash ?compare ?mem ?get
         c;
       };
     v;
-    contract = Ty.owned_by_ml ~ml2c:Ty.pure ~c2ml:Ty.allocates ();
+    contract = Ty.owned_by_ml ~ml2c:Ty.noalloc ~c2ml:Ty.allocates ();
     checks = Ty.no_checks;
   }
 
@@ -1151,13 +1151,13 @@ let param ?input_label ?(binds = []) ?(input = false) ?(output = false)
   let pfree = Option.map bind pty.cty.free in
   let pml_heap = used_in_call && pty.contract.ml_heap in
   let pml2c =
-    if not input then Ty.pure
+    if not input then Ty.noalloc
     else
       match pty.conv with
-      | Unboxable _ -> Ty.pure
+      | Unboxable _ -> Ty.noalloc
       | Boxed _ -> pty.contract.ml2c
   in
-  let pc2ml = if not output then Ty.pure else pty.contract.c2ml in
+  let pc2ml = if not output then Ty.noalloc else pty.contract.c2ml in
   let bind_check bind (ch : check) = { ch with cond = bind ch.cond } in
   let pcheck_in =
     if input then List.map (bind_check bind) pty.checks.ml2c_checks else []
@@ -1201,7 +1201,7 @@ let result_param result =
     pinit = None;
     pinit_expr = [ (result.rc, None) ];
     pml_heap = false;
-    pml2c = Ty.pure;
+    pml2c = Ty.noalloc;
     pc2ml = result.rc2ml;
     powned_by_ml = result.rowned_by_ml;
     pcheck_in = [];
@@ -2240,7 +2240,7 @@ let value =
       v;
       (* An output comes from C code, which allocated it: the stub can't be
          noalloc. The conversions themselves only copy the [value]. *)
-      contract = Ty.copied ~ml_heap:true ~ml2c:Ty.pure ~c2ml:Ty.allocates ();
+      contract = Ty.copied ~ml_heap:true ~ml2c:Ty.noalloc ~c2ml:Ty.allocates ();
       checks = Ty.no_checks;
     }
 
@@ -2365,7 +2365,7 @@ let bigarray_array1_aux ~managed ~kind ~cty ~mlty ~mlelt () =
         c;
       };
     v;
-    contract = Ty.owned_by_ml ~ml2c:Ty.pure ~c2ml:Ty.allocates ();
+    contract = Ty.owned_by_ml ~ml2c:Ty.noalloc ~c2ml:Ty.allocates ();
     checks = Ty.no_checks;
   }
 
@@ -2491,7 +2491,7 @@ let parent ?clear ~ml ~cty () =
           c;
         };
       v;
-      contract = Ty.owned_by_ml ~ml2c:Ty.pure ~c2ml:Ty.allocates ();
+      contract = Ty.owned_by_ml ~ml2c:Ty.noalloc ~c2ml:Ty.allocates ();
       checks = Ty.no_checks;
     }
   in
@@ -2543,7 +2543,7 @@ let child (parent : parent) ?clear ?clear_with_parent ~ml ~cty () =
           c;
         };
       v;
-      contract = Ty.owned_by_ml ~ml2c:Ty.pure ~c2ml:Ty.allocates ();
+      contract = Ty.owned_by_ml ~ml2c:Ty.noalloc ~c2ml:Ty.allocates ();
       checks = Ty.no_checks;
     }
   in
@@ -2619,7 +2619,7 @@ let enum ?(c = "int") name constrs =
         c = cv;
       };
     v;
-    contract = Ty.copied ~ml2c:Ty.pure ~c2ml:Ty.pure ();
+    contract = Ty.copied ~ml2c:Ty.noalloc ~c2ml:Ty.noalloc ();
     checks =
       {
         ml2c_checks = [];
@@ -2698,7 +2698,7 @@ let flags ?(c = "int") name constrs =
         c = cv;
       };
     v;
-    contract = Ty.copied ~ml2c:Ty.pure ~c2ml:Ty.allocates ();
+    contract = Ty.copied ~ml2c:Ty.noalloc ~c2ml:Ty.allocates ();
     checks = Ty.no_checks;
   }
 

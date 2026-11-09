@@ -10,7 +10,8 @@
 
 include Plan_gen
 
-let pure = { alloc = false; raising = false }
+(** No effect on the OCaml runtime, see {!Ty.noalloc} *)
+let noalloc = { alloc = false; raising = false }
 
 let message ~name = function
   | Bad_call ->
