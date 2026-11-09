@@ -91,6 +91,11 @@ module Proof
     roots_ok ps o p /\
     result_ok ps p.result
 
+  (** The conversion of an output doesn't raise *)
+  lemma out_not_raising: forall ps o call p i.
+    hyp ps o call p -> in_range ps i -> has_output (prm ps i) ->
+    not (out_effects ps p i).raising
+
   (** ## Phases *)
 
   type cs =
@@ -268,11 +273,20 @@ module Proof
                 tup msg (post_action ps p (act_ml2c ps i) s) }
   = let q = prm ps i in
     let a = act_ml2c ps i in
+    assert { reg_ok ps hv (f i) i s };
+    assert { q.input = Boxed_input ->
+               mem (In i) s.valid /\ forall b. mem b (s.points (In i)) -> live s b };
+    assert { q.ml2c.raising -> forall b. not owned s b };
+    assert { q.ml2c.raising -> refers_kept s };
     let ghost hv0 = hv && not q.ml2c.alloc in
     let ghost s0 = if q.ml2c.alloc then gc ps p s else s in
     if q.ml2c.alloc then gc_inv ps o call p f hv tup msg s;
     assert { inv ps f hv0 tup msg s0 };
     let ghost s1 = post_action ps p a s in
+    assert { forall v. v <> C i -> s1.points v = s0.points v };
+    assert { forall v. v <> C i -> mem v s1.valid <-> mem v s0.valid };
+    assert { forall b. b <> Own i -> s1.st b = s0.st b };
+    assert { subset s0.done_checks s1.done_checks };
     assert { forall j. in_range ps j -> j <> i ->
                reg_ok ps hv0 (f j) j s0 -> reg_ok ps hv0 (f j) j s1 };
     assert { mem (C i) s1.valid /\
@@ -281,9 +295,6 @@ module Proof
     assert { not q.free -> s1.st (Own i) = Unborn };
     assert { q.owned_by_ml -> boxed_input q };
     assert { s1.st (Data i) = s.st (Data i) };
-    assert { forall v. v <> C i -> s1.points v = s0.points v };
-    assert { forall v. v <> C i -> mem v s1.valid <-> mem v s0.valid };
-    assert { forall b. b <> Own i -> s1.st b = s0.st b };
     assert { reg_ok ps true { (f i) with cv = acq_in q } i s1 };
     assert { glob ps tup msg s0 };
     assert { forall b. b <> Own i -> s1.refers b = s0.refers b };
@@ -293,6 +304,10 @@ module Proof
     assert { forall b c. live s1 b -> mem c (s1.refers b) ->
                b <> Own i /\ live s0 b /\ s0.st c = Live (Kept b) /\ c <> Own i };
     assert { forall b. owned s1 b -> b = Own i \/ owned s0 b };
+    assert { s1.points Tup = s0.points Tup /\ (mem Tup s1.valid <-> mem Tup s0.valid) /\
+             s1.st MlTuple = s0.st MlTuple };
+    assert { s1.points Msg = s0.points Msg /\ (mem Msg s1.valid <-> mem Msg s0.valid) /\
+             s1.st MlMsg = s0.st MlMsg };
     assert { glob ps tup msg s1 }
 
   lemma output_owned: forall ps o call p i. hyp ps o call p ->
@@ -928,8 +943,12 @@ module Proof
                mem v s.valid /\ forall b. mem b (s.points v) -> live s b };
     assert { rl -> forall i. L.mem i (ints call) ->
                not (prm ps i).ml_heap /\ not (prm ps i).value_locals };
+    assert { forall i b. L.mem i (ints call) -> not mem i (produced ps) ->
+               not heap_input (prm ps i) ->
+               mem b (s.points (C i)) -> mem b (cblocks ps i) };
     assert { rl -> forall i b. L.mem i (ints call) -> not mem i (produced ps) ->
                mem b (s.points (C i)) -> not is_ml b };
+    assert { rl -> forall i. L.mem i (ints call) -> not locals ps i };
     assert { rl -> forall v b. mem v a.used -> mem b (s.points v) -> not is_ml b };
     assert { forall b. mem b a.creates -> s.st b = Unborn };
     assert { forall v. mem v a.defines ->
@@ -1451,11 +1470,18 @@ module Schedule
               end }
   = if not fits zero ps then Error Too_many_params
     else if not valid_call ps call then Error Bad_call
-    else if exists_sel S_input_output_owned ps then Error Input_output_owned
-    else if exists_sel S_owned_unused ps then Error Owned_unused
-    else if exists_sel S_raising_owning_input ps then
-      Error Raising_owning_input
-    else if exists_sel S_raising_output ps then Error Raising_output
+    else if exists_sel S_input_output_owned ps then begin
+      assert { error_cond ps o call Input_output_owned };
+      Error Input_output_owned end
+    else if exists_sel S_owned_unused ps then begin
+      assert { error_cond ps o call Owned_unused };
+      Error Owned_unused end
+    else if exists_sel S_raising_owning_input ps then begin
+      assert { error_cond ps o call Raising_owning_input };
+      Error Raising_owning_input end
+    else if exists_sel S_raising_output ps then begin
+      assert { error_cond ps o call Raising_output };
+      Error Raising_output end
     else if o.release_lock &&
             (heap_in_call ps call || exists_sel S_heap_input ps) then begin
       assert { error_cond ps o call Lock_ml_heap };
