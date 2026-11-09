@@ -165,7 +165,7 @@ let make =
 
 When the conversions don't allocate in the OCaml heap (scalars, inputs owned by OCaml, ...), there is no check, and there is at most one result, the external is declared [[@@noalloc]] and the stub doesn't register its values with [CAMLparam]. Use [~noalloc:false] if the C function calls the OCaml runtime itself.
 
-The order of the steps of a stub, the values registered with the GC and these decisions are made by {!Camlid.Plan.schedule}, which is proved in Why3 to be memory safe ([proof/plan.mlw]), provided that each type matches its {!type:Camlid.Ty.contract}.
+The order of the steps of a stub, the values registered with the GC and these decisions are made by {!Camlid.Plan.schedule}, which is proved in Why3 to be memory safe ([proof/plan.mlw]), provided that each type matches its {!type:Camlid.Ty.contract} and that the too high level formalization of C is correct. It is a work in progress.
 
 [~release_lock:true] releases the runtime lock during the call, so other threads can run. The arguments of the C function are C values that don't point into the OCaml heap, except for [value] types for which it is refused. The stub first runs the pending signal handlers and finalisers, which can raise, when it owns nothing yet; a signal arriving later is handled after the stub returns.
 
