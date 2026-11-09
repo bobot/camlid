@@ -1,4 +1,4 @@
-## 0.3 (unreleased) ##
+## 0.3 ##
     - fix: string_len (input_string) generated free() on the struct
       instead of its buffer, which didn't compile
     - the generated custom_operations are static: two generated stub files
