@@ -59,7 +59,7 @@ In the dune file of the library, generate and compile the stubs:
  (foreign_stubs
   (language c)
   (names mylib_stub alib)
-  (flags -Werror=implicit-function-declaration -std=c11)))
+  (flags :standard -Werror=implicit-function-declaration -std=c11)))
 ]}
 
 The [(promote (until-clean))] mode lets you see the generated files in the source directory. Don't use [(mode promote)]: the files would not be regenerated in release mode, and they depend on the version of OCaml. Camlid is not a dependency of the library.
@@ -92,7 +92,7 @@ For copied types with allocated memory (strings and arrays), [~owned:false] remo
 Many C libraries (GMP, FLINT, ...) handle their types like C++ classes, with a constructor, a destructor and a copy function. {!val:Camlid.Helper.value_type} binds such a type once, for the three ways a C function can use it:
 
 {[
-(* void vec_init(vec *); void vec_clear(vec *); void vec_set(vec *dst, vec *src); *)
+(* void vec_init(vec *v); void vec_clear(vec *v); void vec_set(vec *dst, vec *src); *)
 let vec =
   value_type ~init:"vec_init" ~clear:"vec_clear" ~copy:"vec_set"
     ~ml:"vec" ~c:"vec" ()
@@ -136,7 +136,7 @@ let zero = func "mat_zero" ~ml:"zero" [ output mat.t; rows; cols ]
 A C value often depends on another one: a statement on its database, a node on its manager. {!Camlid.Helper.keep_alive} stores the OCaml value of the parent with the child, so the parent stays alive while the child is used. When the parent is also needed to destroy the child, {!Camlid.Helper.parent} and {!Camlid.Helper.child} count the references to the parent, which is destroyed after its last child:
 
 {[
-(* node *node_new(db *, intptr_t); void node_free(db *, node *); *)
+(* node *node_new(db *d, intptr_t i); void node_free(db *d, node *n); *)
 let db, db_parent = parent ~clear:"db_close" ~ml:"db" ~c:"db *" ()
 let node = child db_parent ~clear_with_parent:"node_free" ~ml:"node" ~c:"node *" ()
 
@@ -182,9 +182,10 @@ The order of the steps of a stub, the values registered with the GC and these de
 When the C function takes the length of a string or an array as a separate argument, the helpers return two parameters, which are used in the same function:
 
 {[
-(* void f(char *, size_t); *)
-let a = string_len () in
-func "f" [ a.t; a.len ]
+(* void f(char *s, size_t len); *)
+let f =
+  let a = string_len () in
+  func "f" [ a.t; a.len ]
 ]}
 
 Only [a.t] is an argument of the OCaml function. {!Camlid.Helper.string_len_ref} gives [char **] and [size_t *] to the C function, and {!Camlid.Helper.fixed_length_string} allocates the string with a length given as an OCaml argument.

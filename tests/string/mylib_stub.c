@@ -108,4 +108,30 @@ extern value camlid_stub_f_print_n_byte(value string,
   return camlid_stub_f_print_n(string, string_len1);
   
 }
+struct camlid_string_s { char* t; size_t len; };
+typedef struct camlid_string_s camlid_string_length;
+static void camlid_ml2c3(value * v, camlid_string_length * c){
+  c->len=caml_string_length(*v);
+  c->t=malloc(c->len);
+  memcpy(c->t,String_val(*v),c->len);
+  }
+extern value camlid_stub_f_len(value string){
+  camlid_string_length string1 = ((camlid_string_length) { 0 });
+  camlid_ml2c3(&string, &string1);
+  f_len(string1.t, string1.len);
+  free(string1.t);
+  return Val_unit;
+}
+static void camlid_c2ml1(value * v, camlid_string_length * c){
+  *v = caml_alloc_string(c->len);memcpy(&Byte(*v,0),c->t,c->len);
+  }
+extern value camlid_stub_f_out_len(void){
+  CAMLparam0();
+  CAMLlocal1(string_r);
+  camlid_string_length string = ((camlid_string_length) { 0 });
+  f_out_len(&(string.t), &(string.len));
+  camlid_c2ml1(&string_r, &string);
+  free(string.t);
+  CAMLreturn(string_r);
+}
 

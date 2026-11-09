@@ -5,3 +5,5 @@ string contains null bytes
 Hello!Hel
 [abc]
 string shorter than its length
+ab0cd
+"a\000bc"

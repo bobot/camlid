@@ -20,3 +20,5 @@ external f_print_n:
   (int [@untagged]) ->
   unit
   = "camlid_stub_f_print_n_byte" "camlid_stub_f_print_n"
+external f_len: string -> unit = "camlid_stub_f_len" [@@noalloc]
+external f_out_len: unit -> string = "camlid_stub_f_out_len"

@@ -1,0 +1,44 @@
+; The OCaml examples of the documentation are extracted, compiled and run:
+; running them generates the stubs, which checks that camlid accepts them.
+; The generated code is compiled against lib.h, the C functions of the
+; examples as their comments describe them.
+
+(executable
+ (name extract)
+ (modules extract))
+
+(rule
+ (with-stdout-to
+  doc_examples.ml
+  (progn
+   (run %{exe:extract.exe} %{dep:../../doc/index.mld})
+   (cat %{dep:footer.ml.txt}))))
+
+(executable
+ (name doc_examples)
+ (modules doc_examples)
+ (libraries camlid))
+
+(rule
+ (targets mylib.ml mylib_stub.c examples.ml examples_stub.c)
+ (action
+  (run %{exe:doc_examples.exe})))
+
+(library
+ (name doc_generated)
+ (modules mylib examples)
+ (foreign_stubs
+  (language c)
+  (names mylib_stub examples_stub)
+  (flags
+   :standard
+   -Wall
+   -Werror
+   -Wconversion
+   -Wstrict-prototypes
+   --pedantic-errors
+   -std=c11)))
+
+(rule
+ (alias runtest)
+ (action (progn)))

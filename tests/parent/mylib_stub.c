@@ -16,7 +16,7 @@ static void camlid_finalize(db* * i){ db_close(*i); }
 static void camlid_finalize_op(value v){
   camlid_finalize(((db* *) Data_custom_val(v)));
   }
-struct custom_operations camlid_cops = {
+static struct custom_operations camlid_cops = {
 NULL,
 camlid_finalize_op,
 custom_compare_default,
@@ -48,7 +48,7 @@ static void camlid_finalize1(stmt* * i){ stmt_free(*i); }
 static void camlid_finalize_op1(value v){
   camlid_finalize1(((stmt* *) Data_custom_val(v)));
   }
-struct custom_operations camlid_cops1 = {
+static struct custom_operations camlid_cops1 = {
 NULL,
 camlid_finalize_op1,
 custom_compare_default,
@@ -107,7 +107,7 @@ static void camlid_release(camlid_rc * r){
 static void camlid_finalize_op2(value v){
   camlid_release((*((camlid_rc **) Data_custom_val(v))));
   }
-struct custom_operations camlid_cops2 = {
+static struct custom_operations camlid_cops2 = {
 NULL,
 camlid_finalize_op2,
 custom_compare_default,
@@ -144,7 +144,7 @@ static void camlid_finalize_op3(value v){
   node_free(s->parent->ptr, s->ptr);
   camlid_release(s->parent);
   }
-struct custom_operations camlid_cops3 = {
+static struct custom_operations camlid_cops3 = {
 NULL,
 camlid_finalize_op3,
 custom_compare_default,

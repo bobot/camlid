@@ -1,4 +1,11 @@
 ## 0.3 (unreleased) ##
+    - fix: string_len (input_string) generated free() on the struct
+      instead of its buffer, which didn't compile
+    - the generated custom_operations are static: two generated stub files
+      can be linked in the same library
+    - the OCaml examples of the documentation are compiled and run in
+      tests/doc, and their stubs compiled against the C prototypes given in
+      their comments
     - fix: a function with an output_value was declared [@@noalloc] when its
       conversions didn't allocate, although the C function allocates the value:
       it corrupted the OCaml heap. Such a stub is no longer noalloc

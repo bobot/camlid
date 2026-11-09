@@ -16,5 +16,9 @@ let () =
          fixed_length_string ~input:true ~output:false ~len_used_in_call:true ()
        in
        func "f_print_n" [ str.t; str.len ]);
+      (let str = string_len () in
+       func "f_len" [ str.t; str.len ]);
+      (let str = string_len_ref () in
+       func "f_out_len" [ str.t; str.len ]);
     ]
     ~headers:[ "./lib.h" ]

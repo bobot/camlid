@@ -26,7 +26,7 @@ static int camlid_compare_op(value v1, value v2){
 static intnat camlid_hash_op(value v){
   return vec_hash(*((vec* *) Data_custom_val(v)));;
   }
-struct custom_operations camlid_cops = {
+static struct custom_operations camlid_cops = {
 NULL,
 camlid_finalize_op,
 camlid_compare_op,
@@ -197,7 +197,7 @@ static void camlid_init2(size_t p, vec* * c){
   *c = malloc(sizeof(vec));
   vec_init_n(*c, p);
   }
-struct custom_operations camlid_cops1 = {
+static struct custom_operations camlid_cops1 = {
 NULL,
 camlid_finalize_op,
 custom_compare_default,

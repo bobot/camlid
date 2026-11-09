@@ -15,7 +15,7 @@ static void caml_cudd_finalize(DdManager* * i){ Cudd_Quit(*i); }
 static void caml_cudd_finalize_op(value v){
   caml_cudd_finalize(((DdManager* *) Data_custom_val(v)));
   }
-struct custom_operations caml_cudd_cops = {
+static struct custom_operations caml_cudd_cops = {
 NULL,
 caml_cudd_finalize_op,
 custom_compare_default,
@@ -38,7 +38,7 @@ extern value caml_cudd_stub_init(void){
 static void caml_cudd_finalize_op1(value v){
   Cudd_RecursiveDeref(((caml_cudd_bdd_wrapper1 *) Data_custom_val(v))->manager,((caml_cudd_bdd_wrapper1 *) Data_custom_val(v))->ptr);
   }
-struct custom_operations caml_cudd_cops1 = {
+static struct custom_operations caml_cudd_cops1 = {
 NULL,
 caml_cudd_finalize_op1,
 custom_compare_default,

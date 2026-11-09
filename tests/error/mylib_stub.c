@@ -58,7 +58,7 @@ static void camlid_finalize_op(value v){
   if(*((vec* *) Data_custom_val(v)) != NULL){
   camlid_finalize(((vec* *) Data_custom_val(v))); }
   }
-struct custom_operations camlid_cops = {
+static struct custom_operations camlid_cops = {
 NULL,
 camlid_finalize_op,
 custom_compare_default,

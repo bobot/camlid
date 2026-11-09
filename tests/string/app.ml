@@ -13,3 +13,6 @@ let () =
   match Mylib.f_print_n "ab" 1000 with
   | () -> print_endline "no error"
   | exception Invalid_argument msg -> print_endline msg
+
+let () = Mylib.f_len "ab\000cd"
+let () = Printf.printf "%S\n" (Mylib.f_out_len ())

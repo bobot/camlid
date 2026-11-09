@@ -24,7 +24,7 @@ static int camlid_compare_op(value v1, value v2){
 static intnat camlid_hash_op(value v){
   return hash_ptr(((int * *) Data_custom_val(v)));;
   }
-struct custom_operations camlid_cops = {
+static struct custom_operations camlid_cops = {
 NULL,
 camlid_finalize_op,
 camlid_compare_op,

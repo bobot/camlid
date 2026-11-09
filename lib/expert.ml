@@ -232,7 +232,7 @@ let string_length ?(owned = true) () =
         cty = e_def cty;
         init = None;
         init_expr = expr "((%a) { 0 })" pp_def cty;
-        free = (if owned then Some (expr "free(%a);" pp_var c) else None);
+        free = (if owned then Some (expr "free(%a.t);" pp_var c) else None);
         in_call = None;
         c;
       };
@@ -739,7 +739,7 @@ let custom_ops ?finalize ?compare ?hash () =
     | Some f -> Fmt.pf fmt "%a" pp_def (def_of_code f)
   in
   toplevel id
-    "struct custom_operations %a = {\n\
+    "static struct custom_operations %a = {\n\
      NULL,\n\
      %a,\n\
      %a,\n\
