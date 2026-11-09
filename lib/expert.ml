@@ -998,7 +998,7 @@ let custom_ptr ?init ?clear ?hash ?compare ?mem ?dispose ?(malloc = true) ~ml
               [
                 {
                   cond =
-                    expr "(*((%a *) Data_custom_val(%a)) == NULL)" pp_expr
+                    expr "*((%a *) Data_custom_val(%a)) == NULL" pp_expr
                       cty_ptr pp_var t.v;
                   exn = Check_invalid_argument;
                   msg = ml ^ ": used after " ^ dispose;

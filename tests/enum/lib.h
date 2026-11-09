@@ -3,7 +3,7 @@
 
 enum color { RED = 10, GREEN = 20, BLUE = 30 };
 enum color next_color(enum color c);
-int bad_color(void);
+enum color bad_color(void); /* a value outside the enum */
 
 #define F_READ 1
 #define F_WRITE 2

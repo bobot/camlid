@@ -169,7 +169,7 @@ extern intptr_t camlid_stub_vec_length(value p){
   intptr_t ures;
   size_t res;
   vec* p1 = ((vec*) { 0 });
-  if((*((vec* *) Data_custom_val(p)) == NULL)) caml_invalid_argument("vec: used after vec_dispose");
+  if(*((vec* *) Data_custom_val(p)) == NULL) caml_invalid_argument("vec: used after vec_dispose");
   *&p1 = *((vec* *) Data_custom_val(p));
   res = vec_length(p1);
   ures = (intptr_t)(res);
