@@ -23,6 +23,14 @@ Keep the generic parts in sync with it. The section "In camlid" is local. -->
   so are the provers `alt-ergo` and `colibri2`. `~/.why3.conf` is missing:
   run `why3 config detect` and `why3find config --detect`, and set
   `memlimit = 2000`. Get z3 and cvc5 with `why3find download`.
+- Proof hints (2026-11-09): recorded with alt-ergo 2.6.4, z3 4.16,
+  colibri2 0.6, cvc5 1.3.4 and cvc4 1.8. The docker image `camlid-provers`
+  (bibix image of the same name; run it with `HOME=/home/opam`) has them;
+  colibri2 0.6 is the static binary
+  `https://git.frama-c.com/pub/colibrics/-/jobs/artifacts/0.6/raw/bin/colibri2?job=generate-static`.
+  A replay on a loaded machine can time out on the slowest leaves (`l_call`,
+  `l_c2ml`, `l_cleanup`); `why3find mcp` (prove, tree, task, apply, script)
+  helps to split them.
 - The user is the modelling expert: report a wrong model or spec with a
   counterexample, and wait.
 
