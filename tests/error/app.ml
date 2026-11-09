@@ -1,4 +1,7 @@
-let () =
+(* the body is a function called through Sys.opaque_identity: flambda
+   doesn't inline it, so its values don't become static symbols, which are
+   never collected *)
+let run () =
   Printf.printf "div %i\n" (Mylib.checked_div 7 2);
   (match Mylib.checked_div 1 0 with
   | _ -> print_endline "no error"
@@ -56,3 +59,5 @@ let () =
   let t = Thread.create (fun () -> Mylib.slow_sum 1000) () in
   Printf.printf "sum %i\n" (Mylib.slow_sum 1000);
   Thread.join t
+
+let () = (Sys.opaque_identity run) ()

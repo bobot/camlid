@@ -2,7 +2,10 @@ open Mylib
 
 let pr = Printf.printf
 
-let () =
+(* the body is a function called through Sys.opaque_identity: flambda
+   doesn't inline it, so its values don't become static symbols, which are
+   never collected *)
+let run () =
   let v = vec_range 4 in
   vec_push v 10;
   pr "sum %d\n" (vec_sum v);
@@ -19,6 +22,7 @@ let () =
   pr "zeros %d\n" (zeros_len (zeros ~size:3))
 
 let () =
+  (Sys.opaque_identity run) ();
   Gc.full_major ();
   (* only the global vector remains *)
   pr "live %d\n" (vec_live ())
