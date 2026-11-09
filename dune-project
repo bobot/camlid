@@ -11,5 +11,7 @@
 
 (package
  (name camlid)
- (synopsis "OCaml library for generating C stubs")
+ (synopsis "Generate the C stubs of a C library from a description in OCaml")
+ (description
+  "Camlid generates the C stubs and the OCaml externals of a C library from a description of its functions written in OCaml. The C values are handled like C++ objects (constructor, destructor, copy), and the generated code follows the rules of the OCaml FFI.")
  (depends (fmt (>= 0.10.0)) (ocaml (>= 4.14))))
