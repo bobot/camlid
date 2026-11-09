@@ -21,7 +21,7 @@ release:
 
 # Extract the proved scheduler (needs why3, see agents/skills/why3.md)
 extract:
-	cd proof && why3 extract -D ocaml64 -D camlid.drv -L . \
+	cd proof && why3 extract --warn-off=clone_not_abstract -D ocaml64 -D camlid.drv -L . \
 	  plan.Types plan.Lists schedule.Schedule -o ../lib/plan_gen.ml.tmp
 	(echo "(* Extracted from proof/schedule.mlw by make extract: do not edit *)"; \
 	 cat lib/plan_gen.ml.tmp) > lib/plan_gen.ml

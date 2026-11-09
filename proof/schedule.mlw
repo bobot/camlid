@@ -8,9 +8,13 @@ description exactly in the cases of `sched_error`.
 The proof (module `Proof`) describes the state of the specification
 after each step by a phase per register (`ph`): the C value is
 initial, owned, borrowed, moved or freed, the output is converted, the
-value is checked. *)
+value is checked. `Defs` holds the definitions that `Schedule` uses,
+and `Steps` the specifications of the lemmas of `Proof` that `Schedule`
+calls: `Proof` clones `Steps` (refinement goals `Proof.Steps.*'refn`),
+and `Schedule` uses only `Defs` and `Steps`, so that its goals don't
+carry the lemmas of `Proof`. *)
 
-module Proof
+module Defs
 
   use int.Int
   use list.List
@@ -91,11 +95,6 @@ module Proof
     roots_ok ps o p /\
     result_ok ps p.result
 
-  (** The conversion of an output doesn't raise *)
-  lemma out_not_raising: forall ps o call p i.
-    hyp ps o call p -> in_range ps i -> has_output (prm ps i) ->
-    not (out_effects ps p i).raising
-
   (** ## Phases *)
 
   type cs =
@@ -165,6 +164,217 @@ module Proof
   predicate inv (ps: list param) (f: reg -> ph) (hv tup msg: bool)
       (s: state) =
     glob ps tup msg s /\ forall i. in_range ps i -> reg_ok ps hv (f i) i s
+
+  lemma start_inv: forall ps.
+    inv ps (fun _ -> { cv = KZ; mv = false; vo = false; ck = false })
+      true false false (start ps)
+
+  function acq_in (q: param) : cs = if q.free then KO else KB
+  function acquired (q: param) : cs =
+    if q.free || q.owned_by_ml then KO else KB
+
+  predicate converted (h: ph) = h.cv = KO \/ h.cv = KB
+
+  function mix (d: set reg) (f g: reg -> ph) : reg -> ph =
+    fun i -> if mem i d then g i else f i
+
+  (** The invariant until the GC after the conversion of an input with
+      unregistered OCaml values *)
+  predicate inv_h (ps: list param) (f: reg -> ph) (tup msg: bool) (s: state) =
+    exists hv. inv ps f hv tup msg s /\
+      forall j. in_range ps j -> heap_input (prm ps j) -> converted (f j) -> hv
+
+  predicate inv_a (ps: list param) (f: reg -> ph) (tup msg: bool) (s: state) =
+    exists hv. inv ps f hv tup msg s
+
+  (** ## The phases of the plan of `schedule`
+
+      Stages: 0 start, 1 `Ml2c` of the inputs without destructor nor check,
+      2 `Check_in`, 3 `Ml2c` of the checked inputs, 4 `Ml2c` of the inputs
+      with a destructor, 5 `Ml2c` of the input with unregistered OCaml
+      values, 6 `Init`, 7 `Call`, 8 `Check_out`, 9 `C2ml` of the output
+      with unregistered OCaml values, 10 `C2ml` of the others, 11 `Free`. *)
+
+  predicate made (k: int) (q: param) =
+    if has_input q then
+      (k >= 1 /\ selected S_pre_input q) \/
+      (k >= 3 /\ selected S_checked_input q) \/
+      (k >= 4 /\ selected S_owning_input q) \/
+      (k >= 5 /\ heap_input q)
+    else (k >= 6 /\ q.init) \/ k >= 7
+
+  predicate conv (k: int) (q: param) =
+    has_output q /\ ((k >= 9 /\ heap_input q) \/ k >= 10)
+
+  function phase (k: int) (q: param) : ph =
+    { cv = if k >= 11 /\ q.free then KF
+           else if conv k q /\ q.owned_by_ml /\ not q.free then KM
+           else if made k q then
+             (if has_input q then acq_in q else acquired q)
+           else KZ;
+      mv = if conv k q /\ q.owned_by_ml then true else false;
+      vo = if conv k q then true else false;
+      ck = if (k >= 2 /\ selected S_in_check q) \/
+              (k >= 8 /\ selected S_out_check q) then true else false }
+
+  function phs (ps: list param) (k: int) : reg -> ph =
+    fun i -> phase k (prm ps i)
+
+end
+
+(** The specifications of the steps, all that `Schedule` sees of the proof *)
+module Steps
+
+  use int.Int
+  use list.List
+  use list.Mem as L
+  use list.Length
+  use list.NthNoOpt
+  use list.Distinct
+  use list.Append
+  use set.Set
+  use map.MapExt
+  use option.Option
+  use plan.OInt
+  use plan.Types
+  use plan.Lists
+  use spec.Spec
+  use Defs
+
+  val ghost st_ml2c (ps: list param) (o: options) (call: list t) (p: plan)
+      (k: int) (x: sel) (l: list t) (s: state) : unit
+    requires { hyp ps o call p }
+    requires { k = 0 /\ x = S_pre_input \/ k = 2 /\ x = S_checked_input \/
+               k = 3 /\ x = S_owning_input \/ k = 4 /\ x = S_heap_input }
+    requires { ints l = ipids x ps 0 }
+    requires { inv_h ps (phs ps k) false false s }
+    ensures { run_actions ps p s (actions_of no_alias ps p (Ml2c l)) }
+    ensures { inv_h ps (phs ps (k + 1)) false false
+                (after ps p s (actions_of no_alias ps p (Ml2c l))) }
+
+  val ghost st_poll (ps: list param) (o: options) (call: list t) (p: plan)
+      (s: state) : unit
+    requires { hyp ps o call p }
+    requires { o.release_lock }
+    requires { inv_h ps (phs ps 0) false false s }
+    ensures { run_actions ps p s (actions_of no_alias ps p Poll) }
+    ensures { inv_h ps (phs ps 0) false false
+                (after ps p s (actions_of no_alias ps p Poll)) }
+
+  val ghost st_check_in (ps: list param) (o: options) (call: list t)
+      (p: plan) (l: list t) (s: state) : unit
+    requires { hyp ps o call p }
+    requires { ints l = ipids S_in_check ps 0 }
+    requires { inv_h ps (phs ps 1) false false s }
+    ensures { run_actions ps p s (actions_of no_alias ps p (Check_in l)) }
+    ensures { inv_h ps (phs ps 2) false false
+                (after ps p s (actions_of no_alias ps p (Check_in l))) }
+
+  val ghost st_init (ps: list param) (o: options) (call: list t)
+      (p: plan) (l: list t) (s: state) : unit
+    requires { hyp ps o call p }
+    requires { ints l = ipids S_init ps 0 }
+    requires { inv_h ps (phs ps 5) false false s }
+    ensures { run_actions ps p s (actions_of no_alias ps p (Init l)) }
+    ensures { inv_h ps (phs ps 6) false false
+                (after ps p s (actions_of no_alias ps p (Init l))) }
+
+  val ghost st_call (ps: list param) (o: options) (call: list t)
+      (p: plan) (s: state) : unit
+    requires { hyp ps o call p }
+    requires { inv_h ps (phs ps 6) false false s }
+    ensures { let x = Call call o.release_lock in
+              run_actions ps p s (actions_of no_alias ps p x) /\
+              inv_h ps (phs ps 7) false false
+                (after ps p s (actions_of no_alias ps p x)) }
+
+  val ghost st_check_error (ps: list param) (o: options) (call: list t)
+      (p: plan) (c: cleanup) (s: state) : unit
+    requires { hyp ps o call p }
+    requires { o.error }
+    requires { ints c.moves = ipids S_move_error ps 0 }
+    requires { ints c.frees = ipids S_free ps 0 }
+    requires { inv_h ps (phs ps 7) false false s }
+    ensures { run_actions ps p s (branch_of no_alias ps p (Check_error c)) }
+
+  val ghost st_check_out (ps: list param) (o: options) (call: list t)
+      (p: plan) (l: list t) (c: cleanup) (s: state) : unit
+    requires { hyp ps o call p }
+    requires { ints l = ipids S_out_check ps 0 }
+    requires { ints c.moves = ipids S_move_out ps 0 }
+    requires { ints c.frees = ipids S_free ps 0 }
+    requires { inv_h ps (phs ps 7) false false s }
+    ensures { run_actions ps p s (branch_of no_alias ps p (Check_out l c)) }
+    ensures { run_actions ps p s (actions_of no_alias ps p (Check_out l c)) }
+    ensures { inv_h ps (phs ps 8) false false
+                (after ps p s (actions_of no_alias ps p (Check_out l c))) }
+
+  val ghost st_c2ml_heap (ps: list param) (o: options) (call: list t)
+      (p: plan) (l: list t) (s: state) : unit
+    requires { hyp ps o call p }
+    requires { ints l = ipids S_heap_output ps 0 }
+    requires { inv_h ps (phs ps 8) false false s }
+    ensures { run_actions ps p s (actions_of no_alias ps p (C2ml l)) }
+    ensures { inv_a ps (phs ps 9) false false
+                (after ps p s (actions_of no_alias ps p (C2ml l))) }
+
+  val ghost st_c2ml (ps: list param) (o: options) (call: list t)
+      (p: plan) (l: list t) (s: state) : unit
+    requires { hyp ps o call p }
+    requires { ints l = ipids S_plain_output ps 0 }
+    requires { inv_a ps (phs ps 9) false false s }
+    ensures { run_actions ps p s (actions_of no_alias ps p (C2ml l)) }
+    ensures { inv_a ps (phs ps 10) false false
+                (after ps p s (actions_of no_alias ps p (C2ml l))) }
+
+  val ghost st_tuple (ps: list param) (o: options) (call: list t)
+      (p: plan) (l: list t) (s: state) : unit
+    requires { hyp ps o call p }
+    requires { p.result = Tuple l }
+    requires { inv_a ps (phs ps 10) false false s }
+    ensures { run_actions ps p s (actions_of no_alias ps p (Alloc_tuple l)) }
+    ensures { inv_a ps (phs ps 10) true false
+                (after ps p s (actions_of no_alias ps p (Alloc_tuple l))) }
+
+  val ghost st_free (ps: list param) (o: options) (call: list t)
+      (p: plan) (tup: bool) (l: list t) (s: state) : unit
+    requires { hyp ps o call p }
+    requires { ints l = ipids S_free ps 0 }
+    requires { inv_a ps (phs ps 10) tup false s }
+    ensures { run_actions ps p s (actions_of no_alias ps p (Free l)) }
+    ensures { inv_a ps (phs ps 11) tup false
+                (after ps p s (actions_of no_alias ps p (Free l))) }
+
+  val ghost st_return (ps: list param) (o: options) (call: list t)
+      (p: plan) (s: state) : unit
+    requires { hyp ps o call p }
+    requires { inv_a ps (phs ps 11) (tup_of p.result) false s }
+    ensures { run_actions ps p s (actions_of no_alias ps p Return) }
+
+end
+
+module Proof
+
+  use int.Int
+  use list.List
+  use list.Mem as L
+  use list.Length
+  use list.NthNoOpt
+  use list.Distinct
+  use list.Append
+  use set.Set
+  use map.MapExt
+  use option.Option
+  use plan.OInt
+  use plan.Types
+  use plan.Lists
+  use spec.Spec
+  use Defs
+
+  (** The conversion of an output doesn't raise *)
+  lemma out_not_raising: forall ps o call p i.
+    hyp ps o call p -> in_range ps i -> has_output (prm ps i) ->
+    not (out_effects ps p i).raising
 
   lemma reg_frame: forall ps hv h i s s'.
     reg_ok ps hv h i s ->
@@ -256,17 +466,7 @@ module Proof
   function upd (f: reg -> ph) (i: reg) (h: ph) : reg -> ph =
     fun j -> if j = i then h else f j
 
-  lemma start_inv: forall ps.
-    inv ps (fun _ -> { cv = KZ; mv = false; vo = false; ck = false })
-      true false false (start ps)
-
   (** ## The actions *)
-
-  function acq_in (q: param) : cs = if q.free then KO else KB
-  function acquired (q: param) : cs =
-    if q.free || q.owned_by_ml then KO else KB
-
-  predicate converted (h: ph) = h.cv = KO \/ h.cv = KB
 
   (** The C value of an input is defined after `ml2c` *)
   let lemma l_ml2c (ps: list param) (o: options) (call: list t) (p: plan)
@@ -669,24 +869,12 @@ module Proof
 
   (** ## Running the steps *)
 
-  function mix (d: set reg) (f g: reg -> ph) : reg -> ph =
-    fun i -> if mem i d then g i else f i
-
   lemma mix_upd: forall d f g i.
     upd (mix d f g) i (g i) = mix (add i d) f g
 
   lemma inv_ext: forall ps f g hv tup msg s.
     inv ps f hv tup msg s -> (forall i. in_range ps i -> f i = g i) ->
     inv ps g hv tup msg s
-
-  (** The invariant until the GC after the conversion of an input with
-      unregistered OCaml values *)
-  predicate inv_h (ps: list param) (f: reg -> ph) (tup msg: bool) (s: state) =
-    exists hv. inv ps f hv tup msg s /\
-      forall j. in_range ps j -> heap_input (prm ps j) -> converted (f j) -> hv
-
-  predicate inv_a (ps: list param) (f: reg -> ph) (tup msg: bool) (s: state) =
-    exists hv. inv ps f hv tup msg s
 
   lemma inv_h_ext: forall ps f g tup msg s.
     inv_h ps f tup msg s -> (forall i. in_range ps i -> f i = g i) ->
@@ -1101,39 +1289,6 @@ module Proof
     assert { forall j. in_range ps j ->
                reg_ok ps hv (call_ph ps f j) j s -> reg_ok ps hv (f j) j s1 }
 
-  (** ## The phases of the plan of `schedule`
-
-      Stages: 0 start, 1 `Ml2c` of the inputs without destructor nor check,
-      2 `Check_in`, 3 `Ml2c` of the checked inputs, 4 `Ml2c` of the inputs
-      with a destructor, 5 `Ml2c` of the input with unregistered OCaml
-      values, 6 `Init`, 7 `Call`, 8 `Check_out`, 9 `C2ml` of the output
-      with unregistered OCaml values, 10 `C2ml` of the others, 11 `Free`. *)
-
-  predicate made (k: int) (q: param) =
-    if has_input q then
-      (k >= 1 /\ selected S_pre_input q) \/
-      (k >= 3 /\ selected S_checked_input q) \/
-      (k >= 4 /\ selected S_owning_input q) \/
-      (k >= 5 /\ heap_input q)
-    else (k >= 6 /\ q.init) \/ k >= 7
-
-  predicate conv (k: int) (q: param) =
-    has_output q /\ ((k >= 9 /\ heap_input q) \/ k >= 10)
-
-  function phase (k: int) (q: param) : ph =
-    { cv = if k >= 11 /\ q.free then KF
-           else if conv k q /\ q.owned_by_ml /\ not q.free then KM
-           else if made k q then
-             (if has_input q then acq_in q else acquired q)
-           else KZ;
-      mv = if conv k q /\ q.owned_by_ml then true else false;
-      vo = if conv k q then true else false;
-      ck = if (k >= 2 /\ selected S_in_check q) \/
-              (k >= 8 /\ selected S_out_check q) then true else false }
-
-  function phs (ps: list param) (k: int) : reg -> ph =
-    fun i -> phase k (prm ps i)
-
   (** The cleanup from stage `k`: the outputs `x` moved, then the frees *)
   function mvs (ps: list param) (k: int) (x: sel) : reg -> ph =
     fun i -> let q = prm ps i in
@@ -1489,6 +1644,20 @@ module Proof
     assert { nothing_owned ps (phs ps 11) };
     l_exit ps o call p (phs ps 11) hv (tup_of p.result) false s a
 
+
+  (** The lemmas satisfy their interface *)
+  clone Steps with val st_ml2c = st_ml2c,
+    val st_poll = st_poll,
+    val st_check_in = st_check_in,
+    val st_init = st_init,
+    val st_call = st_call,
+    val st_check_error = st_check_error,
+    val st_check_out = st_check_out,
+    val st_c2ml_heap = st_c2ml_heap,
+    val st_c2ml = st_c2ml,
+    val st_tuple = st_tuple,
+    val st_free = st_free,
+    val st_return = st_return
 end
 
 module Schedule
@@ -1505,7 +1674,8 @@ module Schedule
   use plan.Types
   use plan.Lists
   use spec.Spec
-  use Proof
+  use Defs
+  use Steps
 
   predicate has_sel (x: sel) (ps: list param) =
     exists i. 0 <= i < length ps /\ selected x (nth i ps)

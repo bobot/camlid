@@ -28,9 +28,18 @@ Keep the generic parts in sync with it. The section "In camlid" is local. -->
   (bibix image of the same name; run it with `HOME=/home/opam`) has them;
   colibri2 0.6 is the static binary
   `https://git.frama-c.com/pub/colibrics/-/jobs/artifacts/0.6/raw/bin/colibri2?job=generate-static`.
-  A replay on a loaded machine can time out on the slowest leaves (`l_call`,
-  `l_c2ml`, `l_cleanup`); `why3find mcp` (prove, tree, task, apply, script)
-  helps to split them.
+  Aim for leaves under 2s (2026-11-09: 11 left between 2 and 4.3s, measured
+  under load). `why3find mcp` (prove, tree, task, apply, script) helps to
+  split them: intermediate asserts, or a `split_vc` hint. `prove -r` replays
+  within the recorded times and fails when a hint was recorded on a quieter
+  machine; re-prove such a goal with `fresh`. `prove -f` searches again from
+  scratch and drops the hand-made splits. Run provers in the agents' shared
+  pool: `--jobserver locks:/workspaces/slots6`.
+- `schedule.mlw` (2026-11-09): `Schedule` uses only `Defs` (definitions) and
+  `Steps` (the specifications of the `st_*` lemmas, as ghost `val`s). `Proof`
+  clones `Steps`, which gives the goals `Proof.Steps.*'refn`. This keeps the
+  lemmas of `Proof` out of the goals of `Schedule`. A definition that
+  `Schedule` needs goes in `Defs`.
 - The user is the modelling expert: report a wrong model or spec with a
   counterexample, and wait.
 

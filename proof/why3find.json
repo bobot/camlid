@@ -6,5 +6,5 @@
   "provers": [ "alt-ergo", "z3", "cvc5", "cvc4", "colibri2" ],
   "tactics": [ "split_vc", "inline_goal" ],
   "drivers": [],
-  "warnoff": []
+  "warnoff": [ "clone_not_abstract" ]
 }
