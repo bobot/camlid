@@ -166,6 +166,19 @@ module Proof
       (s: state) =
     glob ps tup msg s /\ forall i. in_range ps i -> reg_ok ps hv (f i) i s
 
+  lemma reg_frame: forall ps hv h i s s'.
+    reg_ok ps hv h i s ->
+    (forall b. b = Own i \/ b = Data i \/ b = MlIn i \/ b = MlLoc i \/
+       b = MlOut i -> s'.st b = s.st b) ->
+    (forall v. v = In i \/ v = Vloc i \/ v = Out i ->
+       s'.points v = s.points v /\ (mem v s'.valid <-> mem v s.valid)) ->
+    ((mem (C i) s'.valid /\
+      forall b. mem b (s'.points (C i)) -> mem b (cblocks ps i)) \/
+     (s'.points (C i) = s.points (C i) /\
+      (mem (C i) s'.valid <-> mem (C i) s.valid))) ->
+    subset s.done_checks s'.done_checks ->
+    reg_ok ps hv h i s'
+
   (** Nothing is owned by the stub *)
   predicate nothing_owned (ps: list param) (f: reg -> ph) =
     forall i. in_range ps i -> (f i).cv = KO ->
@@ -338,10 +351,20 @@ module Proof
     ensures { inv ps (upd f i { (f i) with ck = true }) hv tup msg
                 (post_action ps p (act_check_in ps i) s) }
   = let ghost s1 = post_action ps p (act_check_in ps i) s in
+    let ghost a = act_check_in ps i in
     assert { forall j. in_range ps j -> selected S_pre_input (prm ps j) ->
                mem (C j) s.valid /\ forall b. mem b (s.points (C j)) -> live s b };
+    assert { reg_ok ps hv (f i) i s };
+    assert { boxed ps i ->
+               mem (In i) s.valid /\ forall b. mem b (s.points (In i)) -> live s b };
+    assert { forall v. mem v a.used ->
+               mem v s.valid /\ forall b. mem b (s.points v) -> live s b };
+    assert { forall b. not owned s b };
+    assert { refers_kept s };
     assert { s1.st = s.st /\ s1.points = s.points /\ s1.refers = s.refers };
     assert { forall v. mem v s1.valid <-> mem v s.valid };
+    assert { glob ps tup msg s };
+    assert { glob ps tup msg s1 };
     assert { forall j. in_range ps j -> reg_ok ps hv (upd f i { (f i) with ck = true } j) j s1 }
 
   (** The constructor of a parameter that is not an input *)
@@ -360,6 +383,8 @@ module Proof
     let ghost s1 = post_action ps p (act_init ps i) s in
     assert { forall j. in_range ps j -> has_input (prm ps j) ->
                mem (C j) s.valid /\ forall b. mem b (s.points (C j)) -> live s b };
+    assert { forall v. mem v (act_init ps i).used ->
+               mem v s.valid /\ forall b. mem b (s.points v) -> live s b };
     assert { forall b. mem b (new_blocks ps i) -> s.st b = Unborn };
     assert { mem (C i) s1.valid /\
              forall b. mem b (s1.points (C i)) -> mem b (cblocks ps i) };
@@ -395,6 +420,8 @@ module Proof
   = let ghost s1 = post_action ps p (act_check_out ps i) s in
     assert { s1.st = s.st /\ s1.points = s.points /\ s1.refers = s.refers };
     assert { forall v. mem v s1.valid <-> mem v s.valid };
+    assert { glob ps tup msg s };
+    assert { glob ps tup msg s1 };
     assert { forall j. in_range ps j -> reg_ok ps hv (upd f i { (f i) with ck = true } j) j s1 }
 
   function conv_ph (q: param) (h: ph) : ph =
@@ -427,11 +454,31 @@ module Proof
     let ghost s0 = if alloc then gc ps p s else s in
     if alloc then gc_inv ps o call p f hv tup msg s;
     assert { inv ps f hv0 tup msg s0 };
+    assert { a.used = union (singleton (C i))
+                        (only q.value_locals (singleton (Vloc i))) };
+    assert { a.defines = singleton (Out i) };
+    assert { forall v. a.points_to v = singleton (MlOut i) };
+    assert { a.creates = singleton (MlOut i) };
+    assert { a.transfers = only q.owned_by_ml (singleton (Data i)) };
+    assert { a.owner_of (MlOut i) = Gc /\ a.owner_of (Data i) = Kept (MlOut i) };
+    assert { forall b. a.stores b =
+               only q.owned_by_ml (remove (Own i) (call_blocks no_alias ps i)) };
+    assert { a.deletes = empty /\ a.reverts = empty /\ a.checks = empty };
+    assert { a.allocates = alloc /\ not a.released /\ not a.exits /\
+             not a.may_raise };
     let ghost s1 = post_action ps p a s in
     assert { mem (C i) s.valid /\ forall b. mem b (s.points (C i)) -> live s b };
+    assert { q.value_locals ->
+               mem (Vloc i) s.valid /\ forall b. mem b (s.points (Vloc i)) -> live s b };
+    assert { forall v. mem v a.used ->
+               mem v s.valid /\ forall b. mem b (s.points v) -> live s b };
     assert { s.st (MlOut i) = Unborn };
     assert { q.owned_by_ml -> not has_input q /\ s.st (Data i) = Live Stub /\
              s0.st (Data i) = Live Stub };
+    assert { forall b. mem b a.transfers -> owned s b };
+    assert { forall b. mem b a.creates -> s.st b = Unborn };
+    assert { forall b. mem b a.deletes -> owned s b \/ s.st b = Unborn };
+    assert { p.noalloc -> not a.allocates /\ not a.may_raise /\ not a.released };
     assert { forall c. mem c (s1.refers (MlOut i)) ->
                q.owned_by_ml /\ c = Data i };
     assert { s1.st (MlOut i) = Live Gc };
@@ -448,10 +495,38 @@ module Proof
     assert { forall b. owned s1 b -> owned s0 b };
     assert { forall b c. live s1 b -> mem c (s1.refers b) ->
                s1.st c = Live (Kept b) /\ s1.st b = Live Gc };
+    assert { s1.points Tup = s0.points Tup /\ (mem Tup s1.valid <-> mem Tup s0.valid) /\
+             s1.st MlTuple = s0.st MlTuple };
+    assert { s1.points Msg = s0.points Msg /\ (mem Msg s1.valid <-> mem Msg s0.valid) /\
+             s1.st MlMsg = s0.st MlMsg };
     assert { glob ps tup msg s1 };
+    assert { reg_ok ps hv0 (f i) i s0 };
+    assert { s1.st (Own i) = s0.st (Own i) /\ s1.st (MlIn i) = s0.st (MlIn i) /\
+             s1.st (MlLoc i) = s0.st (MlLoc i) };
+    assert { s1.points (C i) = s0.points (C i) /\
+             s1.points (In i) = s0.points (In i) /\
+             s1.points (Vloc i) = s0.points (Vloc i) };
+    assert { (mem (C i) s1.valid <-> mem (C i) s0.valid) /\
+             (mem (In i) s1.valid <-> mem (In i) s0.valid) /\
+             (mem (Vloc i) s1.valid <-> mem (Vloc i) s0.valid) };
     assert { reg_ok ps hv0 (conv_ph q (f i)) i s1 };
+    assert { forall j. j <> i ->
+               s1.st (Own j) = s0.st (Own j) /\ s1.st (Data j) = s0.st (Data j) /\
+               s1.st (MlIn j) = s0.st (MlIn j) /\ s1.st (MlLoc j) = s0.st (MlLoc j) /\
+               s1.st (MlOut j) = s0.st (MlOut j) };
+    assert { forall j. j <> i ->
+               s1.points (C j) = s0.points (C j) /\ s1.points (In j) = s0.points (In j) /\
+               s1.points (Vloc j) = s0.points (Vloc j) /\
+               s1.points (Out j) = s0.points (Out j) };
+    assert { forall j. j <> i ->
+               (mem (C j) s1.valid <-> mem (C j) s0.valid) /\
+               (mem (In j) s1.valid <-> mem (In j) s0.valid) /\
+               (mem (Vloc j) s1.valid <-> mem (Vloc j) s0.valid) /\
+               (mem (Out j) s1.valid <-> mem (Out j) s0.valid) };
     assert { forall j. in_range ps j -> j <> i ->
-               reg_ok ps hv0 (f j) j s0 -> reg_ok ps hv0 (f j) j s1 }
+               reg_ok ps hv0 (f j) j s0 -> reg_ok ps hv0 (f j) j s1 };
+    assert { forall j. in_range ps j ->
+               reg_ok ps hv0 (upd f i (conv_ph q (f i)) j) j s1 }
 
   (** The destructor *)
   let lemma l_free (ps: list param) (o: options) (call: list t)
@@ -493,6 +568,12 @@ module Proof
     assert { forall v. v <> Msg -> mem v s1.valid <-> mem v s0.valid };
     assert { forall b. b <> MlMsg -> s1.refers b = s0.refers b };
     assert { forall c. not mem c (s1.refers MlMsg) };
+    assert { glob ps tup false s0 };
+    assert { s1.points Tup = s0.points Tup /\ (mem Tup s1.valid <-> mem Tup s0.valid) /\
+             s1.st MlTuple = s0.st MlTuple };
+    assert { mem Msg s1.valid /\ (forall b. mem b (s1.points Msg) <-> b = MlMsg) /\
+             s1.st MlMsg = Live Gc };
+    assert { forall b. owned s1 b -> owned s0 b };
     assert { glob ps tup true s1 };
     assert { forall j. in_range ps j -> reg_ok ps false (f j) j s0 ->
                reg_ok ps false (f j) j s1 }
@@ -543,7 +624,13 @@ module Proof
     assert { forall i. L.mem i (ints l) ->
                mem (Out i) s1.valid /\ forall b. mem b (s1.points (Out i)) -> live s1 b };
     assert { mem Tup s1.valid /\ forall b. mem b (s1.points Tup) -> live s1 b };
+    assert { forall v. mem v (tuple_store l).used ->
+               v = Tup \/ exists i. L.mem i (ints l) /\ v = Out i };
     assert { pre_action p (tuple_store l) s1 };
+    assert { glob ps true msg s1 };
+    assert { mem Tup s2.valid /\ (mem Msg s2.valid <-> mem Msg s1.valid) };
+    assert { forall b. owned s2 b <-> owned s1 b };
+    assert { forall b. live s2 b <-> live s1 b };
     assert { glob ps true msg s2 };
     assert { forall j. in_range ps j -> reg_ok ps false (f j) j s2 }
 
@@ -876,19 +963,6 @@ module Proof
   (** ## The call *)
 
   (** The state of a register only depends on its blocks and variables *)
-  lemma reg_frame: forall ps hv h i s s'.
-    reg_ok ps hv h i s ->
-    (forall b. b = Own i \/ b = Data i \/ b = MlIn i \/ b = MlLoc i \/
-       b = MlOut i -> s'.st b = s.st b) ->
-    (forall v. v = In i \/ v = Vloc i \/ v = Out i ->
-       s'.points v = s.points v /\ (mem v s'.valid <-> mem v s.valid)) ->
-    ((mem (C i) s'.valid /\
-      forall b. mem b (s'.points (C i)) -> mem b (cblocks ps i)) \/
-     (s'.points (C i) = s.points (C i) /\
-      (mem (C i) s'.valid <-> mem (C i) s.valid))) ->
-    subset s.done_checks s'.done_checks ->
-    reg_ok ps hv h i s'
-
   function call_ph (ps: list param) (f: reg -> ph) : reg -> ph =
     fun j -> if mem j (produced ps) then { (f j) with cv = acquired (prm ps j) }
              else f j
@@ -991,6 +1065,11 @@ module Proof
                (mem (In j) s1.valid <-> mem (In j) s0.valid) /\
                (mem (Vloc j) s1.valid <-> mem (Vloc j) s0.valid) /\
                (mem (Out j) s1.valid <-> mem (Out j) s0.valid) };
+    assert { forall j. mem j (produced ps) ->
+               g j = { (f j) with cv = acquired (prm ps j) } };
+    assert { forall j. in_range ps j -> mem j (produced ps) ->
+               not boxed_input (prm ps j) /\ not (g j).mv /\ not (g j).vo /\
+               ((g j).ck -> mem j s1.done_checks) };
     assert { forall j. in_range ps j -> mem j (produced ps) ->
                reg_ok ps hv0 (g j) j s1 };
     assert { forall j. in_range ps j -> not mem j (produced ps) ->
@@ -1221,6 +1300,9 @@ module Proof
     run_c2ml ps o call p f (mvs ps k x) false true (ints c.moves)
       (pure { act_move no_alias ps p }) s1;
     let ghost s2 = after ps p s1 lm in
+    assert { distinct (ints c.frees) };
+    assert { forall i. L.mem i (ints c.frees) <-> in_range ps i /\ (prm ps i).free };
+    assert { frame ps (mvs ps k x) (frs ps k x) (ints c.frees) };
     assert { free_ok ps (mvs ps k x) (frs ps k x) (ints c.frees) };
     run_free ps o call p (mvs ps k x) (frs ps k x) false true (ints c.frees) s2;
     let ghost s3 = after ps p s2 lf in
@@ -1254,7 +1336,11 @@ module Proof
     ensures { run_actions ps p s (actions_of no_alias ps p (Check_out l c)) }
     ensures { inv_h ps (phs ps 8) false false
                 (after ps p s (actions_of no_alias ps p (Check_out l c))) }
-  = assert { check_out_ok ps (phs ps 7) (phs ps 8) (ints l) };
+  = assert { distinct (ints l) };
+    assert { forall i. L.mem i (ints l) <->
+               in_range ps i /\ selected S_out_check (prm ps i) };
+    assert { frame ps (phs ps 7) (phs ps 8) (ints l) };
+    assert { check_out_ok ps (phs ps 7) (phs ps 8) (ints l) };
     run_check_out ps o call p (phs ps 7) (phs ps 8) false false (ints l) s;
     match l with
     | Nil -> ()
@@ -1332,7 +1418,19 @@ module Proof
     ensures { run_actions ps p s (actions_of no_alias ps p (C2ml l)) }
     ensures { inv_a ps (phs ps 10) false false
                 (after ps p s (actions_of no_alias ps p (C2ml l))) }
-  = assert { c2ml_ok ps p (phs ps 9) (phs ps 10) false false (ints l)
+  = assert { distinct (ints l) };
+    assert { forall i. L.mem i (ints l) <->
+               in_range ps i /\ selected S_plain_output (prm ps i) };
+    assert { frame ps (phs ps 9) (phs ps 10) (ints l) };
+    assert { forall i. L.mem i (ints l) ->
+               has_output (prm ps i) /\ not heap_input (prm ps i) /\
+               converted (phs ps 9 i) /\ not (phs ps 9 i).vo /\
+               not (phs ps 9 i).mv };
+    assert { forall i. L.mem i (ints l) ->
+               phs ps 10 i = conv_ph (prm ps i) (phs ps 9 i) };
+    assert { forall i. L.mem i (ints l) ->
+               not (out_effects ps p i).raising };
+    assert { c2ml_ok ps p (phs ps 9) (phs ps 10) false false (ints l)
                (act_c2ml no_alias ps p) };
     run_c2ml ps o call p (phs ps 9) (phs ps 10) false false (ints l)
       (pure { act_c2ml no_alias ps p }) s
@@ -1378,7 +1476,13 @@ module Proof
     (match p.result with
      | One_value j ->
        assert { L.mem (to_int j) (ipids S_output ps 0) };
-       assert { (phs ps 11 (to_int j)).vo }
+       assert { (phs ps 11 (to_int j)).vo };
+       assert { reg_ok ps hv (phs ps 11 (to_int j)) (to_int j) s };
+       assert { mem (Out (to_int j)) s.valid /\
+                forall b. mem b (s.points (Out (to_int j))) -> live s b }
+     | Tuple _ ->
+       assert { glob ps true false s };
+       assert { mem Tup s.valid /\ forall b. mem b (s.points Tup) -> live s b }
      | _ -> () end);
     assert { forall v. mem v a.used ->
                mem v s.valid /\ forall b. mem b (s.points v) -> live s b };
