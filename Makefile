@@ -24,6 +24,11 @@ release:
 	@read yesno; test "$$yesno" = y
 	dune-release tag $(TAG)
 	dune-release distrib
+	@# dune-release keeps every file but .git: remove the agents' files
+	bzip2 -dc _build/camlid-$(TAG).tbz > _build/camlid-$(TAG).tar
+	tar --delete -f _build/camlid-$(TAG).tar camlid-$(TAG)/AGENTS.md \
+	  camlid-$(TAG)/CLAUDE.md camlid-$(TAG)/agents
+	bzip2 -c _build/camlid-$(TAG).tar > _build/camlid-$(TAG).tbz
 	dune-release publish
 	dune-release opam pkg
 	dune-release opam submit
