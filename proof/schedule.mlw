@@ -618,6 +618,13 @@ module Proof
     ensures { inv ps (upd f i { (f i) with ck = true }) hv tup msg
                 (post_action ps p (act_check_out ps i) s) }
   = let ghost s1 = post_action ps p (act_check_out ps i) s in
+    assert { reg_ok ps hv (f i) i s };
+    assert { mem (C i) s.valid /\ forall b. mem b (s.points (C i)) -> live s b };
+    assert { (prm ps i).value_locals ->
+               mem (Vloc i) s.valid /\
+               forall b. mem b (s.points (Vloc i)) -> live s b };
+    assert { forall v. mem v (act_check_out ps i).used ->
+               mem v s.valid /\ forall b. mem b (s.points v) -> live s b };
     assert { s1.st = s.st /\ s1.points = s.points /\ s1.refers = s.refers };
     assert { forall v. mem v s1.valid <-> mem v s.valid };
     assert { glob ps tup msg s };
@@ -1354,6 +1361,16 @@ module Proof
     ensures { inv ps f hv tup msg (post_action ps p (act_revert ps) s) }
   = let ghost a = act_revert ps in
     let ghost s1 = post_action ps p a s in
+    assert { forall b. mem b a.reverts -> exists i. mem i (produced ps) /\
+               (b = Own i /\ (prm ps i).free \/
+                b = Data i /\ (prm ps i).owned_by_ml) };
+    assert { forall i. mem i (produced ps) ->
+               call_ph ps f i = { (f i) with cv = acquired (prm ps i) } /\
+               not boxed_input (prm ps i) /\ reg_ok ps hv (call_ph ps f i) i s };
+    assert { forall i. mem i (produced ps) -> (prm ps i).free ->
+               s.st (Own i) = Live Stub };
+    assert { forall i. mem i (produced ps) -> (prm ps i).owned_by_ml ->
+               s.st (Data i) = Live Stub };
     assert { forall b. mem b a.reverts -> s1.st b = Unborn /\ owned s b };
     assert { forall b. not mem b a.reverts -> s1.st b = s.st b };
     assert { s1.points = s.points /\ s1.refers = s.refers };
@@ -1362,6 +1379,23 @@ module Proof
     assert { forall b c. live s1 b -> mem c (s1.refers b) ->
                live s b /\ not mem c a.reverts };
     assert { glob ps tup msg s1 };
+    assert { forall j. not mem j (produced ps) ->
+               call_ph ps f j = f j /\
+               not mem (Own j) a.reverts /\ not mem (Data j) a.reverts };
+    assert { forall j. mem j (produced ps) ->
+               s1.st (Own j) = Unborn /\ s1.st (Data j) = Unborn };
+    assert { s1.done_checks = s.done_checks };
+    assert { forall j. not mem j (produced ps) ->
+               s1.st (Own j) = s.st (Own j) /\ s1.st (Data j) = s.st (Data j) /\
+               s1.st (MlIn j) = s.st (MlIn j) /\
+               s1.st (MlLoc j) = s.st (MlLoc j) /\
+               s1.st (MlOut j) = s.st (MlOut j) };
+    assert { forall j. in_range ps j -> not mem j (produced ps) ->
+               reg_ok ps hv (f j) j s -> reg_ok ps hv (f j) j s1 };
+    assert { forall j. in_range ps j -> not mem j (produced ps) ->
+               reg_ok ps hv (call_ph ps f j) j s -> reg_ok ps hv (f j) j s1 };
+    assert { forall j. in_range ps j -> mem j (produced ps) ->
+               reg_ok ps hv (call_ph ps f j) j s -> reg_ok ps hv (f j) j s1 };
     assert { forall j. in_range ps j ->
                reg_ok ps hv (call_ph ps f j) j s -> reg_ok ps hv (f j) j s1 }
 
@@ -1629,6 +1663,10 @@ module Proof
       end;
       assert { p.noalloc -> not (out_effects ps p i).alloc };
       l_c2ml ps o call p f hv false false s i (act_c2ml no_alias ps p i);
+      assert { phs ps 9 i = conv_ph (prm ps i) (f i) };
+      assert { forall j. in_range ps j -> j <> i ->
+                 not selected S_heap_output (prm ps j) };
+      assert { forall j. in_range ps j -> j <> i -> phs ps 9 j = f j };
       assert { forall j. in_range ps j ->
                  upd f i (conv_ph (prm ps i) (f i)) j = phs ps 9 j };
       assert { actions_of no_alias ps p (C2ml l) =
@@ -1661,6 +1699,15 @@ module Proof
                phs ps 10 i = conv_ph (prm ps i) (phs ps 9 i) };
     assert { forall i. L.mem i (ints l) ->
                not (out_effects ps p i).raising };
+    assert { forall i. L.mem i (ints l) ->
+               ((prm ps i).owned_by_ml -> (phs ps 9 i).cv = KO) /\
+               ((prm ps i).out_check -> (phs ps 9 i).ck) };
+    assert { forall i. L.mem i (ints l) ->
+               p.noalloc -> not (out_effects ps p i).alloc };
+    assert { forall i. L.mem i (ints l) -> (out_effects ps p i).alloc ->
+               gc_roots_ok ps p (phs ps 9) false false };
+    assert { forall i. L.mem i (ints l) -> (out_effects ps p i).alloc ->
+               gc_roots_ok ps p (phs ps 10) false false };
     assert { c2ml_ok ps p (phs ps 9) (phs ps 10) false false (ints l)
                (act_c2ml no_alias ps p) };
     run_c2ml ps o call p (phs ps 9) (phs ps 10) false false (ints l)
@@ -2009,6 +2056,24 @@ module Schedule
         assert { run_steps no_alias ps p sa t_chk };
         assert { run_steps no_alias ps p sp t_ain };
         assert { run_steps no_alias ps p s0 steps };
+        assert { shape o call true o.error t_free };
+        assert { shape o call true o.error t_tuple };
+        assert { shape o call true o.error t_c2ml };
+        assert { shape o call true o.error t_hout };
+        assert { shape o call true o.error t_out };
+        assert { shape o call true false t_err };
+        assert { shape o call false false t_call };
+        assert { shape o call false false t_init };
+        assert { shape o call false false t_h };
+        assert { shape o call false false t_b2 };
+        assert { shape o call false false t_b1 };
+        assert { shape o call false false t_chk };
+        assert { shape o call false false t_ain };
         assert { shape o call false false steps };
+        assert { p.steps = steps /\ run_steps no_alias ps p (start ps) p.steps };
+        assert { p.noalloc -> forall v. not rooted ps p v };
+        assert { o.want_noalloc = Some true -> p.noalloc };
+        assert { o.want_noalloc = Some false -> not p.noalloc };
+        assert { safe_spec no_alias ps o call p };
         Ok p
 end

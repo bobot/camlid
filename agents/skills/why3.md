@@ -28,8 +28,8 @@ Keep the generic parts in sync with it. The section "In camlid" is local. -->
   (bibix image of the same name; run it with `HOME=/home/opam`) has them;
   colibri2 0.6 is the static binary
   `https://git.frama-c.com/pub/colibrics/-/jobs/artifacts/0.6/raw/bin/colibri2?job=generate-static`.
-  Aim for leaves under 2s (2026-11-09: 11 left between 2 and 4.3s, measured
-  under load). `why3find mcp` (prove, tree, task, apply, script) helps to
+  Aim for leaves under 2s (2026-11-10: all under 2s, several at 1.8-1.9s
+  recorded under load). `why3find mcp` (prove, tree, task, apply, script) helps to
   split them: intermediate asserts, or a `split_vc` hint. `prove -r` replays
   within the recorded times and fails when a hint was recorded on a quieter
   machine; re-prove such a goal with `fresh`. `prove -f` searches again from
