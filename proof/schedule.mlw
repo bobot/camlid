@@ -686,6 +686,9 @@ module Proof
     assert { forall b. mem b a.creates -> s.st b = Unborn };
     assert { forall b. mem b a.deletes -> owned s b \/ s.st b = Unborn };
     assert { p.noalloc -> not a.allocates /\ not a.may_raise /\ not a.released };
+    assert { s1.refers (MlOut i) = a.stores (MlOut i) };
+    assert { forall c. mem c (a.stores (MlOut i)) ->
+               q.owned_by_ml /\ c = Data i };
     assert { forall c. mem c (s1.refers (MlOut i)) ->
                q.owned_by_ml /\ c = Data i };
     assert { s1.st (MlOut i) = Live Gc };
@@ -755,6 +758,10 @@ module Proof
     assert { forall b. owned s1 b -> owned s b };
     assert { forall b c. live s1 b -> mem c (s1.refers b) -> c <> Own i };
     assert { glob ps tup msg s1 };
+    assert { reg_ok ps hv (f i) i s };
+    assert { reg_ok ps hv { (f i) with cv = KF } i s1 };
+    assert { forall j. in_range ps j -> j <> i ->
+               reg_ok ps hv (f j) j s -> reg_ok ps hv (f j) j s1 };
     assert { forall j. in_range ps j ->
                reg_ok ps hv (upd f i { (f i) with cv = KF } j) j s1 }
 
@@ -1299,6 +1306,11 @@ module Proof
     assert { forall b c. live s1 b -> mem c (s1.refers b) ->
                not mem b a.creates /\ live s0 b /\
                s0.st c = Live (Kept b) /\ not mem c a.creates };
+    assert { forall b. owned s1 b ->
+               exists i. in_range ps i /\ (b = Own i \/ b = Data i) };
+    assert { forall b c. live s1 b -> mem c (s1.refers b) ->
+               s1.st c = Live (Kept b) /\ s1.st b = Live Gc };
+    assert { s1.st MlTuple = Unborn /\ s1.st MlMsg = Unborn };
     assert { glob ps false false s1 };
     assert { forall j. in_range ps j -> mem j (produced ps) ->
                reg_ok ps hv0 (f j) j s0 /\ not has_input (prm ps j) };
@@ -1455,7 +1467,12 @@ module Proof
     ensures { run_actions ps p s (actions_of no_alias ps p (Ml2c l)) }
     ensures { inv_h ps (phs ps (k + 1)) false false
                 (after ps p s (actions_of no_alias ps p (Ml2c l))) }
-  = assert { ml2c_ok ps p (phs ps k) (phs ps (k + 1)) false false (ints l) };
+  = assert { forall i. L.mem i (ints l) -> (prm ps i).ml2c.raising ->
+               nothing_owned ps (phs ps k) /\ nothing_owned ps (phs ps (k + 1)) };
+    assert { forall i. L.mem i (ints l) -> (prm ps i).ml2c.alloc ->
+               gc_roots_ok ps p (phs ps k) false false /\
+               gc_roots_ok ps p (phs ps (k + 1)) false false };
+    assert { ml2c_ok ps p (phs ps k) (phs ps (k + 1)) false false (ints l) };
     run_ml2c ps o call p (phs ps k) (phs ps (k + 1)) false false (ints l) s
 
   (** At the start nothing is owned: the stub can run the OCaml callbacks *)
@@ -1568,6 +1585,13 @@ module Proof
     assert { distinct (ints c.frees) };
     assert { forall i. L.mem i (ints c.frees) <-> in_range ps i /\ (prm ps i).free };
     assert { frame ps (mvs ps k x) (frs ps k x) (ints c.frees) };
+    assert { forall i. L.mem i (ints c.frees) ->
+               frs ps k x i = { (mvs ps k x i) with cv = KF } };
+    assert { forall i. L.mem i (ints c.frees) ->
+               (mvs ps k x i).cv = KZ \/ (mvs ps k x i).cv = KO };
+    assert { forall i. L.mem i (ints c.frees) ->
+               (prm ps i).owned_by_ml -> not boxed_input (prm ps i) ->
+               (mvs ps k x i).cv = KO -> (mvs ps k x i).mv };
     assert { free_ok ps (mvs ps k x) (frs ps k x) (ints c.frees) };
     run_free ps o call p (mvs ps k x) (frs ps k x) false true (ints c.frees) s2;
     let ghost s3 = after ps p s2 lf in

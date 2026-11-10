@@ -28,12 +28,12 @@ Keep the generic parts in sync with it. The section "In camlid" is local. -->
   (bibix image of the same name; run it with `HOME=/home/opam`) has them;
   colibri2 0.6 is the static binary
   `https://git.frama-c.com/pub/colibrics/-/jobs/artifacts/0.6/raw/bin/colibri2?job=generate-static`.
-  Aim for leaves under 2s (2026-11-10: all under 2s, several at 1.8-1.9s
-  recorded under load). `why3find mcp` (prove, tree, task, apply, script) helps to
+  Aim for leaves under 2s (2026-11-10: all under 1.7s, under load 4). `why3find mcp` (prove, tree, task, apply, script) helps to
   split them: intermediate asserts, or a `split_vc` hint. `prove -r` replays
   within the recorded times and fails when a hint was recorded on a quieter
   machine; re-prove such a goal with `fresh`. `prove -f` searches again from
-  scratch and drops the hand-made splits. Run provers in the agents' shared
+  scratch and drops the hand-made splits. Validate with `prove -r --no-cache`:
+  with the cache, a replay can pass on results recorded earlier. Run provers in the agents' shared
   pool: `--jobserver locks:/workspaces/slots6`.
 - `schedule.mlw` (2026-11-09): `Schedule` uses only `Defs` (definitions) and
   `Steps` (the specifications of the `st_*` lemmas, as ghost `val`s). `Proof`
@@ -46,9 +46,12 @@ Keep the generic parts in sync with it. The section "In camlid" is local. -->
   the body that calls them. Calling a lemma whose `requires`/`ensures`
   quantify over all registers is faster than an `assert` of the same
   `forall` (`reg_ok_acquired`, `reg_frame_all` in `l_call`).
-- `why3find mcp` `prove` keeps a hint that still replays, without re-timing
-  it. To re-time a goal and keep its splits, set its leaf times to 0.001 in
-  the json before proving (2026-11-10).
+- `why3find prove` (and `mcp` `prove`) keeps a hint that still replays,
+  without re-timing it. To re-time a goal and keep its splits, replace each
+  leaf by a hint for a prover that does not exist (`{"prover": "nosuch@0",
+  "time": 1.0}`) and prove in update mode. Not a tiny time: the replay uses a
+  1s floor and keeps the time. Not an empty leaf: the parent node is proved
+  again as a whole, which drops the split (2026-11-10).
 - The user is the modelling expert: report a wrong model or spec with a
   counterexample, and wait.
 
