@@ -1,4 +1,4 @@
-.PHONY: build test opam release extract prove melocoton
+.PHONY: build test opam release distrib extract prove melocoton
 
 build:
 	dune build --root . @install
@@ -23,15 +23,26 @@ release:
 	@echo "Is the CHANGES correct for $(TAG) (y/n)?"
 	@read yesno; test "$$yesno" = y
 	dune-release tag $(TAG)
+	$(MAKE) distrib TAG=$(TAG)
+	dune-release publish
+	dune-release opam pkg
+	dune-release opam submit
+
+# The release archive _build/camlid-$(TAG).tbz of the tag $(TAG)
+distrib:
+	@test -n "$(TAG)" || { echo "usage: make distrib TAG=x.y"; exit 1; }
 	dune-release distrib
 	@# dune-release keeps every file but .git: remove the agents' files
 	bzip2 -dc _build/camlid-$(TAG).tbz > _build/camlid-$(TAG).tar
 	tar --delete -f _build/camlid-$(TAG).tar camlid-$(TAG)/AGENTS.md \
 	  camlid-$(TAG)/CLAUDE.md camlid-$(TAG)/agents
 	bzip2 -c _build/camlid-$(TAG).tar > _build/camlid-$(TAG).tbz
-	dune-release publish
-	dune-release opam pkg
-	dune-release opam submit
+	@# check the archive: git archive of the tag (export-ignore), up to the
+	@# version added by dune subst. A corrupted archive happened once.
+	d=_build/distrib-check-$$$$ && mkdir -p $$d/a $$d/b \
+	  && bzip2 -dc _build/camlid-$(TAG).tbz | tar x -C $$d/a \
+	  && git archive --prefix=camlid-$(TAG)/ $(TAG) | tar x -C $$d/b \
+	  && diff -r -x camlid.opam -x dune-project $$d/a $$d/b
 
 # Extract the proved scheduler (needs why3, see agents/skills/why3.md)
 extract:
