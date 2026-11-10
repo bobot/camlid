@@ -1181,7 +1181,50 @@ module Proof
     ensures { pre_action p (act_call no_alias ps call o.release_lock) s }
     ensures { inv_h ps (call_ph ps f) false false
                 (post_action ps p (act_call no_alias ps call o.release_lock) s) }
-  = let ghost hv = any bool ensures { inv ps f result false false s /\
+  =
+    (* [reg_frame] for all the registers outside `d` *)
+    let ghost reg_frame_all (ps: list param) (hv: bool) (f g: reg -> ph)
+        (d: set reg) (s s': state)
+      requires { forall i. in_range ps i -> not mem i d ->
+                   g i = f i /\ reg_ok ps hv (f i) i s }
+      requires { forall i. in_range ps i -> not mem i d ->
+                   s'.st (Own i) = s.st (Own i) /\ s'.st (Data i) = s.st (Data i) /\
+                   s'.st (MlIn i) = s.st (MlIn i) /\
+                   s'.st (MlLoc i) = s.st (MlLoc i) /\
+                   s'.st (MlOut i) = s.st (MlOut i) }
+      requires { forall i. in_range ps i -> not mem i d ->
+                   forall v. v = In i \/ v = Vloc i \/ v = Out i ->
+                     s'.points v = s.points v /\ (mem v s'.valid <-> mem v s.valid) }
+      requires { forall i. in_range ps i -> not mem i d ->
+                   (mem (C i) s'.valid /\
+                    forall b. mem b (s'.points (C i)) -> mem b (cblocks ps i)) \/
+                   (s'.points (C i) = s.points (C i) /\
+                    (mem (C i) s'.valid <-> mem (C i) s.valid)) }
+      requires { subset s.done_checks s'.done_checks }
+      ensures { forall i. in_range ps i -> not mem i d -> reg_ok ps hv (g i) i s' }
+    = () in
+    (* [reg_ok] of the registers produced by the C call, from their pieces *)
+    let ghost reg_ok_acquired (ps: list param) (hv: bool) (g: reg -> ph)
+        (s: state)
+      requires { forall i. in_range ps i -> mem i (produced ps) ->
+        not boxed_input (prm ps i) /\ not (g i).mv /\ not (g i).vo /\
+        (g i).cv = acquired (prm ps i) /\
+        mem (C i) s.valid /\
+        (forall b. mem b (s.points (C i)) -> mem b (cblocks ps i)) /\
+        (if (prm ps i).free then s.st (Own i) = Live Stub
+         else s.st (Own i) = Unborn) /\
+        (if (prm ps i).owned_by_ml then s.st (Data i) = Live Stub
+         else s.st (Data i) = Unborn) /\
+        ((prm ps i).value_locals ->
+           mem (Vloc i) s.valid /\
+           (forall b. mem b (s.points (Vloc i)) <-> b = MlLoc i) /\
+           s.st (MlLoc i) = Live Gc) /\
+        s.st (MlOut i) = Unborn /\
+        ((g i).ck -> mem i s.done_checks) }
+      ensures { forall i. in_range ps i -> mem i (produced ps) ->
+                  reg_ok ps hv (g i) i s }
+    = () in
+    let ghost hv = any bool ensures { inv ps f result false false s /\
       forall j. in_range ps j -> heap_input (prm ps j) -> converted (f j) ->
         result } in
     let rl = o.release_lock in
@@ -1212,9 +1255,19 @@ module Proof
                mem b (s.points (C i)) -> not is_ml b };
     assert { rl -> forall i. L.mem i (ints call) -> not locals ps i };
     assert { rl -> forall v b. mem v a.used -> mem b (s.points v) -> not is_ml b };
+    assert { forall b. mem b a.creates ->
+               exists i. mem i (produced ps) /\ (b = Own i \/ b = Data i) };
+    assert { forall i. mem i (produced ps) ->
+               s.st (Own i) = Unborn /\ s.st (Data i) = Unborn };
     assert { forall b. mem b a.creates -> s.st b = Unborn };
     assert { forall v. mem v a.defines ->
                exists i. v = C i /\ (L.mem i (ints call) \/ mem i (produced ps)) };
+    assert { forall i. L.mem i (ints call) ->
+               in_range ps i /\ mem (C i) s1.valid /\
+               forall b. mem b (s1.points (C i)) -> mem b (cblocks ps i) };
+    assert { forall i. mem i (produced ps) ->
+               in_range ps i /\ mem (C i) s1.valid /\
+               forall b. mem b (s1.points (C i)) -> mem b (cblocks ps i) };
     assert { forall i. L.mem i (ints call) \/ mem i (produced ps) ->
                in_range ps i /\ mem (C i) s1.valid /\
                forall b. mem b (s1.points (C i)) -> mem b (cblocks ps i) };
@@ -1233,6 +1286,8 @@ module Proof
     assert { forall i. mem i (produced ps) -> (prm ps i).owned_by_ml ->
                s1.st (Data i) = Live Stub };
     assert { glob ps false false s0 };
+    assert { forall b. mem b a.creates ->
+               exists i. in_range ps i /\ (b = Own i \/ b = Data i) };
     assert { forall b. owned s1 b -> mem b a.creates \/ owned s0 b };
     assert { forall b c. live s1 b -> mem c (s1.refers b) ->
                not mem b a.creates /\ live s0 b /\
@@ -1258,12 +1313,33 @@ module Proof
     assert { forall j. in_range ps j -> mem j (produced ps) ->
                not boxed_input (prm ps j) /\ not (g j).mv /\ not (g j).vo /\
                ((g j).ck -> mem j s1.done_checks) };
+    assert { forall j. mem j (produced ps) ->
+               (g j).cv = acquired (prm ps j) /\ not (g j).mv /\ not (g j).vo };
     assert { forall j. in_range ps j -> mem j (produced ps) ->
-               reg_ok ps hv0 (g j) j s1 };
+               if (prm ps j).free then s1.st (Own j) = Live Stub
+               else s1.st (Own j) = Unborn };
+    assert { forall j. in_range ps j -> mem j (produced ps) ->
+               if (prm ps j).owned_by_ml then s1.st (Data j) = Live Stub
+               else s1.st (Data j) = Unborn };
+    assert { forall j. in_range ps j -> mem j (produced ps) ->
+               (prm ps j).value_locals ->
+               mem (Vloc j) s1.valid /\
+               (forall b. mem b (s1.points (Vloc j)) <-> b = MlLoc j) /\
+               s1.st (MlLoc j) = Live Gc };
+    assert { forall j. in_range ps j -> mem j (produced ps) ->
+               s1.st (MlOut j) = Unborn };
+    reg_ok_acquired ps hv0 g s1;
     assert { forall j. in_range ps j -> not mem j (produced ps) ->
                g j = f j /\ reg_ok ps hv0 (f j) j s0 };
     assert { forall j. in_range ps j -> not mem j (produced ps) ->
-               reg_ok ps hv0 (g j) j s1 };
+               s1.st (Own j) = s0.st (Own j) /\
+               s1.st (Data j) = s0.st (Data j) };
+    assert { forall j. in_range ps j -> not mem j (produced ps) ->
+               (mem (C j) s1.valid /\
+                forall b. mem b (s1.points (C j)) -> mem b (cblocks ps j)) \/
+               (s1.points (C j) = s0.points (C j) /\
+                (mem (C j) s1.valid <-> mem (C j) s0.valid)) };
+    reg_frame_all ps hv0 f g (produced ps) s0 s1;
     assert { inv ps g hv0 false false s1 };
     assert { forall j. in_range ps j -> heap_input (prm ps j) -> not rl }
 

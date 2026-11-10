@@ -40,6 +40,15 @@ Keep the generic parts in sync with it. The section "In camlid" is local. -->
   clones `Steps`, which gives the goals `Proof.Steps.*'refn`. This keeps the
   lemmas of `Proof` out of the goals of `Schedule`. A definition that
   `Schedule` needs goes in `Defs`.
+- A top-level `let lemma` is an axiom for every later goal of the module: two
+  helper lemmas for `l_call` made `l_revert` 3x slower (2026-11-10). Define
+  such helpers as local `let ghost f (..) requires .. ensures .. = () in` in
+  the body that calls them. Calling a lemma whose `requires`/`ensures`
+  quantify over all registers is faster than an `assert` of the same
+  `forall` (`reg_ok_acquired`, `reg_frame_all` in `l_call`).
+- `why3find mcp` `prove` keeps a hint that still replays, without re-timing
+  it. To re-time a goal and keep its splits, set its leaf times to 0.001 in
+  the json before proving (2026-11-10).
 - The user is the modelling expert: report a wrong model or spec with a
   counterexample, and wait.
 
