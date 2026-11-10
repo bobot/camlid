@@ -24,7 +24,7 @@ release:
 	@read yesno; test "$$yesno" = y
 	dune-release tag $(TAG)
 	dune-release distrib
-	dune-release publish distrib
+	dune-release publish
 	dune-release opam pkg
 	dune-release opam submit
 
