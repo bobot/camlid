@@ -32,17 +32,21 @@ release:
 distrib:
 	@test -n "$(TAG)" || { echo "usage: make distrib TAG=x.y"; exit 1; }
 	dune-release distrib
-	@# dune-release keeps every file but .git: remove the agents' files
-	bzip2 -dc _build/camlid-$(TAG).tbz > _build/camlid-$(TAG).tar
-	tar --delete -f _build/camlid-$(TAG).tar camlid-$(TAG)/AGENTS.md \
-	  camlid-$(TAG)/CLAUDE.md camlid-$(TAG)/agents
-	bzip2 -c _build/camlid-$(TAG).tar > _build/camlid-$(TAG).tbz
-	@# check the archive: git archive of the tag (export-ignore), up to the
-	@# version added by dune subst. A corrupted archive happened once.
-	d=_build/distrib-check-$$$$ && mkdir -p $$d/a $$d/b \
+	@# dune-release keeps every file but .git: repack without the agents'
+	@# files (not tar --delete: it corrupted the archive with GNU tar on
+	@# Alpine), then check that the archive is git archive of the tag
+	@# (export-ignore) up to the version added by dune subst
+	d=_build/distrib-$$$$ && mkdir -p $$d/a $$d/b $$d/c \
 	  && bzip2 -dc _build/camlid-$(TAG).tbz | tar x -C $$d/a \
-	  && git archive --prefix=camlid-$(TAG)/ $(TAG) | tar x -C $$d/b \
-	  && diff -r -x camlid.opam -x dune-project $$d/a $$d/b
+	  && tar c -C $$d/a --format=ustar --sort=name --owner=0 --group=0 \
+	       --numeric-owner --anchored --exclude=camlid-$(TAG)/AGENTS.md \
+	       --exclude=camlid-$(TAG)/CLAUDE.md --exclude=camlid-$(TAG)/agents \
+	       camlid-$(TAG) | bzip2 > _build/camlid-$(TAG).tbz \
+	  && bzip2 -dc _build/camlid-$(TAG).tbz | tar x -C $$d/b \
+	  && git archive --prefix=camlid-$(TAG)/ $(TAG) | tar x -C $$d/c \
+	  && cp $$d/b/camlid-$(TAG)/camlid.opam $$d/b/camlid-$(TAG)/dune-project \
+	       $$d/c/camlid-$(TAG)/ \
+	  && diff -r $$d/b $$d/c
 
 # Extract the proved scheduler (needs why3, see agents/skills/why3.md)
 extract:
