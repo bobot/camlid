@@ -32,9 +32,12 @@ Keep the generic parts in sync with it. The section "In camlid" is local. -->
   split them: intermediate asserts, or a `split_vc` hint. `prove -r` replays
   within the recorded times and fails when a hint was recorded on a quieter
   machine; re-prove such a goal with `fresh`. `prove -f` searches again from
-  scratch and drops the hand-made splits. Validate with `prove -r --no-cache`:
-  with the cache, a replay can pass on results recorded earlier. Run provers in the agents' shared
-  pool: `--jobserver locks:/workspaces/slots6`.
+  scratch and drops the hand-made splits. Do not use `--no-cache` routinely
+  (too much CPU): remove the cache directory `proof/.why3find` only when the
+  load makes a replay doubtful. Commit only hint files written by `why3find
+  prove`: after a script or a hand edit of `why3find.proofs/*.json`, run
+  `why3find prove` and check that it leaves the file unchanged. Run provers
+  in the agents' shared pool: `--jobserver locks:/workspaces/slots6`.
 - `schedule.mlw` (2026-11-09): `Schedule` uses only `Defs` (definitions) and
   `Steps` (the specifications of the `st_*` lemmas, as ghost `val`s). `Proof`
   clones `Steps`, which gives the goals `Proof.Steps.*'refn`. This keeps the
@@ -49,9 +52,10 @@ Keep the generic parts in sync with it. The section "In camlid" is local. -->
 - `why3find prove` (and `mcp` `prove`) keeps a hint that still replays,
   without re-timing it. To re-time a goal and keep its splits, replace each
   leaf by a hint for a prover that does not exist (`{"prover": "nosuch@0",
-  "time": 1.0}`) and prove in update mode. Not a tiny time: the replay uses a
-  1s floor and keeps the time. Not an empty leaf: the parent node is proved
-  again as a whole, which drops the split (2026-11-10).
+  "time": 1.0}`) and prove in update mode, which rewrites the file. Not a
+  tiny time: the replay uses a 1s floor and keeps the time. Not an empty
+  leaf: the parent node is proved again as a whole, which drops the split
+  (2026-11-10).
 - The user is the modelling expert: report a wrong model or spec with a
   counterexample, and wait.
 
