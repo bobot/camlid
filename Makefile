@@ -1,3 +1,5 @@
+.PHONY: build test opam release extract prove melocoton
+
 build:
 	dune build --root . @install
 
@@ -7,15 +9,22 @@ test:
 opam:
 	dune build --root . *.opam
 
-DESCRIPTION="$(shell sed -n -e "p;n;:next;/^##/Q;p;n;b next" CHANGES | perl -pe 's/\n/\\n/')"
-
+# make release TAG=x.y, from an up-to-date clean main whose CHANGES starts
+# with "## x.y ##"
 release:
-	@echo -n $(DESCRIPTION)
+	@test -n "$(TAG)" || { echo "usage: make release TAG=x.y"; exit 1; }
+	@test "$$(sed -n '1s/^## *\([^ ]*\).*/\1/p' CHANGES)" = "$(TAG)" \
+	  || { echo "CHANGES does not start with ## $(TAG) ##"; exit 1; }
+	@git diff --quiet HEAD || { echo "uncommitted changes"; exit 1; }
+	@git fetch -q origin main
+	@test "$$(git rev-parse HEAD)" = "$$(git rev-parse origin/main)" \
+	  || { echo "HEAD is not origin/main"; exit 1; }
+	@sed -n '1p;2,/^##/{/^##/!p;}' CHANGES
 	@echo "Is the CHANGES correct for $(TAG) (y/n)?"
 	@read yesno; test "$$yesno" = y
 	dune-release tag $(TAG)
-	dune-release distrib --skip-lint
-	dune-release publish
+	dune-release distrib
+	dune-release publish distrib
 	dune-release opam pkg
 	dune-release opam submit
 

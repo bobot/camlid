@@ -1,0 +1,5 @@
+# Not in the release tarball (git archive, dune-release distrib)
+/AGENTS.md export-ignore
+/CLAUDE.md export-ignore
+/agents export-ignore
+/proof export-ignore
