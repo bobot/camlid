@@ -1,0 +1,3 @@
+(tests
+ (names blocks_bugs blocks_mutations)
+ (libraries camlid))

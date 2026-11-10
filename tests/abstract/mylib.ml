@@ -7,5 +7,5 @@ external of_int:
 external to_int:
   myptr ->
   (int [@untagged])
-  = "camlid_stub_to_int_byte" "camlid_stub_to_int"
-external lib_free: myptr -> unit = "camlid_stub_lib_free"
+  = "camlid_stub_to_int_byte" "camlid_stub_to_int" [@@noalloc]
+external lib_free: myptr -> unit = "camlid_stub_lib_free" [@@noalloc]

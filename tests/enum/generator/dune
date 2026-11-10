@@ -1,0 +1,4 @@
+(executable
+ (name generator)
+ (libraries camlid))
+(env (_ (formatting (enabled_for ocaml))))

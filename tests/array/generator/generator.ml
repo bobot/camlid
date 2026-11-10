@@ -4,14 +4,20 @@ open Helper
 let () =
   Generate.to_file ~headers:[ "lib.h" ] "mylib"
     [
-      (let a = output_array ~input:true int in
+      (let a = array_len_ref ~input:true int in
        func "f" ~ml:"f_output_input" [ a.t; a.len ]);
-      (let a = output_array ~input:false int in
+      (let a = array_len_ref ~input:false int in
        func "f" ~ml:"f_output" [ a.t; a.len ]);
-      (let a = input_array ~output:true int in
+      (let a = array_len ~output:true int in
        func "f2" ~ml:"f_input_output" [ a.t; a.len ]);
-      (let a = input_array ~output:false int in
+      (let a = array_len ~output:false int in
        func "f2" ~ml:"f_input" [ a.t; a.len ]);
+      (let a = array_len (string_nt ()) in
+       func "f_strings" [ a.t; a.len ] ~result:size_t);
       (let a = fixed_length_array int in
        func "f4" [ a.len; a.t ]);
+      (let a =
+         fixed_length_array ~input:true ~output:false ~len_used_in_call:true int
+       in
+       func "f_sum" [ a.t; a.len ] ~result:int);
     ]

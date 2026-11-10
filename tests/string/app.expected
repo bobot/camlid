@@ -1,2 +1,9 @@
 (abcd)
+string contains null bytes
+string contains null bytes
+(ab)
 Hello!Hel
+[abc]
+string shorter than its length
+ab0cd
+"a\000bc"

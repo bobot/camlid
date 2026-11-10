@@ -28,9 +28,9 @@ open Helper
  let () = Generate.to_file "basic"
   ~headers:["alib.h"]
   [
-    func "f_input" [ input int_trunc];
-    func "f_output" [ output (ptr_ref int_trunc)];
-    func "f_with_res" [] ~result:int_trunc;
+    func "f_input" [ input c_int];
+    func "f_output" [ output (ptr_ref c_int)];
+    func "f_with_res" [] ~result:c_int;
     func "f_no_arg_no_result" [];
   ]
  ```

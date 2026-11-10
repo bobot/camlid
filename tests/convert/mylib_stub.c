@@ -6,9 +6,12 @@
 #include <caml/memory.h>
 #include <caml/alloc.h>
 #include <caml/custom.h>
+#include <caml/fail.h>
+#include <caml/callback.h>
+#include <caml/signals.h>
 #include <stdio.h>
 #include <string.h>
-static void camlid_c2ml1(value * v, camlid_result * c){
+static void camlid_c2ml(value * v, camlid_result * c){
   CAMLparam0();
   CAMLlocal1(tmp);
   switch(c->tag){
@@ -24,10 +27,10 @@ static void camlid_c2ml1(value * v, camlid_result * c){
     break;};
   CAMLreturn0;
   }
-static void camlid_c2ml(camlid_ref data, value * v, intptr_t * c){
-  camlid_algdata tmp;
+static void camlid_c2ml1(camlid_ref data, value * v, intptr_t * c){
+  camlid_algdata tmp = ((camlid_result) { 0 });
   combine_data_or_status(&tmp, c, data);;
-   camlid_c2ml1(&*v, &tmp);
+  camlid_c2ml(&*v, &tmp);
   }
 extern value camlid_stub_f(intptr_t p){
   CAMLparam0();
@@ -37,7 +40,7 @@ extern value camlid_stub_f(intptr_t p){
   camlid_ref data = &(((struct { intptr_t a; }) { ((intptr_t) { 0 }) }).a);
   p1 = (p);
   res = f(p1, data);
-  camlid_c2ml(data, &vres, &res);
+  camlid_c2ml1(data, &vres, &res);
   CAMLreturn(vres);
 }
 extern value camlid_stub_f_byte(value p){

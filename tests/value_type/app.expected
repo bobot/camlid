@@ -1,0 +1,8 @@
+sum 16
+sums 0 0 1 3
+total 4
+global copy 105, global 100
+equal true false
+hash true
+zeros 3
+live 1

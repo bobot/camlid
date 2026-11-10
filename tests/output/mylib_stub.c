@@ -7,16 +7,18 @@
 #include <caml/memory.h>
 #include <caml/alloc.h>
 #include <caml/custom.h>
+#include <caml/fail.h>
+#include <caml/callback.h>
+#include <caml/signals.h>
 #include <stdio.h>
 #include <string.h>
 typedef int * camlid_ref;
 extern intptr_t camlid_stub_f(void){
-  CAMLparam0();
   intptr_t p;
   camlid_ref p1 = &(((struct { int a; }) { ((int) { 0 }) }).a);
   f(p1);
   p = (intptr_t)(*p1);
-  CAMLreturnT(intptr_t,p);
+  return p;
 }
 extern value camlid_stub_f_byte(void){
   intptr_t p;
@@ -25,13 +27,11 @@ extern value camlid_stub_f_byte(void){
   p_r = Val_int(p);
   return p_r;
 }
-typedef int * camlid_ref1;
-typedef int * camlid_ref2;
 extern value camlid_stub_f2(void){
   CAMLparam0();
   CAMLlocal3(ret, p_r, p_r1);
-  camlid_ref1 p = &(((struct { int a; }) { ((int) { 0 }) }).a);
-  camlid_ref2 p1 = &(((struct { int a; }) { ((int) { 0 }) }).a);
+  camlid_ref p = &(((struct { int a; }) { ((int) { 0 }) }).a);
+  camlid_ref p1 = &(((struct { int a; }) { ((int) { 0 }) }).a);
   f2(p, p1);
   p_r = Val_int(*p);
   p_r1 = Val_int(*p1);

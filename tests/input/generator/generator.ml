@@ -4,16 +4,16 @@ open Helper
 let () =
   Generate.to_file "mylib"
     [
-      func "f" [ input int_trunc ];
+      func "f" [ input c_int ];
       func "f7"
         [
-          input int_trunc;
-          input int_trunc;
-          input int_trunc;
-          input int_trunc;
-          input int_trunc;
-          input int_trunc;
-          input int_trunc;
+          input c_int;
+          input c_int;
+          input c_int;
+          input c_int;
+          input c_int;
+          input c_int;
+          input c_int;
         ];
     ]
     ~headers:[ "./lib.h" ]

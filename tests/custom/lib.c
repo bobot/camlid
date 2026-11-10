@@ -9,3 +9,4 @@ intptr_t hash_ptr(int ** p){return **p; }
 
 void of_int(int i,int* p){ *p = i;}
 int to_int(int* p){ return *p; }
+void two(int i,int* p,int* q){ *p = i; *q = i;}

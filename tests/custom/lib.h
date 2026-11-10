@@ -7,3 +7,4 @@ intptr_t hash_ptr(int **);
 
 void of_int(int,int*);
 int to_int(int*);
+void two(int,int*,int*);

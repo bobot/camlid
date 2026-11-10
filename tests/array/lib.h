@@ -4,3 +4,5 @@
 void f(intptr_t **, size_t *);
 void f2(intptr_t *, size_t);
 void f4(intptr_t *);
+size_t f_strings(char **, size_t);
+intptr_t f_sum(intptr_t *, size_t);

@@ -7,15 +7,17 @@
 #include <caml/memory.h>
 #include <caml/alloc.h>
 #include <caml/custom.h>
+#include <caml/fail.h>
+#include <caml/callback.h>
+#include <caml/signals.h>
 #include <stdio.h>
 #include <string.h>
 extern intptr_t camlid_stub_f(void){
-  CAMLparam0();
   intptr_t ures;
   intptr_t res;
   res = f();
   ures = (res);
-  CAMLreturnT(intptr_t,ures);
+  return ures;
 }
 extern value camlid_stub_f_byte(void){
   intptr_t ures;

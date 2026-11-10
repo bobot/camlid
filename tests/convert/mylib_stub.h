@@ -10,6 +10,14 @@ typedef struct {
   union {
     struct { intptr_t data; } Data;
     struct { intptr_t error; } Error;} u; } camlid_result;
+#define camlid_result_match(x) for(camlid_result *cid_m = (x); cid_m != NULL; cid_m = NULL) switch((int)cid_m->tag) case -1:
+#define camlid_result_otherwise break; default:
+#define camlid_result_of_Data(data) break; case camlid_result_Data: \
+  for(int cid_once = 1; cid_once; cid_once = 0) \
+  for(intptr_t *data = &cid_m->u.Data.data; cid_once; cid_once = 0)
+#define camlid_result_of_Error(error) break; case camlid_result_Error: \
+  for(int cid_once = 1; cid_once; cid_once = 0) \
+  for(intptr_t *error = &cid_m->u.Error.error; cid_once; cid_once = 0)
 // @brief Fill [dst] with the constructor Data of result
 // @param dst structure to fill
 // @param data reference is assigned to the constructor field

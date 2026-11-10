@@ -1,1 +1,7 @@
 _build
+.why3find
+proof/melocoton/*.vo*
+proof/melocoton/*.glob
+proof/melocoton/.*.aux
+.lia.cache
+/_opam/

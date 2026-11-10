@@ -1,0 +1,317 @@
+(** # The plan of a stub
+
+The types of the plans, shared by the specification (`spec.mlw`) and by
+`schedule` (`schedule.mlw`), which is proved to give plans safe in the
+specification. They are extracted to `lib/plan_gen.ml`; the printer
+(`Expert.code_c_fun_of_plan`) translates each step into C.
+
+The parameters are numbered by their position in the list: this number
+is the *register* of the parameter in the specification. *)
+
+(** ## OCaml integers
+
+At least 31 bits, as OCaml `int` on every platform: a proof can't assume
+more. Extracted to the OCaml `int`. *)
+
+module OInt
+
+  use int.Int
+
+  clone export mach.int.Bounded_int with axiom .
+
+  axiom min_31 : min <= - 0x4000_0000
+  axiom max_31 : 0x3fff_ffff <= max
+
+  val constant zero : t ensures { to_int result = 0 }
+  val constant one : t ensures { to_int result = 1 }
+  val constant max_t : t ensures { to_int result = max }
+
+end
+
+module Types
+
+  use int.Int
+  use OInt
+  use list.List
+  use list.Mem
+  use list.Length
+  use list.NthNoOpt
+  use list.Distinct
+  use option.Option
+
+  (** ## The description of the parameters *)
+
+  (** The effects of a conversion on the OCaml runtime: `alloc` when it
+      allocates in the OCaml heap or registers values with `CAMLparam`,
+      `raising` when it can raise an OCaml exception, before acquiring any
+      resource. *)
+  type effects = { alloc : bool; raising : bool }
+
+  let predicate is_pure (e: effects) = not e.alloc && not e.raising
+
+  type input_kind = No_input | Boxed_input | Unboxed_input
+  type output_kind = No_output | Boxed_output | Unboxable_output
+
+  type param = {
+    input : input_kind;
+    output : output_kind;
+    owned_by_ml : bool;
+      (** the C value is stored in an OCaml block: the input is borrowed,
+          the output is moved into a new block *)
+    init : bool;  (** has a constructor (used when it is not an input) *)
+    free : bool;  (** has a destructor, which accepts the zero value *)
+    value_locals : bool;  (** has C locals of type `value` *)
+    ml_heap : bool;  (** its C argument points into the OCaml heap *)
+    ml2c : effects;  (** the conversion of its input *)
+    c2ml : effects;  (** the boxed conversion of its output *)
+    in_check : bool;  (** its input is checked before any conversion *)
+    out_check : bool;  (** its output is checked after the call *)
+  }
+
+  type options = {
+    want_noalloc : option bool;  (** `None`: when possible *)
+    release_lock : bool;
+    error : bool;  (** the result of the C function is checked *)
+  }
+
+  (** ## Plans *)
+
+  (** The registers (numbers of the parameters) are OCaml integers *)
+
+  type result_kind =
+    | Unit_result
+    | One_value t  (** a boxed result *)
+    | One_unboxed t  (** an unboxed result, returned as a C value *)
+    | Tuple (list t)  (** the outputs, stored in a tuple *)
+
+  type gc_roots = {
+    inputs : list t;  (** boxed inputs, `CAMLparam` *)
+    outputs : list t;  (** boxed outputs, `CAMLlocal` *)
+    ret : bool;  (** the tuple *)
+    err : bool;  (** the message of the exception *)
+    c_values : list t;  (** parameters with C locals of type `value` *)
+  }
+
+  (** What to do before raising: move the outputs owned by OCaml into
+      OCaml values (their finalizers will clear them), then free. *)
+  type cleanup = { moves : list t; frees : list t }
+
+  type step =
+    | Poll  (** runs the pending signal handlers and other OCaml callbacks *)
+    | Check_in (list t)  (** check the inputs, raise on failure *)
+    | Ml2c (list t)
+    | Init (list t)
+    | Call (list t) bool  (** the arguments; releases the lock *)
+    | Check_error cleanup  (** the C function failed: cleanup, raise *)
+    | Check_out (list t) cleanup  (** check the outputs *)
+    | C2ml (list t)
+    | Alloc_tuple (list t)
+    | Free (list t)
+    | Return
+
+  type plan = {
+    noalloc : bool;  (** no roots, `[@@noalloc]` *)
+    result : result_kind;
+    roots : gc_roots;
+    steps : list step;
+  }
+
+  (** The registers as mathematical integers, for the model *)
+  function ints (l: list t) : list int =
+    match l with Nil -> Nil | Cons x r -> Cons (to_int x) (ints r) end
+
+  type sched_error =
+    | Bad_call  (** an argument of the call is not a parameter *)
+    | Input_output_owned
+        (** an input and output owned by OCaml: two OCaml values *)
+    | Owned_unused
+        (** owned by OCaml, but neither a boxed input nor a boxed output *)
+    | Raising_owning_input
+        (** the conversion of an input with a destructor raising: use a
+            check *)
+    | Raising_output  (** the conversion of an output raising: use a check *)
+    | Lock_ml_heap
+        (** the lock can't be released, an argument points into the OCaml
+            heap *)
+    | Unrooted_heap
+        (** two inputs contain unregistered OCaml values, or the conversion
+            of such an input can raise *)
+    | Not_noalloc  (** noalloc was requested but is not possible *)
+    | Too_many_params  (** more parameters than `max` *)
+
+  type schedule_result = Ok plan | Error sched_error
+
+  (** Selection of the parameters *)
+  type sel =
+    | S_boxed_input | S_input | S_output | S_init | S_free | S_value_locals
+    | S_in_check | S_out_check | S_pre_input | S_checked_input
+    | S_owning_input | S_heap_input | S_heap_output | S_plain_output
+    | S_raising_heap
+    | S_move_error | S_move_out
+    | S_input_output_owned | S_owned_unused
+    | S_raising_owning_input | S_raising_output | S_not_noalloc
+
+  let predicate has_input (q: param) =
+    match q.input with No_input -> false | _ -> true end
+  let predicate boxed_input (q: param) =
+    match q.input with Boxed_input -> true | _ -> false end
+  let predicate has_output (q: param) =
+    match q.output with No_output -> false | _ -> true end
+  let predicate unboxable_output (q: param) =
+    match q.output with Unboxable_output -> true | _ -> false end
+  let predicate boxed_output (q: param) =
+    match q.output with Boxed_output -> true | _ -> false end
+
+  (** An input whose C value contains OCaml values that are not
+      registered with the GC (a `value` in a struct or an array): a GC
+      after its conversion makes it invalid *)
+  let predicate heap_input (q: param) =
+    has_input q && q.ml_heap && not q.value_locals
+
+  let predicate selected (x: sel) (q: param) =
+    match x with
+    | S_boxed_input -> boxed_input q
+    | S_input -> has_input q
+    | S_output -> has_output q
+    | S_init -> not has_input q && q.init
+    | S_free -> q.free
+    | S_value_locals -> q.value_locals
+    | S_in_check -> has_input q && q.in_check
+    | S_out_check -> has_output q && q.out_check
+    | S_pre_input ->
+      has_input q && not q.free && not q.in_check && not heap_input q
+    | S_checked_input ->
+      has_input q && not q.free && q.in_check && not heap_input q
+    | S_owning_input -> has_input q && q.free && not heap_input q
+    | S_heap_input -> heap_input q
+    | S_heap_output -> heap_input q && has_output q
+    | S_plain_output -> has_output q && not heap_input q
+    | S_raising_heap -> heap_input q && q.ml2c.raising
+    | S_move_error ->
+      has_output q && q.owned_by_ml && not has_input q && q.init
+    | S_move_out -> has_output q && q.owned_by_ml
+    | S_input_output_owned ->
+      has_input q && has_output q && q.owned_by_ml
+    | S_owned_unused ->
+      q.owned_by_ml && not boxed_input q && not boxed_output q
+    | S_raising_owning_input ->
+      has_input q && q.ml2c.raising && q.free
+    | S_raising_output -> has_output q && q.c2ml.raising
+    | S_not_noalloc ->
+      has_input q && (not (is_pure q.ml2c) || q.in_check) ||
+      has_output q && q.out_check
+    end
+
+  predicate valid_idx (ps: list param) (l: list int) =
+    forall i. mem i l -> 0 <= i < length ps
+
+  function prm (ps: list param) (i: int) : param = nth i ps
+
+end
+
+(** ## Lists of parameters *)
+
+module Lists
+
+  use int.Int
+  use list.List
+  use list.Mem
+  use list.Length
+  use list.NthNoOpt
+  use list.Distinct
+  use option.Option
+  use OInt
+  use Types
+
+  (** The registers `i` of the parameters selected by `x` (shifted by
+      `n`), in the model *)
+  let rec ghost function ipids (x: sel) (ps: list param) (n: int) : list int
+    variant { ps }
+    ensures { forall i. mem i result <->
+                n <= i < n + length ps /\ selected x (nth (i - n) ps) }
+    ensures { distinct result }
+    ensures { forall i. mem i result -> n <= i }
+  = match ps with
+    | Nil -> Nil
+    | Cons q r ->
+      let l = ipids x r (n + 1) in
+      assert { forall i. n < i -> nth (i - n) ps = nth (i - (n + 1)) r };
+      assert { nth (n - n) ps = q };
+      if selected x q then Cons n l else l
+    end
+
+  (** The same in the program *)
+  let rec pids (x: sel) (ps: list param) (n: t) : list t
+    requires { 0 <= n /\ n + length ps <= max }
+    variant { ps }
+    ensures { ints result = ipids x ps n }
+  = match ps with
+    | Nil -> Nil
+    | Cons q r ->
+      let l = pids x r (n + one) in
+      if selected x q then Cons n l else l
+    end
+
+  (** The registers fit in `t` *)
+  let rec fits (n: t) (ps: list param) : bool
+    requires { 0 <= n }
+    variant { ps }
+    ensures { result <-> n + length ps <= max }
+  = match ps with
+    | Nil -> true
+    | Cons _ r -> n < max_t && fits (n + one) r
+    end
+
+  let rec exists_sel (x: sel) (ps: list param) : bool
+    variant { ps }
+    ensures { result <->
+                exists i. 0 <= i < length ps /\ selected x (nth i ps) }
+  = match ps with
+    | Nil -> false
+    | Cons q r ->
+      let b = exists_sel x r in
+      assert { forall j. 0 <= j -> nth (j + 1) ps = nth j r };
+      assert { nth 0 ps = q };
+      selected x q || b
+    end
+
+  let rec get (ps: list param) (i: t) : param
+    requires { 0 <= i < length ps }
+    variant { ps }
+    ensures { result = nth i ps }
+  = match ps with
+    | Nil -> absurd
+    | Cons q r -> if i = zero then q else get r (i - one)
+    end
+
+  let rec lt_length (i: t) (ps: list param) : bool
+    variant { ps }
+    ensures { result <-> 0 <= i < length ps }
+  = if i < zero then false
+    else match ps with
+    | Nil -> false
+    | Cons _ r -> i = zero || lt_length (i - one) r
+    end
+
+  let rec valid_call (ps: list param) (l: list t) : bool
+    variant { l }
+    ensures { result <-> forall i. mem i (ints l) -> 0 <= i < length ps }
+  = match l with
+    | Nil -> true
+    | Cons i r -> lt_length i ps && valid_call ps r
+    end
+
+  let rec heap_in_call (ps: list param) (l: list t) : bool
+    requires { valid_idx ps (ints l) }
+    variant { l }
+    ensures { result <-> exists i. mem i (ints l) /\
+                ((nth i ps).ml_heap \/ (nth i ps).value_locals) }
+  = match l with
+    | Nil -> false
+    | Cons i r ->
+      let q = get ps i in
+      q.ml_heap || q.value_locals || heap_in_call ps r
+    end
+
+end
+

@@ -1,3 +1,8 @@
 initialize
 1
 finalize
+initialize
+initialize
+2 2
+finalize
+finalize

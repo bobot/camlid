@@ -39,3 +39,16 @@ void f4(intptr_t * a) {
     a[2] = 6;
     a[3] = 7;
 }
+
+size_t f_strings(char **a, size_t len)
+{
+    size_t total = 0;
+    for (size_t i = 0; i < len; i++)
+        total += strlen(a[i]);
+    return total;
+}
+intptr_t f_sum(intptr_t *a, size_t n) {
+  intptr_t s = 0;
+  for (size_t i = 0; i < n; i++) s += a[i];
+  return s;
+}

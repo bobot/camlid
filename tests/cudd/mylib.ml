@@ -18,12 +18,12 @@ external bdd_is_equal:
   bdd ->
   bdd ->
   (bool [@untagged])
-  = "caml_cudd_stub_bdd_is_equal_byte" "caml_cudd_stub_bdd_is_equal"
+  = "caml_cudd_stub_bdd_is_equal_byte" "caml_cudd_stub_bdd_is_equal" [@@noalloc]
 external bdd_leq:
   man ->
   bdd ->
   bdd ->
   (bool [@untagged])
-  = "caml_cudd_stub_bdd_leq_byte" "caml_cudd_stub_bdd_leq"
-external print: man -> bdd -> unit = "caml_cudd_stub_print"
+  = "caml_cudd_stub_bdd_leq_byte" "caml_cudd_stub_bdd_leq" [@@noalloc]
+external print: man -> bdd -> unit = "caml_cudd_stub_print" [@@noalloc]
 external inspect: man -> bdd -> result = "caml_cudd_stub_inspect"

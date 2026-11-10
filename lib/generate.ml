@@ -10,6 +10,9 @@ let print_c cout =
   output_string cout "#include <caml/memory.h>\n";
   output_string cout "#include <caml/alloc.h>\n";
   output_string cout "#include <caml/custom.h>\n";
+  output_string cout "#include <caml/fail.h>\n";
+  output_string cout "#include <caml/callback.h>\n";
+  output_string cout "#include <caml/signals.h>\n";
   output_string cout "#include <stdio.h>\n";
   output_string cout "#include <string.h>\n"
 

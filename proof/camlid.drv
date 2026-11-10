@@ -1,0 +1,15 @@
+(* Extraction of proof/plan.mlw: OInt.t, at least 31 bits, is the OCaml int *)
+
+module plan.OInt
+  syntax type t "int"
+  syntax val zero "0"
+  syntax val one "1"
+  syntax val max_t "max_int"
+  syntax val (+) "(%1 + %2)"
+  syntax val (-) "(%1 - %2)"
+  syntax val (=) "(%1 = %2)"
+  syntax val (<) "(%1 < %2)"
+  syntax val (<=) "(%1 <= %2)"
+  syntax val (>) "(%1 > %2)"
+  syntax val (>=) "(%1 >= %2)"
+end

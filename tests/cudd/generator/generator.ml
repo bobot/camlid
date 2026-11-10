@@ -3,7 +3,9 @@ open Helper
 
 (** todo add reference counting on cudd manager *)
 
-let man = custom_ptr ~finalize:"Cudd_Quit" ~ml:"man" ~c:"DdManager" ()
+let man =
+  custom_ptr ~malloc:false ~clear:"Cudd_Quit" ~ml:"man" ~c:"DdManager" ()
+
 let mani, mani_pc = Expert.simple_param ~input:true man ~name:"man"
 let bdd_t = Expert.typedef "bdd_t" "DdNode*"
 
@@ -17,7 +19,7 @@ let bdd_wrapper =
 let bdd_finalize =
   let i = Expr.Var.mk "i" (Expr.expr "%a*" Expr.pp_def bdd_wrapper) in
   {
-    Expert.finalize =
+    Expert.clear =
       Expr.expr "Cudd_RecursiveDeref(%a->manager,%a->ptr);" Expr.pp_var i
         Expr.pp_var i;
     i;
@@ -40,7 +42,7 @@ let bdd_get =
   { Expert.get = Expr.expr "*%a=%a->ptr;" Expr.pp_var c Expr.pp_var i; i; c }
 
 let bdd =
-  Expert.custom ~finalize:bdd_finalize ~set:bdd_set ~get:bdd_get ~ml:"bdd"
+  Expert.custom ~clear:bdd_finalize ~set:bdd_set ~get:bdd_get ~ml:"bdd"
     ~icty:(Expr.e_def bdd_wrapper) ~cty:(Expr.e_def bdd_t) ()
 
 let f_man fname mlname inputs result =
@@ -53,7 +55,7 @@ let () =
       func ~ml:"init" "cudd_init" [] ~result:man;
       f_man "Cudd_ReadOne" "bdd_true" [] bdd;
       f_man "Cudd_ReadLogicZero" "bdd_false" [] bdd;
-      f_man "Cudd_bddIthVar" "bdd_var" [ int_trunc ] bdd;
+      f_man "Cudd_bddIthVar" "bdd_var" [ c_int ] bdd;
       f_man "Cudd_bddNewVar" "bdd_newvar" [] bdd;
       f_man "Cudd_bddAnd" "bdd_and" [ bdd; bdd ] bdd;
       f_man "Cudd_bddOr" "bdd_or" [ bdd; bdd ] bdd;
