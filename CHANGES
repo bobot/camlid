@@ -4,13 +4,10 @@
       and proved in Why3 (proof/) against a model of the memory as blocks:
       no leak, no double free, no use after free, GC roots, noalloc,
       runtime lock; each generated stub is also checked against this model
-    - memory safety fixes: a stub with an output_value was [@@noalloc] and
-      corrupted the OCaml heap; fixed_length_array/string read out of bounds
+    - memory safety fixes: fixed_length_array/string read out of bounds
       on a short input; a raising conversion leaked the inputs already
-      copied (conversions no longer raise, checks run first); a signal
-      handler raising under release_lock leaked; leaks in algdata fields
-      and array elements; an owned_by_ml parameter used as input and output
-      was finalized twice
+      copied (conversions no longer raise, checks run first); leaks in
+      algdata fields and array elements
     - new helpers: value_type (C++-like classes), enum, flags, nullable,
       keep_alive/parent/child, exception_, extra_input, and Helper.func
       ~error, ~release_lock, ~noalloc
