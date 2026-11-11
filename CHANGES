@@ -3,7 +3,9 @@
     - the order of the steps of a stub is computed by Plan.schedule, written
       and proved in Why3 (proof/) against a model of the memory as blocks:
       no leak, no double free, no use after free, GC roots, noalloc,
-      runtime lock; each generated stub is also checked against this model
+      runtime lock; each generated stub is also checked against this model.
+      It is very much a work in progress, model too high-level,
+      only small part proved.
     - memory safety fixes: fixed_length_array/string read out of bounds
       on a short input; a raising conversion leaked the inputs already
       copied (conversions no longer raise, checks run first); leaks in
