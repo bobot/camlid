@@ -28,7 +28,7 @@ jobs:
 
     steps:
       - name: Checkout tree
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Set-up OCaml
         uses: ocaml/setup-ocaml@v3
@@ -44,13 +44,13 @@ jobs:
         run: opam exec -- dune build @doc
 
       - name: Set-up Pages
-        uses: actions/configure-pages@v5
+        uses: actions/configure-pages@v6
 
       - name: Upload artifact
-        uses: actions/upload-pages-artifact@v4
+        uses: actions/upload-pages-artifact@v5
         with:
           path: _build/default/_doc/_html
 
       - name: Deploy odoc to GitHub Pages
         id: deployment
-        uses: actions/deploy-pages@v4
+        uses: actions/deploy-pages@v5
