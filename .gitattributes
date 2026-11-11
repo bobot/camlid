@@ -1,0 +1,5 @@
+# Not in the release tarball: the release target of the Makefile removes
+# them from the dune-release archive (dune-release ignores this file).
+/AGENTS.md export-ignore
+/CLAUDE.md export-ignore
+/agents export-ignore

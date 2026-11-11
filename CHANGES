@@ -1,85 +1,45 @@
 ## 0.3 ##
-    - fix: string_len (input_string) generated free() on the struct
-      instead of its buffer, which didn't compile
-    - the generated custom_operations are static: two generated stub files
-      can be linked in the same library
-    - the OCaml examples of the documentation are compiled and run in
-      tests/doc, and their stubs compiled against the C prototypes given in
-      their comments
-    - fix: a function with an output_value was declared [@@noalloc] when its
-      conversions didn't allocate, although the C function allocates the value:
-      it corrupted the OCaml heap. Such a stub is no longer noalloc
-    - fix: with release_lock, a signal handler raising when the lock is released
-      leaked what the stub owned. The stub now polls at its start, when it owns
-      nothing, then uses caml_enter_blocking_section_no_pending
-    - each stub is checked at generation time with a low-level model of the
-      memory (Blocks); a stub refused is an internal error of camlid
+  Highlights:
+    - the order of the steps of a stub is computed by Plan.schedule, written
+      and proved in Why3 (proof/) against a specification of the memory as
+      blocks: no leak, no double free, no use after free, GC roots, noalloc,
+      runtime lock. Each generated stub is also checked at generation time
+      with an OCaml model of the memory (Blocks). A work in progress: the
+      specification is high-level (proof/memory.mlw, a lower-level model, is
+      not used yet) and the printing of the C code is not proved
+    - memory safety fixes: fixed_length_array/string read out of bounds
+      on a short input; a raising conversion leaked the inputs already
+      copied (conversions no longer raise, checks run first); leaks in
+      algdata fields and array elements
+    - new helpers: value_type (C++-like classes), enum, flags, nullable,
+      keep_alive/parent/child, exception_, extra_input, and Helper.func
+      ~error, ~release_lock, ~noalloc
     - the minimum OCaml version is 4.14
-    - an input whose C value contains unregistered OCaml values (an array
-      or a struct of `value`) is converted last; two such inputs, or one
-      with a raising conversion, are refused
-    - rename module Type into Ty
-    - the constructor and destructor arguments are named init and clear
-      everywhere (Helper.abstract, custom, custom_ptr, on_stack, and Expert);
-      Expert.mk_initialize and mk_finalize become mk_init and mk_clear
-    - rename int_trunc into c_int, input_string/output_string into
-      string_len/string_len_ref, input_array/output_array into
-      array_len/array_len_ref (the old names are deprecated)
-    - Expert.abstract takes expressions for icty and cty, like Expert.custom
-    - add Helper.value_type for types handled like C++ classes (init,
-      clear, copy), and Helper.extra_input
-    - Helper.func ~error raises an exception (Failure or declared with
-      Helper.exception_) when a C predicate on the result is true, after
-      freeing the C values
-    - Helper.func ~release_lock releases the runtime lock during the call;
-      Ty.contract.ml_heap marks the types that forbid it
-    - algdata generates pattern matching macros in the style of datatype99
-    - Helper.enum and Helper.flags map OCaml constant constructors to C
-      constants; Helper.nullable maps None to NULL
-    - ?dispose for value_type and custom_ptr: an OCaml function to clear
-      the value before it is collected
-    - Helper.keep_alive, Helper.parent and Helper.child for C values
-      depending on others (kept alive, or reference counted when the
-      parent is needed to destroy the child)
-    - externals are [@@noalloc] when the conversions don't allocate nor
-      raise, Helper.func ~noalloc to force or disable it
-    - Ty.mlc.contract groups what the stub needs to know about a type:
-      owned_by_ml, ml_heap, and the effects (alloc, raises) of ml2c and
-      c2ml; Ty.copied and Ty.owned_by_ml build it
-    - the order of the steps of a stub is decided by Plan.schedule, and
-      Expert.code_c_fun only prints it; Plan.schedule is written and proved
-      in Why3 against a specification of the memory as blocks
-      (proof/spec.mlw: no leak, no double free, no use after free, GC
-      roots, noalloc, runtime lock, no exception while the stub owns
-      memory) and extracted. proof/memory.mlw is a lower-level model of
-      the memory (blocks, aliases, GC, runtime lock), a proof of concept
-      that the schedule proof doesn't use yet
-    - Ty.checks: conversions don't raise anymore, a type that refuses
-      values has a C check, run before any conversion for the inputs, or
-      after the call with a cleanup for the outputs (string_nt, enum,
-      dispose, and the arrays and algdata containing them). Fixes a leak
-      when a conversion raised after another input was copied
-    - fixed_length_array and fixed_length_string check that an input is
-      not shorter than the length (it was read out of bounds)
-    - algdata frees the fields of its value (strings leaked); the fields
-      given to t_mk_C are moved into the value
-    - ?mem for custom types and value_type: the memory outside the OCaml
-      heap is given to the GC (caml_alloc_custom_mem); the malloc of
-      custom_ptr is always counted
-    - identical C definitions with the same basename are printed once, so
-      types can be built many times without duplicating code
-    - add Ty.mlc.owned_by_ml; a parameter of such a type can't be input
-      and output (it was finalized twice)
-    - string_nt fails if the string contains a null byte, the previous
-      behaviour is string_nt_prefix
-    - remove the get, set and internal options of Helper.abstract,
-      Helper.custom and Helper.custom_ptr (still in Expert)
-    - fix leak of the elements of input_array and output_array
-    - fix convert: the destination is initialized, the temporary is freed,
-      the unboxed case is fixed
-    - fix ignored_result: the result was not declared nor freed
-    - fix bigarray_array1 conversion to C
-    - documentation of the memory model
+
+  Breaking changes:
+    - module Type renamed Ty; the constructor and destructor arguments are
+      init and clear everywhere (Expert.mk_init, Expert.mk_clear)
+    - int_trunc, input/output_string, input/output_array renamed c_int,
+      string_len(_ref), array_len(_ref) (old names deprecated)
+    - string_nt fails on a null byte (old behaviour: string_nt_prefix)
+    - the get, set and internal options of Helper.abstract, custom and
+      custom_ptr are removed (still in Expert)
+
+  Other changes:
+    - Ty.mlc.contract describes a type for the scheduler (owned_by_ml,
+      ml_heap, effects of ml2c and c2ml)
+    - ?dispose (OCaml function run before collection) and ?mem
+      (caml_alloc_custom_mem) for custom types and value_type
+    - algdata: pattern matching macros in the style of datatype99, the
+      fields given to t_mk_C are moved
+    - an input holding unregistered OCaml values is converted last
+    - static custom_operations, and identical C definitions printed once:
+      several stub files can be linked together
+    - Expert.abstract takes expressions for icty and cty
+    - fixes that didn't compile or were wrong: string_len free, convert,
+      ignored_result, bigarray_array1 to C
+    - the examples of the documentation are compiled and run (tests/doc);
+      documentation of the memory model
 
 ## 0.2 Second initial release ##
     - implement algdata as input
