@@ -12,7 +12,9 @@ void vec_signal_next_init(void) { signal_next_init = 1; }
 void vec_init(vec *v) {
   if (signal_next_init) {
     signal_next_init = 0;
+#ifdef SIGUSR1 /* not on Windows, where the test does not use it */
     raise(SIGUSR1);
+#endif
   } v->data = NULL; v->len = 0; live++; }
 void vec_clear(vec *v) { free(v->data); v->data = NULL; live--; }
 void vec_set(vec *dst, vec *src) {
