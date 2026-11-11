@@ -1,11 +1,12 @@
 ## 0.3 ##
   Highlights:
     - the order of the steps of a stub is computed by Plan.schedule, written
-      and proved in Why3 (proof/) against a model of the memory as blocks:
-      no leak, no double free, no use after free, GC roots, noalloc,
-      runtime lock; each generated stub is also checked against this model.
-      It is very much a work in progress, model too high-level,
-      only small part proved.
+      and proved in Why3 (proof/) against a specification of the memory as
+      blocks: no leak, no double free, no use after free, GC roots, noalloc,
+      runtime lock. Each generated stub is also checked at generation time
+      with an OCaml model of the memory (Blocks). A work in progress: the
+      specification is high-level (proof/memory.mlw, a lower-level model, is
+      not used yet) and the printing of the C code is not proved
     - memory safety fixes: fixed_length_array/string read out of bounds
       on a short input; a raising conversion leaked the inputs already
       copied (conversions no longer raise, checks run first); leaks in
