@@ -107,11 +107,19 @@ static void camlid_release(camlid_rc * r){
 static void camlid_finalize_op2(value v){
   camlid_release((*((camlid_rc **) Data_custom_val(v))));
   }
+static int camlid_compare_op(value v1, value v2){
+  uintptr_t p1 = (uintptr_t) (*((camlid_rc **) Data_custom_val(v1)));
+  uintptr_t p2 = (uintptr_t) (*((camlid_rc **) Data_custom_val(v2)));
+  return (p1 > p2) - (p1 < p2);
+  }
+static intnat camlid_hash_op(value v){
+  return (intnat) (uintptr_t) (*((camlid_rc **) Data_custom_val(v)));
+  }
 static struct custom_operations camlid_cops2 = {
 NULL,
 camlid_finalize_op2,
-custom_compare_default,
-custom_hash_default,
+camlid_compare_op,
+camlid_hash_op,
 custom_serialize_default,
 custom_deserialize_default
 };
@@ -205,11 +213,19 @@ static void camlid_release1(camlid_rc1 * r){
 static void camlid_finalize_op4(value v){
   camlid_release1((*((camlid_rc1 **) Data_custom_val(v))));
   }
+static int camlid_compare_op1(value v1, value v2){
+  uintptr_t p1 = (uintptr_t) (*((camlid_rc1 **) Data_custom_val(v1)));
+  uintptr_t p2 = (uintptr_t) (*((camlid_rc1 **) Data_custom_val(v2)));
+  return (p1 > p2) - (p1 < p2);
+  }
+static intnat camlid_hash_op1(value v){
+  return (intnat) (uintptr_t) (*((camlid_rc1 **) Data_custom_val(v)));
+  }
 static struct custom_operations camlid_cops4 = {
 NULL,
 camlid_finalize_op4,
-custom_compare_default,
-custom_hash_default,
+camlid_compare_op1,
+camlid_hash_op1,
 custom_serialize_default,
 custom_deserialize_default
 };

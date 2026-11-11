@@ -6,6 +6,8 @@
     - Expert.child: parent_of gives the C value of the parent of a child
       (e.g. to check that two children have the same parent), and
       get_parent defines a function that returns the parent of a child
+    - parent: compare and hash; two OCaml values of the same parent are
+      equal
 
 ## 0.3 ##
   Highlights:

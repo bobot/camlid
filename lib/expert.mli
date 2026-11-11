@@ -217,7 +217,8 @@ val parent :
   Ty.mlc * parent
 (** [parent ~clear ~ml ~cty ()] is a pointer [cty] allocated by the C library.
     [void clear(cty)] is called when the OCaml value and all the children are
-    collected.
+    collected. Two OCaml values of the same parent (e.g. from [get_parent]) are
+    equal for [compare] and have the same [Hashtbl.hash].
 
     With [~init], an output is created by [void init(cty c)] on a [cty]
     allocated by camlid with [malloc(sizeof(t))] when [~malloc:t] is given

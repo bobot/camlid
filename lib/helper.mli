@@ -327,7 +327,8 @@ val parent :
   Ty.mlc * Expert.parent
 (** [parent ~clear ~ml ~c ()] is a pointer [c] allocated by the C library.
     [void clear(c)] is called when the OCaml value and all its children are
-    collected.
+    collected. Two OCaml values of the same parent (e.g. from [get_parent]) are
+    equal for [compare] and have the same [Hashtbl.hash].
 
     [~init] creates an output: [~malloc:"t" ~init:"f" ~c:"t *"] allocates a [t]
     and calls [void f(t *c)] ([free] after [clear]); without [~malloc],

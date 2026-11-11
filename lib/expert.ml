@@ -2505,7 +2505,22 @@ let parent ?malloc ?init ?clear ~ml ~cty () =
     let v = Var.mk "v" e_value in
     code "finalize_op" "%a" pp_calli (release, [ (r, data v) ])
   in
-  let ops = custom_ops ~finalize () in
+  (* Two OCaml values of the same parent (e.g. given by [get_parent]) are
+     equal: compare and hash use the address of the shared structure *)
+  let compare =
+    let v1 = Var.mk "v1" e_value in
+    let v2 = Var.mk "v2" e_value in
+    code ~ret:(expr "int") "compare_op"
+      "uintptr_t p1 = (uintptr_t) %a;@ uintptr_t p2 = (uintptr_t) %a;@ return \
+       (p1 > p2) - (p1 < p2);"
+      pp_expr (data v1) pp_expr (data v2)
+  in
+  let hash =
+    let v = Var.mk "v" e_value in
+    code ~ret:(expr "intnat") "hash_op" "return (intnat) (uintptr_t) %a;"
+      pp_expr (data v)
+  in
+  let ops = custom_ops ~finalize ~compare ~hash () in
   let v = Var.mk "v" e_value in
   let c = Var.mk "c" cty in
   let v' = Var.mk "v" (expr "value *") in

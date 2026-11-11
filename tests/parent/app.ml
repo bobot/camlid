@@ -35,6 +35,11 @@ let run () =
   let e = Mylib.elem_of_int c 4 in
   Printf.printf "elem %i, has elems %b\n" (Mylib.elem_get e)
     (Mylib.ctx_elems c > 0);
+  (* two values of the same context are equal *)
+  let c' = Mylib.elem_ctx e in
+  Printf.printf "same ctx: %b %b %b, other ctx: %b\n" (c == c') (c = c')
+    (Hashtbl.hash c = Hashtbl.hash c')
+    (c = Mylib.ctx_create ());
   (* an element of another context is refused *)
   try ignore (Mylib.elem_add (Mylib.ctx_create ()) e e)
   with Invalid_argument msg -> Printf.printf "Invalid_argument %s\n" msg
