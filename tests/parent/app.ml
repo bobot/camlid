@@ -16,7 +16,33 @@ let run () =
     List.init 3 (fun i -> Mylib.node_new d i)
   in
   full_major ();
-  List.iter (fun n -> Printf.printf "node %i\n" (Mylib.node_read n)) nodes
+  List.iter (fun n -> Printf.printf "node %i\n" (Mylib.node_read n)) nodes;
+  (* the context is only reachable from the elements *)
+  let elems =
+    let c = Mylib.ctx_create () in
+    let one = Mylib.elem_of_int c 1 in
+    List.init 3 (fun i -> Mylib.elem_add c one (Mylib.elem_of_int c i))
+  in
+  full_major ();
+  List.iter (fun e -> Printf.printf "elem %i\n" (Mylib.elem_get e)) elems;
+  (* the context is given back by an element, and is only reachable from the
+     returned value *)
+  let c =
+    let c0 = Mylib.ctx_create () in
+    Mylib.elem_ctx (Mylib.elem_of_int c0 7)
+  in
+  full_major ();
+  let e = Mylib.elem_of_int c 4 in
+  Printf.printf "elem %i, has elems %b\n" (Mylib.elem_get e)
+    (Mylib.ctx_elems c > 0);
+  (* two values of the same context are equal *)
+  let c' = Mylib.elem_ctx e in
+  Printf.printf "same ctx: %b %b %b, other ctx: %b\n" (c == c') (c = c')
+    (Hashtbl.hash c = Hashtbl.hash c')
+    (c = Mylib.ctx_create ());
+  (* an element of another context is refused *)
+  try ignore (Mylib.elem_add (Mylib.ctx_create ()) e e)
+  with Invalid_argument msg -> Printf.printf "Invalid_argument %s\n" msg
 
 let () =
   (Sys.opaque_identity run) ();

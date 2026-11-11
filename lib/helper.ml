@@ -366,10 +366,16 @@ let output_string = string_len_ref
 let input_array = array_len
 let output_array = array_len_ref
 let keep_alive = Expert.keep_alive
-let parent ?clear ~ml ~c () = Expert.parent ?clear ~ml ~cty:(expr "%s" c) ()
 
-let child parent ?clear ?clear_with_parent ~ml ~c () =
-  Expert.child parent ?clear ?clear_with_parent ~ml ~cty:(expr "%s" c) ()
+let parent ?malloc ?init ?clear ~ml ~c () =
+  let malloc = Option.map (fun t -> expr "%s" t) malloc in
+  Expert.parent ?malloc ?init ?clear ~ml ~cty:(expr "%s" c) ()
+
+let child parent ?malloc ?init ?parent_last ?clear ?clear_with_parent ~ml ~c ()
+    =
+  let malloc = Option.map (fun t -> expr "%s" t) malloc in
+  Expert.child parent ?malloc ?init ?parent_last ?clear ?clear_with_parent ~ml
+    ~cty:(expr "%s" c) ()
 
 let enum = Expert.enum
 let flags = Expert.flags

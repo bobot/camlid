@@ -24,6 +24,14 @@ void db_close(db *d);
 node *node_new(db *d, intptr_t i);
 void node_free(db *d, node *n);
 
+typedef struct { intptr_t n; } ring;
+typedef struct { intptr_t v; } elt;
+void ring_init(ring *r);
+void ring_clear(ring *r);
+void elt_init(elt *x, ring *r);
+void elt_clear(elt *x, ring *r);
+void elt_add(elt *z, elt *x, elt *y, ring *r);
+
 int make(vec *v, char **s, intptr_t n);
 int is_error(int rc, intptr_t n);
 const char *msg(int rc, intptr_t n);

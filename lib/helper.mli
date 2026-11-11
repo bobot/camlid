@@ -318,13 +318,27 @@ val keep_alive : Ty.mlc -> Expert.child
     the parent. Use the field [t] for inputs and [with_parent p] for outputs. *)
 
 val parent :
-  ?clear:string -> ml:string -> c:string -> unit -> Ty.mlc * Expert.parent
+  ?malloc:string ->
+  ?init:string ->
+  ?clear:string ->
+  ml:string ->
+  c:string ->
+  unit ->
+  Ty.mlc * Expert.parent
 (** [parent ~clear ~ml ~c ()] is a pointer [c] allocated by the C library.
     [void clear(c)] is called when the OCaml value and all its children are
-    collected. *)
+    collected. Two OCaml values of the same parent (e.g. from [get_parent]) are
+    equal for [compare] and have the same [Hashtbl.hash].
+
+    [~init] creates an output: [~malloc:"t" ~init:"f" ~c:"t *"] allocates a [t]
+    and calls [void f(t *c)] ([free] after [clear]); without [~malloc],
+    [void f(c *c)] sets the pointer. *)
 
 val child :
   Expert.parent ->
+  ?malloc:string ->
+  ?init:string ->
+  ?parent_last:bool ->
   ?clear:string ->
   ?clear_with_parent:string ->
   ml:string ->
@@ -335,7 +349,14 @@ val child :
     keeps a reference on its parent. When it is collected [void clear(c)] or
     [void clear_with_parent(parent_c, c)] is called, then the reference on the
     parent is released. Use the field [t] for inputs and [with_parent p] for
-    outputs. *)
+    outputs.
+
+    [~init] creates an output with [void init(parent_c p, c c)], with [~malloc]
+    like {!parent}: use [with_parent ~c:pc p] where [pc] is the C variable of
+    the parent input ({!Expert.param}). [~parent_last:true] gives the parent
+    last to [init] and [clear_with_parent], as in FLINT:
+    [child ctx ~malloc:"ca_struct" ~init:"ca_init" ~parent_last:true
+     ~clear_with_parent:"ca_clear" ~ml:"ca" ~c:"ca_struct *" ()]. *)
 
 (** {1 Other types} *)
 

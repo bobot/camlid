@@ -145,6 +145,52 @@ let node_new =
   func "node_new" [ d; input int ] ~result:(node.with_parent d_ml)
 ]}
 
+When the C library initializes the values in memory given by the caller, as FLINT does with its contexts, [~malloc] and [~init] let camlid allocate and initialize them. The [init] of a child gets its parent: [with_parent] also needs the C variable of the parent input.
+
+{[
+(* void ring_init(ring *r); void ring_clear(ring *r);
+   void elt_init(elt *x, ring *r); void elt_clear(elt *x, ring *r);
+   void elt_add(elt *z, elt *x, elt *y, ring *r); *)
+let ring, ring_parent =
+  parent ~malloc:"ring" ~init:"ring_init" ~clear:"ring_clear" ~ml:"ring"
+    ~c:"ring *" ()
+
+let elt =
+  child ring_parent ~malloc:"elt" ~init:"elt_init" ~parent_last:true
+    ~clear_with_parent:"elt_clear" ~ml:"elt" ~c:"elt *" ()
+
+(* val ring_create : unit -> ring *)
+let ring_create = do_nothing "ring_create" [ output ring ]
+
+(* val elt_add : ring -> elt -> elt -> elt *)
+let elt_add =
+  let r, r_c, r_ml = Expert.param ~input:true ~name:"r" ring in
+  let z = output (elt.with_parent ~c:r_c r_ml) in
+  let x = input elt.t and y = input elt.t in
+  func "elt_add" [ r; x; y; z ] ~call_params:[ z; x; y; r ]
+]}
+
+The C library may also require that [x] and [y] belong to the ring [r]. [elt.parent_of v] is the C value of the parent of the child input [v], for a check of the input ({!type:Camlid.Ty.checks}):
+
+{[
+let same_ring r_c =
+  {
+    Ty.ml2c_checks =
+      [
+        {
+          cond = Expr.expr "%a != %a" Expr.pp_var r_c Expr.pp_expr (elt.parent_of elt.t.v);
+          exn = Check_invalid_argument;
+          msg = "not in the same ring";
+        };
+      ];
+    c2ml_checks = [];
+  }
+(* in elt_add: input { elt.t with checks = same_ring r_c } *)
+
+(* val elt_ring : elt -> ring *)
+let elt_ring = elt.get_parent "elt_ring"
+]}
+
 {2 Errors, runtime lock and noalloc}
 
 The stub raises an exception only when it owns nothing, or after cleaning up: the conversions themselves never raise. A type that refuses some values has a check ({!type:Camlid.Ty.checks}), a C condition evaluated before its conversion: [string_nt] refuses strings with null bytes, [enum] unknown C constants, [dispose] disposed values. The checks of the inputs run before any conversion; the checks of the outputs and [~error] run after the call, and clean up before raising (copies are freed, outputs owned by OCaml are moved into OCaml values and finalized later).
