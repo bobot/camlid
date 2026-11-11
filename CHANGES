@@ -21,7 +21,8 @@
       init and clear everywhere (Expert.mk_init, Expert.mk_clear)
     - int_trunc, input/output_string, input/output_array renamed c_int,
       string_len(_ref), array_len(_ref) (old names deprecated)
-    - string_nt fails on a null byte (old behaviour: string_nt_prefix)
+    - string_nt fails on a null byte (old behaviour: string_nt_prefix),
+      reported by @lindig (#2)
     - the get, set and internal options of Helper.abstract, custom and
       custom_ptr are removed (still in Expert)
 
