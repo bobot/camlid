@@ -41,3 +41,8 @@ external elem_get:
   elem ->
   (int [@untagged])
   = "camlid_stub_elem_get_byte" "camlid_stub_elem_get" [@@noalloc]
+external elem_ctx: elem -> ctx = "camlid_stub_elem_ctx"
+external ctx_elems:
+  ctx ->
+  (int [@untagged])
+  = "camlid_stub_ctx_elems_byte" "camlid_stub_ctx_elems" [@@noalloc]

@@ -29,5 +29,6 @@ void elem_clear(elem *e, ctx *c);
 void elem_set_si(elem *e, intptr_t v, ctx *c);
 void elem_add(elem *r, elem *a, elem *b, ctx *c);
 intptr_t elem_get(elem *e);
+intptr_t ctx_elems(ctx *c);
 
 intptr_t live(void);

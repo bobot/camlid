@@ -24,7 +24,20 @@ let run () =
     List.init 3 (fun i -> Mylib.elem_add c one (Mylib.elem_of_int c i))
   in
   full_major ();
-  List.iter (fun e -> Printf.printf "elem %i\n" (Mylib.elem_get e)) elems
+  List.iter (fun e -> Printf.printf "elem %i\n" (Mylib.elem_get e)) elems;
+  (* the context is given back by an element, and is only reachable from the
+     returned value *)
+  let c =
+    let c0 = Mylib.ctx_create () in
+    Mylib.elem_ctx (Mylib.elem_of_int c0 7)
+  in
+  full_major ();
+  let e = Mylib.elem_of_int c 4 in
+  Printf.printf "elem %i, has elems %b\n" (Mylib.elem_get e)
+    (Mylib.ctx_elems c > 0);
+  (* an element of another context is refused *)
+  try ignore (Mylib.elem_add (Mylib.ctx_create ()) e e)
+  with Invalid_argument msg -> Printf.printf "Invalid_argument %s\n" msg
 
 let () =
   (Sys.opaque_identity run) ();

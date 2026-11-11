@@ -2389,7 +2389,12 @@ let ml2c_field0 (ty : mlc) ml2c v =
         (ml2c, ty_binds ~v:(expr "cid_temp") ~c:(expr "(*%a)" pp_var c') ty);
       if ty.contract.ml2c.alloc then fmt "@,CAMLreturn0;")
 
-type child = { t : mlc; with_parent : ?c:var -> var -> mlc }
+type child = {
+  t : mlc;
+  with_parent : ?c:var -> var -> mlc;
+  parent_of : var -> expr;
+  get_parent : string -> expr;
+}
 
 let keep_alive_with ~parent (ty : mlc) =
   let ml2c, c2ml = get_boxing ty.conv in
@@ -2432,9 +2437,25 @@ let keep_alive_with ~parent (ty : mlc) =
 let keep_alive (ty : mlc) =
   let no_parent = Var.mk "no_parent" e_value in
   let t = keep_alive_with ~parent:no_parent ty in
-  { t; with_parent = (fun ?c:_ parent -> keep_alive_with ~parent ty) }
+  let no_c_parent _ =
+    invalid_arg
+      "Camlid: a child of keep_alive has no C parent, use Helper.parent and \
+       Helper.child"
+  in
+  {
+    t;
+    with_parent = (fun ?c:_ parent -> keep_alive_with ~parent ty);
+    parent_of = no_c_parent;
+    get_parent = no_c_parent;
+  }
 
-type parent = { rc : defined; release : code; release_r : var }
+type parent = {
+  rc : defined;
+  release : code;
+  release_r : var;
+  pmlty : expr;
+  pops : defined;
+}
 
 (* The custom block contains a pointer to a structure with the C pointer
    [cty] and a reference counter, shared with the children. *)
@@ -2521,7 +2542,7 @@ let parent ?malloc ?init ?clear ~ml ~cty () =
       checks = Ty.no_checks;
     }
   in
-  (t, { rc; release; release_r = r })
+  (t, { rc; release; release_r = r; pmlty = t.mlty; pops = ops })
 
 let child (parent : parent) ?malloc ?init ?(parent_last = false) ?clear
     ?clear_with_parent ~ml ~cty () =
@@ -2612,7 +2633,53 @@ let child (parent : parent) ?malloc ?init ?(parent_last = false) ?clear
          "#error(\"camlid: the output of a child needs the OCaml value of its \
           parent, use with_parent\")")
   in
-  { t; with_parent }
+  let parent_of v = expr "(%a->parent->ptr)" pp_expr (data v) in
+  (* A new OCaml value for the parent, which shares its reference counter *)
+  let get_parent mlname =
+    let rc = Var.mk "c" (expr "%a *" pp_def parent.rc) in
+    let pv = Var.mk "v" e_value in
+    let rc' = Var.mk "c" (expr "%a **" pp_def parent.rc) in
+    let pv' = Var.mk "v" (expr "value *") in
+    let rty =
+      {
+        mlty = parent.pmlty;
+        conv =
+          Boxed
+            {
+              ml2c =
+                expr
+                  "#error(\"camlid: the parent of a child is only an output\")";
+              c2ml =
+                call_codef "c2ml_parent"
+                  [ (pv', e_addr pv); (rc', e_addr rc) ]
+                  (fun { fmt } ->
+                    fmt "atomic_fetch_add(&(*%a)->count, 1);@," pp_var rc';
+                    fmt "*%a = caml_alloc_custom(&%a, sizeof(%a *), 0, 1);@,"
+                      pp_var pv' pp_def parent.pops pp_def parent.rc;
+                    fmt "*((%a **) Data_custom_val(*%a)) = *%a;" pp_def
+                      parent.rc pp_var pv' pp_var rc');
+            };
+        cty =
+          {
+            cty = expr "%a *" pp_def parent.rc;
+            init = None;
+            init_expr = expr "NULL";
+            free = None;
+            in_call = None;
+            c = rc;
+          };
+        v = pv;
+        contract = Ty.copied ~ml2c:Ty.noalloc ~c2ml:Ty.allocates ();
+        checks = Ty.no_checks;
+      }
+    in
+    let p, p_c, p_ml = param ~input:true ~name:"x" t in
+    let result = simple_result rty in
+    print_ml_fun ~mlname ~params:[ p ] ~call_params:[] ~result
+      (expr "(void) %a;@ %a = %a->parent;" pp_var p_c pp_var result.rc pp_expr
+         (data p_ml))
+  in
+  { t; with_parent; parent_of; get_parent }
 
 (* An OCaml variant with constant constructors, and C constants *)
 let enum_ml_type name constrs =

@@ -292,20 +292,22 @@ extern value camlid_stub_elem_of_int_byte(value cx,
   
 }
 extern value camlid_stub_elem_add(value cx,
-  value p,
-  value p1){
-  CAMLparam3(cx, p, p1);
+  value a,
+  value b){
+  CAMLparam3(cx, a, b);
   CAMLlocal1(p_r);
   ctx * cx1 = ((ctx *) { 0 });
-  elem * p2 = ((elem *) { 0 });
-  elem * p3 = ((elem *) { 0 });
-  elem * p4 = ((elem *) { 0 });
+  elem * p = ((elem *) { 0 });
+  elem * a1 = ((elem *) { 0 });
+  elem * b1 = ((elem *) { 0 });
   cx1 = (*((camlid_rc1 **) Data_custom_val(cx)))->ptr;
-  p3 = ((camlid_child1 *) Data_custom_val(p))->ptr;
-  p4 = ((camlid_child1 *) Data_custom_val(p1))->ptr;
-  camlid_init1(cx1, &p2);
-  elem_add(p2, p3, p4, cx1);
-  camlid_c2ml6(&p_r, &p2, &cx);
+  if(cx1 != (((camlid_child1 *) Data_custom_val(a))->parent->ptr)) caml_invalid_argument("elem_add: not the same context");
+  if(cx1 != (((camlid_child1 *) Data_custom_val(b))->parent->ptr)) caml_invalid_argument("elem_add: not the same context");
+  a1 = ((camlid_child1 *) Data_custom_val(a))->ptr;
+  b1 = ((camlid_child1 *) Data_custom_val(b))->ptr;
+  camlid_init1(cx1, &p);
+  elem_add(p, a1, b1, cx1);
+  camlid_c2ml6(&p_r, &p, &cx);
   CAMLreturn(p_r);
 }
 extern intptr_t camlid_stub_elem_get(value p){
@@ -321,6 +323,37 @@ extern value camlid_stub_elem_get_byte(value p){
   intptr_t ures;
   value vres;
   ures = camlid_stub_elem_get(p);
+  vres = Val_long(ures);
+  return vres;
+}
+static void camlid_c2ml_parent(camlid_rc1 ** c, value * v){
+  atomic_fetch_add(&(*c)->count, 1);
+  *v = caml_alloc_custom(&camlid_cops4, sizeof(camlid_rc1 *), 0, 1);
+  *((camlid_rc1 **) Data_custom_val(*v)) = *c;
+  }
+extern value camlid_stub_elem_ctx(value x){
+  CAMLparam1(x);
+  CAMLlocal1(vres);
+  camlid_rc1 * res;
+  elem * x1 = ((elem *) { 0 });
+  x1 = ((camlid_child1 *) Data_custom_val(x))->ptr;
+  (void) x1; res = ((camlid_child1 *) Data_custom_val(x))->parent;
+  camlid_c2ml_parent(&res, &vres);
+  CAMLreturn(vres);
+}
+extern intptr_t camlid_stub_ctx_elems(value p){
+  intptr_t ures;
+  intptr_t res;
+  ctx * p1 = ((ctx *) { 0 });
+  p1 = (*((camlid_rc1 **) Data_custom_val(p)))->ptr;
+  res = ctx_elems(p1);
+  ures = (res);
+  return ures;
+}
+extern value camlid_stub_ctx_elems_byte(value p){
+  intptr_t ures;
+  value vres;
+  ures = camlid_stub_ctx_elems(p);
   vres = Val_long(ures);
   return vres;
 }

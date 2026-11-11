@@ -35,14 +35,36 @@ let elem =
 let elem_funcs =
   let c, c_c, c_ml = Expert.param ~input:true ~name:"cx" ctx in
   let out = output (elem.with_parent ~c:c_c c_ml) in
+  (* the arguments of elem_add must have the context [cx] as parent *)
+  let same_parent =
+    {
+      Ty.ml2c_checks =
+        [
+          {
+            cond =
+              Expr.expr "%a != %a" Expr.pp_var c_c Expr.pp_expr
+                (elem.parent_of elem.t.v);
+            exn = Check_invalid_argument;
+            msg = "elem_add: not the same context";
+          };
+        ];
+      c2ml_checks = [];
+    }
+  in
+  let a = input ~name:"a" { elem.t with checks = same_parent } in
+  let b = input ~name:"b" { elem.t with checks = same_parent } in
   let func ?result ml name params =
     func ?result ~ml name (c :: params) ~call_params:(params @ [ c ])
   in
   [
     func "elem_of_int" "elem_set_si" [ out; input int ];
-    func "elem_add" "elem_add" [ out; input elem.t; input elem.t ];
+    func "elem_add" "elem_add" [ out; a; b ];
   ]
-  @ [ Helper.func "elem_get" [ input elem.t ] ~result:int ]
+  @ [
+      Helper.func "elem_get" [ input elem.t ] ~result:int;
+      elem.get_parent "elem_ctx";
+      Helper.func "ctx_elems" [ input ctx ] ~result:int;
+    ]
 
 let () =
   Generate.to_file ~headers:[ "lib.h" ] "mylib"

@@ -2,4 +2,4 @@
 (* the functions defined by the examples, generated to check that camlid
    accepts them (tests/doc/footer.ml) *)
 let () =
-  Generate.to_file ~headers:[ "lib.h" ] "examples" [ zero; node_new; ring_create; elt_add; make; f ]
+  Generate.to_file ~headers:[ "lib.h" ] "examples" [ zero; node_new; ring_create; elt_add; elt_ring; make; f ]

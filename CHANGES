@@ -3,6 +3,9 @@
       values initialized in memory given by the caller (FLINT contexts and
       their elements); ~parent_last; the init of a child gets the C variable
       of its parent (with_parent ~c)
+    - Expert.child: parent_of gives the C value of the parent of a child
+      (e.g. to check that two children have the same parent), and
+      get_parent defines a function that returns the parent of a child
 
 ## 0.3 ##
   Highlights:

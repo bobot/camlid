@@ -7,4 +7,6 @@ node 102
 elem 1
 elem 2
 elem 3
+elem 4, has elems true
+Invalid_argument elem_add: not the same context
 live 0

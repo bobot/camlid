@@ -187,6 +187,14 @@ type child = {
       (** [with_parent p] for the outputs, where [p] is the OCaml variable of
           the parent input, e.g. returned by {!param}. [~c] is the C variable of
           the parent input, needed by a child created with [init]. *)
+  parent_of : Expr.var -> Expr.expr;
+      (** [parent_of v] is the C value of the parent of the child [v], the OCaml
+          variable of a child input. E.g. a check that two children have the
+          same parent. Only for {!val-child}. *)
+  get_parent : string -> Expr.expr;
+      (** [get_parent name] defines the OCaml function [name] that returns the
+          parent of a child, as a new OCaml value sharing the C value. Only for
+          {!val-child}. *)
 }
 
 val keep_alive : Ty.mlc -> child

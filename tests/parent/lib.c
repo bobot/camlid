@@ -40,4 +40,5 @@ void elem_add(elem *r, elem *a, elem *b, ctx *c) {
   r->value = a->value + b->value - c->base;
 }
 intptr_t elem_get(elem *e) { return e->value - e->ctx->base; }
+intptr_t ctx_elems(ctx *c) { return c->elems; }
 intptr_t live(void) { return count; }

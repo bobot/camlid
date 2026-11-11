@@ -170,7 +170,26 @@ let elt_add =
   func "elt_add" [ r; x; y; z ] ~call_params:[ z; x; y; r ]
 ]}
 
-The C library may also require that [x] and [y] belong to the ring [r]: camlid does not check it.
+The C library may also require that [x] and [y] belong to the ring [r]. [elt.parent_of v] is the C value of the parent of the child input [v], for a check of the input ({!type:Camlid.Ty.checks}):
+
+{[
+let same_ring r_c =
+  {
+    Ty.ml2c_checks =
+      [
+        {
+          cond = Expr.expr "%a != %a" Expr.pp_var r_c Expr.pp_expr (elt.parent_of elt.t.v);
+          exn = Check_invalid_argument;
+          msg = "not in the same ring";
+        };
+      ];
+    c2ml_checks = [];
+  }
+(* in elt_add: input { elt.t with checks = same_ring r_c } *)
+
+(* val elt_ring : elt -> ring *)
+let elt_ring = elt.get_parent "elt_ring"
+]}
 
 {2 Errors, runtime lock and noalloc}
 
