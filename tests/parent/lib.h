@@ -18,4 +18,16 @@ node *node_new(db *d, intptr_t id);
 intptr_t node_read(node *n);
 void node_free(db *d, node *n);
 
+/* FLINT style: a context and its elements are initialized in memory given by
+   the caller, the context comes last */
+typedef struct { intptr_t base; intptr_t elems; } ctx;
+typedef struct { intptr_t value; ctx *ctx; } elem;
+void ctx_init(ctx *c);
+void ctx_clear(ctx *c);
+void elem_init(elem *e, ctx *c);
+void elem_clear(elem *e, ctx *c);
+void elem_set_si(elem *e, intptr_t v, ctx *c);
+void elem_add(elem *r, elem *a, elem *b, ctx *c);
+intptr_t elem_get(elem *e);
+
 intptr_t live(void);

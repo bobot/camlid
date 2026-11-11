@@ -4,4 +4,7 @@ stmt 10
 node 100
 node 101
 node 102
+elem 1
+elem 2
+elem 3
 live 0

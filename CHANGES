@@ -1,3 +1,9 @@
+## unreleased ##
+    - Helper.parent and child: ~init and ~malloc create the outputs, for C
+      values initialized in memory given by the caller (FLINT contexts and
+      their elements); ~parent_last; the init of a child gets the C variable
+      of its parent (with_parent ~c)
+
 ## 0.3 ##
   Highlights:
     - the order of the steps of a stub is computed by Plan.schedule, written

@@ -183,9 +183,10 @@ val mk_mem : cty:Expr.expr -> string -> mem
 
 type child = {
   t : Ty.mlc;  (** for the inputs *)
-  with_parent : Expr.var -> Ty.mlc;
+  with_parent : ?c:Expr.var -> Expr.var -> Ty.mlc;
       (** [with_parent p] for the outputs, where [p] is the OCaml variable of
-          the parent input, e.g. returned by {!param} *)
+          the parent input, e.g. returned by {!param}. [~c] is the C variable of
+          the parent input, needed by a child created with [init]. *)
 }
 
 val keep_alive : Ty.mlc -> child
@@ -199,13 +200,27 @@ type parent
 *)
 
 val parent :
-  ?clear:string -> ml:string -> cty:Expr.expr -> unit -> Ty.mlc * parent
+  ?malloc:Expr.expr ->
+  ?init:string ->
+  ?clear:string ->
+  ml:string ->
+  cty:Expr.expr ->
+  unit ->
+  Ty.mlc * parent
 (** [parent ~clear ~ml ~cty ()] is a pointer [cty] allocated by the C library.
     [void clear(cty)] is called when the OCaml value and all the children are
-    collected. *)
+    collected.
+
+    With [~init], an output is created by [void init(cty c)] on a [cty]
+    allocated by camlid with [malloc(sizeof(t))] when [~malloc:t] is given
+    ([cty] is then [t *]; it is freed after [clear]), or by [void init(cty *c)]
+    which sets [c] otherwise. *)
 
 val child :
   parent ->
+  ?malloc:Expr.expr ->
+  ?init:string ->
+  ?parent_last:bool ->
   ?clear:string ->
   ?clear_with_parent:string ->
   ml:string ->
@@ -215,7 +230,12 @@ val child :
 (** [child parent ~ml ~cty ()] is a pointer [cty] allocated by the C library,
     which keeps a reference on its parent. When it is collected
     [void clear(cty)] or [void clear_with_parent(parent_cty, cty)] is called,
-    then the reference is released. *)
+    then the reference is released.
+
+    With [~init], an output is created by [void init(parent_cty p, cty c)], like
+    {!val-parent} for [~malloc]: the output needs [with_parent ~c p].
+    [~parent_last:true] puts the parent last in [init] and [clear_with_parent],
+    e.g. [ca_init(ca_t x, ca_ctx_t ctx)] in FLINT. *)
 
 (** {2 Copies and conversions} *)
 

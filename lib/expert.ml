@@ -2389,7 +2389,7 @@ let ml2c_field0 (ty : mlc) ml2c v =
         (ml2c, ty_binds ~v:(expr "cid_temp") ~c:(expr "(*%a)" pp_var c') ty);
       if ty.contract.ml2c.alloc then fmt "@,CAMLreturn0;")
 
-type child = { t : mlc; with_parent : var -> mlc }
+type child = { t : mlc; with_parent : ?c:var -> var -> mlc }
 
 let keep_alive_with ~parent (ty : mlc) =
   let ml2c, c2ml = get_boxing ty.conv in
@@ -2432,13 +2432,36 @@ let keep_alive_with ~parent (ty : mlc) =
 let keep_alive (ty : mlc) =
   let no_parent = Var.mk "no_parent" e_value in
   let t = keep_alive_with ~parent:no_parent ty in
-  { t; with_parent = (fun parent -> keep_alive_with ~parent ty) }
+  { t; with_parent = (fun ?c:_ parent -> keep_alive_with ~parent ty) }
 
 type parent = { rc : defined; release : code; release_r : var }
 
 (* The custom block contains a pointer to a structure with the C pointer
    [cty] and a reference counter, shared with the children. *)
-let parent ?clear ~ml ~cty () =
+(* Calls [init(first..., c, last...)] on a C value [c : cty]. With [malloc],
+   [cty] is a pointer to [malloc], allocated before; otherwise [init] gets the
+   address of [c], e.g. to set it to a pointer allocated by the C library. *)
+let init_ptr ?malloc ?(first = []) ?(last = []) ~init ~cty ~c () =
+  let c' = Var.mk "c" (expr "%a *" pp_expr cty) in
+  call_codef "init"
+    ((c', e_addr c) :: (first @ last))
+    (fun { fmt } ->
+      let pp_c fmt () =
+        match malloc with
+        | Some _ -> Fmt.pf fmt "*%a" pp_var c'
+        | None -> pp_var fmt c'
+      in
+      let args =
+        List.map (fun (v, _) fmt () -> pp_var fmt v) first
+        @ [ pp_c ]
+        @ List.map (fun (v, _) fmt () -> pp_var fmt v) last
+      in
+      Option.iter
+        (fun ty -> fmt "*%a = malloc(sizeof(%a));@," pp_var c' pp_expr ty)
+        malloc;
+      fmt "%s(%a);" init Fmt.(list ~sep:comma (fun fmt pp -> pp fmt ())) args)
+
+let parent ?malloc ?init ?clear ~ml ~cty () =
   let rc_id = ID.mk "rc" in
   let rc =
     toplevel ~kind:H rc_id
@@ -2449,9 +2472,12 @@ let parent ?clear ~ml ~cty () =
   let r = Var.mk "r" (expr "%a *" pp_def rc) in
   let release =
     code "release"
-      "@[if(atomic_fetch_sub(&%a->count, 1) == 1){@ %a@ free(%a);@ }@]" pp_var r
+      "@[if(atomic_fetch_sub(&%a->count, 1) == 1){@ %a%a@ free(%a);@ }@]" pp_var
+      r
       Fmt.(option (fun fmt clear -> pf fmt "%s(%a->ptr);" clear pp_var r))
-      clear pp_var r
+      clear
+      Fmt.(option (fun fmt _ -> pf fmt "@ free(%a->ptr);" pp_var r))
+      malloc pp_var r
   in
   let data v = expr "(*((%a **) Data_custom_val(%a)))" pp_def rc pp_var v in
   let finalize =
@@ -2484,7 +2510,7 @@ let parent ?clear ~ml ~cty () =
       cty =
         {
           cty;
-          init = None;
+          init = Option.map (fun init -> init_ptr ?malloc ~init ~cty ~c ()) init;
           init_expr = expr "((%a) { 0 })" pp_expr cty;
           free = None;
           in_call = None;
@@ -2497,7 +2523,8 @@ let parent ?clear ~ml ~cty () =
   in
   (t, { rc; release; release_r = r })
 
-let child (parent : parent) ?clear ?clear_with_parent ~ml ~cty () =
+let child (parent : parent) ?malloc ?init ?(parent_last = false) ?clear
+    ?clear_with_parent ~ml ~cty () =
   let st_id = ID.mk "child" in
   let st =
     toplevel ~kind:H st_id
@@ -2510,15 +2537,21 @@ let child (parent : parent) ?clear ?clear_with_parent ~ml ~cty () =
     let v = Var.mk "v" e_value in
     let s_var = Var.mk "s" (expr "%a *" pp_def st) in
     let release_r = parent.release_r in
-    code ~locals:[ s_var ] "finalize_op" "%a *%a = %a;@ %a%a%a" pp_def st pp_var
-      s_var pp_expr (data v)
+    code ~locals:[ s_var ] "finalize_op" "%a *%a = %a;@ %a%a%a%a" pp_def st
+      pp_var s_var pp_expr (data v)
       Fmt.(option (fun fmt clear -> pf fmt "%s(%a->ptr);@ " clear pp_var s_var))
       clear
       Fmt.(
         option (fun fmt clear ->
-            pf fmt "%s(%a->parent->ptr, %a->ptr);@ " clear pp_var s_var pp_var
-              s_var))
-      clear_with_parent pp_calli
+            if parent_last then
+              pf fmt "%s(%a->ptr, %a->parent->ptr);@ " clear pp_var s_var pp_var
+                s_var
+            else
+              pf fmt "%s(%a->parent->ptr, %a->ptr);@ " clear pp_var s_var pp_var
+                s_var))
+      clear_with_parent
+      Fmt.(option (fun fmt _ -> pf fmt "free(%a->ptr);@ " pp_var s_var))
+      malloc pp_calli
       (parent.release, [ (release_r, expr "%a->parent" pp_var s_var) ])
   in
   let ops = custom_ops ~finalize () in
@@ -2528,7 +2561,7 @@ let child (parent : parent) ?clear ?clear_with_parent ~ml ~cty () =
   let c' = Var.mk "c" (expr "%a *" pp_expr cty) in
   let parent' = Var.mk "parent" (expr "value *") in
   let mlty = e_def @@ mlabstract ~keep_name:true ml in
-  let mk c2ml =
+  let mk ?init c2ml =
     {
       mlty;
       conv =
@@ -2536,7 +2569,7 @@ let child (parent : parent) ?clear ?clear_with_parent ~ml ~cty () =
       cty =
         {
           cty;
-          init = None;
+          init;
           init_expr = expr "((%a) { 0 })" pp_expr cty;
           free = None;
           in_call = None;
@@ -2547,8 +2580,21 @@ let child (parent : parent) ?clear ?clear_with_parent ~ml ~cty () =
       checks = Ty.no_checks;
     }
   in
-  let with_parent parent_v =
-    mk
+  let with_parent ?c:parent_c parent_v =
+    let init =
+      match (init, parent_c) with
+      | None, _ -> None
+      | Some _, None ->
+          invalid_arg
+            "Camlid: the output of a child with init needs the C variable of \
+             its parent: with_parent ~c"
+      | Some init, Some parent_c ->
+          let p = [ (Var.mk "parent" parent_c.ty, e_var parent_c) ] in
+          Some
+            (if parent_last then init_ptr ?malloc ~last:p ~init ~cty ~c ()
+             else init_ptr ?malloc ~first:p ~init ~cty ~c ())
+    in
+    mk ?init
       (call_codef "c2ml"
          [ (v', e_addr v); (c', e_addr c); (parent', e_addr parent_v) ]
          (fun { fmt } ->

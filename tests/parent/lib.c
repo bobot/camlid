@@ -25,4 +25,19 @@ void node_free(db *d, node *n) {
   if (d != n->db) printf("error: wrong db\n");
   d->nodes--; free(n); count--;
 }
+void ctx_init(ctx *c) { c->base = 1000; c->elems = 0; count++; }
+void ctx_clear(ctx *c) {
+  if (c->elems) printf("error: ctx cleared with %" PRIdPTR " elems\n", c->elems);
+  count--;
+}
+void elem_init(elem *e, ctx *c) { e->value = 0; e->ctx = c; c->elems++; count++; }
+void elem_clear(elem *e, ctx *c) {
+  if (e->ctx != c) printf("error: wrong ctx\n");
+  c->elems--; count--;
+}
+void elem_set_si(elem *e, intptr_t v, ctx *c) { e->value = c->base + v; }
+void elem_add(elem *r, elem *a, elem *b, ctx *c) {
+  r->value = a->value + b->value - c->base;
+}
+intptr_t elem_get(elem *e) { return e->value - e->ctx->base; }
 intptr_t live(void) { return count; }

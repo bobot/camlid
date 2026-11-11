@@ -3,6 +3,8 @@ type db
 type stmt
 type rdb
 type node
+type ctx
+type elem
 external db_open:
   (int [@untagged]) ->
   db
@@ -25,6 +27,17 @@ external node_read:
   node ->
   (int [@untagged])
   = "camlid_stub_node_read_byte" "camlid_stub_node_read" [@@noalloc]
+external ctx_create: unit -> ctx = "camlid_stub_ctx_create"
 external live:
   unit -> (int [@untagged])
   = "camlid_stub_live_byte" "camlid_stub_live" [@@noalloc]
+external elem_of_int:
+  ctx ->
+  (int [@untagged]) ->
+  elem
+  = "camlid_stub_elem_of_int_byte" "camlid_stub_elem_of_int"
+external elem_add: ctx -> elem -> elem -> elem = "camlid_stub_elem_add"
+external elem_get:
+  elem ->
+  (int [@untagged])
+  = "camlid_stub_elem_get_byte" "camlid_stub_elem_get" [@@noalloc]

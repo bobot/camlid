@@ -16,7 +16,15 @@ let run () =
     List.init 3 (fun i -> Mylib.node_new d i)
   in
   full_major ();
-  List.iter (fun n -> Printf.printf "node %i\n" (Mylib.node_read n)) nodes
+  List.iter (fun n -> Printf.printf "node %i\n" (Mylib.node_read n)) nodes;
+  (* the context is only reachable from the elements *)
+  let elems =
+    let c = Mylib.ctx_create () in
+    let one = Mylib.elem_of_int c 1 in
+    List.init 3 (fun i -> Mylib.elem_add c one (Mylib.elem_of_int c i))
+  in
+  full_major ();
+  List.iter (fun e -> Printf.printf "elem %i\n" (Mylib.elem_get e)) elems
 
 let () =
   (Sys.opaque_identity run) ();
